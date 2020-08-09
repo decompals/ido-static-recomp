@@ -841,12 +841,21 @@ static void stat_common(uint8_t *mem, uint32_t buf_addr, struct stat *statbuf) {
     s.st_gid = statbuf->st_gid;
     s.st_rdev = statbuf->st_rdev;
     s.st_size = statbuf->st_size;
-    s.st_atim.tv_sec = statbuf->st_atim.tv_sec;
-    s.st_atim.tv_nsec = statbuf->st_atim.tv_nsec;
-    s.st_mtim.tv_sec = statbuf->st_mtim.tv_sec;
-    s.st_mtim.tv_nsec = statbuf->st_mtim.tv_nsec;
-    s.st_ctim.tv_sec = statbuf->st_ctim.tv_sec;
-    s.st_ctim.tv_nsec = statbuf->st_ctim.tv_nsec;
+#ifdef __APPLE__
+    s.st_atim.tv_sec = statbuf->st_atimespec.tv_sec;
+    s.st_atim.tv_nsec = statbuf->st_atimespec.tv_nsec;
+    s.st_mtim.tv_sec = statbuf->st_mtimespec.tv_sec;
+    s.st_mtim.tv_nsec = statbuf->st_mtimespec.tv_nsec;
+    s.st_ctim.tv_sec = statbuf->st_ctimespec.tv_sec;
+    s.st_ctim.tv_nsec = statbuf->st_ctimespec.tv_nsec;
+#else
+     s.st_atim.tv_sec = statbuf->st_atim.tv_sec;
+     s.st_atim.tv_nsec = statbuf->st_atim.tv_nsec;
+     s.st_mtim.tv_sec = statbuf->st_mtim.tv_sec;
+     s.st_mtim.tv_nsec = statbuf->st_mtim.tv_nsec;
+     s.st_ctim.tv_sec = statbuf->st_ctim.tv_sec;
+     s.st_ctim.tv_nsec = statbuf->st_ctim.tv_nsec;
+#endif
     memcpy(&MEM_U32(buf_addr), &s, sizeof(s));
 }
 
