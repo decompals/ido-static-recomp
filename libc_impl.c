@@ -61,6 +61,7 @@
 
 #define MALLOC_BINS_ADDR custom_libc_data_addr
 #define STRTOK_DATA_ADDR (MALLOC_BINS_ADDR + (30 - 3) * 4)
+#define INTBUF_ADDR (STRTOK_DATA_ADDR + 4)
 
 #define NFILE 100
 
@@ -480,6 +481,10 @@ int wrapper_fscanf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32_
 
 int wrapper_printf(uint8_t *mem, uint32_t format_addr, uint32_t sp) {
     STRING(format)
+    if (!strcmp(format, " child died due to signal %d.\n")) {
+        printf(format, MEM_U32(sp + 4));
+        return 1;
+    }
     assert(0 && "printf not implemented");
     return 0;
 }
@@ -612,6 +617,18 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
         ++pos;
         ch = MEM_S8(pos);
         switch (ch) {
+            case 'd':
+            {
+                char buf[32];
+                sprintf(buf, "%d", MEM_U32(sp));
+                strcpy1(mem, INTBUF_ADDR, buf);
+                if (wrapper_fputs(mem, INTBUF_ADDR, fp_addr) == -1) {
+                    return ret;
+                }
+                sp += 4;
+                ++ret;
+                break;
+            }
             case 's':
             {
                 if (wrapper_fputs(mem, MEM_U32(sp), fp_addr) == -1) {
@@ -622,6 +639,7 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
                 break;
             }
             default:
+                fprintf(stderr, "missing format: '%s'\n", format);
                 assert(0 && "non-implemented fprintf format");
         }
         format_addr = ++pos;
