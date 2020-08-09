@@ -1160,7 +1160,7 @@ static void dump_instr(int i) {
             printf("%s = MEM_U32(%s + %d);\n", wr(insn.operands[0].reg), r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
             break;
         case MIPS_INS_LDC1:
-            assert(insn.operands[0].reg % 2 == 0);
+            assert((insn.operands[0].reg - MIPS_REG_F0) % 2 == 0);
             printf("%s = MEM_U32(%s + %d);\n", wr(insn.operands[0].reg + 1), r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
             printf("%s = MEM_U32(%s + %d + 4);\n", wr(insn.operands[0].reg), r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
             break;
@@ -1270,7 +1270,7 @@ static void dump_instr(int i) {
             printf("MEM_U32(%s + %d) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp, wr(insn.operands[0].reg));
             break;
         case MIPS_INS_SDC1:
-            assert(insn.operands[0].reg % 2 == 0);
+            assert((insn.operands[0].reg - MIPS_REG_F0) % 2 == 0);
             printf("MEM_U32(%s + %d) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp, wr(insn.operands[0].reg + 1));
             printf("MEM_U32(%s + %d + 4) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp, wr(insn.operands[0].reg));
             break;
