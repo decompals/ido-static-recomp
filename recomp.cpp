@@ -1402,13 +1402,21 @@ static void dump_c(void) {
         symbol_names_inv[it.second] = it.first;
     }
     
-    uint32_t min_addr = data_vaddr;
-    uint32_t max_addr = data_vaddr + data_section_len;
+    uint32_t min_addr = ~0;
+    uint32_t max_addr = 0;
 
-    min_addr = MIN(min_addr, rodata_vaddr);
-    min_addr = MIN(min_addr, bss_vaddr);
-    max_addr = MAX(max_addr, rodata_vaddr + rodata_section_len);
-    max_addr = MAX(max_addr, bss_vaddr + bss_section_len);
+    if (data_section_len > 0) {
+        min_addr = MIN(min_addr, data_vaddr);
+        max_addr = MAX(max_addr, data_vaddr + data_section_len);
+    }
+    if (rodata_section_len > 0) {
+        min_addr = MIN(min_addr, rodata_vaddr);
+        max_addr = MAX(max_addr, rodata_vaddr + rodata_section_len);
+    }
+    if (bss_section_len) {
+        min_addr = MIN(min_addr, bss_vaddr);
+        max_addr = MAX(max_addr, bss_vaddr + bss_section_len);
+    }
 
     min_addr = min_addr & ~0xfff;
     max_addr = (max_addr + 0xfff) & ~0xfff;
