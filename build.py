@@ -77,7 +77,7 @@ def main(args):
         if platform.system() == "Darwin":
             pie_flag = " -fno-pie"
 
-        call("gcc libc_impl.c " + o_file_path + " -o " + out_file_path + " -g -fno-strict-aliasing" + pie_flag
+        call("gcc libc_impl.c " + o_file_path + " -o " + out_file_path + " -g -fno-strict-aliasing -lm" + pie_flag
              + o2_flag + ido_flag)
 
 

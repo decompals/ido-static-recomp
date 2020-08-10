@@ -7,7 +7,7 @@ Example for compiling `as1`:
 2. ./recomp ~/ido7.1_compiler/usr/lib/as1 > as1_c.c
 3. make sure as1_c.c is the file to be included in skeleton.c
 4. gcc skeleton.c -c -o as1_c.o -g -fno-strict-aliasing
-5. gcc libc_impl.c as1_c.o -o as1 -g -fno-strict-aliasing -no-pie -DIDO71
+5. gcc libc_impl.c as1_c.o -o as1 -g -fno-strict-aliasing -lm -no-pie -DIDO71
 ```
 
 Use the same approach for `cc`, `cfe`, `uopt`, `ugen`, `as1` (and `copt` if you need that).
