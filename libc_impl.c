@@ -9,6 +9,7 @@
 #include <time.h>
 #include <limits.h>
 #include <ctype.h>
+#include <locale.h>
 
 #include <sys/mman.h>
 #include <sys/types.h>
@@ -735,12 +736,24 @@ int wrapper_flock(uint8_t *mem, int fd, int operation) {
     return ret;
 }
 
+int wrapper_umask(int mode) {
+    return umask(mode);
+}
+
 uint32_t wrapper_ecvt(uint8_t *mem, double number, int ndigits, uint32_t decpt_addr, uint32_t sign_addr) {
     assert(0);
 }
 
 uint32_t wrapper_fcvt(uint8_t *mem, double number, int ndigits, uint32_t decpt_addr, uint32_t sign_addr) {
     assert(0);
+}
+
+double wrapper_sqrt(double v) {
+    return sqrt(v);
+}
+
+float wrapper_sqrtf(float v) {
+    return sqrtf(v);
 }
 
 int wrapper_atoi(uint8_t *mem, uint32_t nptr_addr) {
@@ -1438,6 +1451,10 @@ int wrapper_times(uint8_t *mem, uint32_t buffer_addr) {
     return (int)ret;
 }
 
+int wrapper_clock(void) {
+    return (int)clock();
+}
+
 uint32_t wrapper_ctime(uint8_t *mem, uint32_t timep_addr) {
     time_t t = MEM_S32(timep_addr);
     char *res = ctime(&t);
@@ -1869,6 +1886,15 @@ uint32_t wrapper_gettxt(uint8_t *mem, uint32_t msgid_addr, uint32_t default_str_
     return default_str_addr;
 }
 
+uint32_t wrapper_setlocale(uint8_t *mem, int category, uint32_t locale_addr) {
+    assert(locale_addr != 0);
+    STRING(locale)
+    assert(category == 6); // LC_ALL
+    char *ret = setlocale(LC_ALL, locale);
+    // Let's hope the caller doesn't use the return value
+    return 0;
+}
+
 uint32_t wrapper_mmap(uint8_t *mem, uint32_t addr, uint32_t length, int prot, int flags, int fd, int offset) {
     assert(0 && "mmap not implemented");
     return 0;
@@ -1928,6 +1954,14 @@ int wrapper_get_fpc_csr(uint8_t *mem) {
 int wrapper_set_fpc_csr(uint8_t *mem, int csr) {
     //assert(0 && "set_fpc_csr not implemented");
     return 0;
+}
+
+int wrapper_setjmp(uint8_t *mem, uint32_t addr) {
+    return 0;
+}
+
+void wrapper_longjmp(uint8_t *mem, uint32_t addr, int status) {
+    assert(0 && "longjmp not implemented");
 }
 
 uint32_t wrapper_tempnam(uint8_t *mem, uint32_t dir_addr, uint32_t pfx_addr) {
