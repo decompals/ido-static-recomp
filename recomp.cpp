@@ -1476,6 +1476,8 @@ static void dump_c(void) {
 
     printf("setup_libc_data(mem);\n");
     
+    printf("gp = 0x%x;\n", gp_value); // only to recreate the outcome when ugen reads uninitialized stack memory
+
     if (TRACE) {
         printf("unsigned long long int cnt = 0;\n");
     }
