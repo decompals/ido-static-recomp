@@ -454,6 +454,23 @@ static void pass1(void) {
                     if (insns[lw].id == MIPS_INS_LW && insns[lw].linked_insn != -1) {
                         int sltiu_index = -1;
                         int andi_index = -1;
+                        uint32_t addu_index = lw - 1;
+                        uint32_t num_cases;
+                        bool found = false;
+                        bool and_variant = false;
+                        if (insns[addu_index].id != MIPS_INS_ADDU) {
+                            --addu_index;
+                        }
+                        uint32_t index_reg = insns[addu_index - 1].operands[1].reg;
+                        if (insns[addu_index].id != MIPS_INS_ADDU) {
+                            goto skip;
+                        }
+                        if (insns[addu_index - 1].id != MIPS_INS_SLL) {
+                            goto skip;
+                        }
+                        if (insns[addu_index - 1].operands[0].reg != insn.operands[0].reg) {
+                            goto skip;
+                        }
                         for (int j = 3; j <= 4; j++) {
                             if (insns[lw - j].id == MIPS_INS_ANDI) {
                                 andi_index = lw - j;
@@ -467,13 +484,14 @@ static void pass1(void) {
                                 sltiu_index = j;
                                 break;
                             }
+                            if (insns[lw - has_extra - j].id == MIPS_INS_JR) {
+                                // Prevent going into a previous switch
+                                break;
+                            }
                         }
                         if (sltiu_index != -1) {
                             andi_index = -1;
                         }
-                        uint32_t num_cases;
-                        bool found = false;
-                        bool and_variant = false;
                         if (sltiu_index != -1 && insns[lw - has_extra - sltiu_index].id == MIPS_INS_SLTIU) {
                             num_cases = insns[lw - has_extra - sltiu_index].operands[2].imm;
                             found = true;
@@ -487,13 +505,6 @@ static void pass1(void) {
                             if (is_pic) {
                                 insns[i - 1].id = MIPS_INS_NOP;
                             }
-                            uint32_t addu_index = lw - 1;
-                            if (insns[addu_index].id != MIPS_INS_ADDU) {
-                                --addu_index;
-                            }
-                            uint32_t index_reg = insns[addu_index - 1].operands[1].reg;
-                            assert(insns[addu_index].id == MIPS_INS_ADDU);
-                            assert(insns[addu_index - 1].id == MIPS_INS_SLL);
                             //printf("jump table at %08x, size %u\n", jtbl_addr, num_cases);
                             insn.jtbl_addr = jtbl_addr;
                             insn.num_cases = num_cases;
@@ -516,6 +527,7 @@ static void pass1(void) {
                                 label_addresses.insert(target_addr);
                             }
                         }
+                        skip:;
                     }
                 }
             } else {
