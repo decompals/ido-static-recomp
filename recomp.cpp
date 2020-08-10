@@ -460,13 +460,16 @@ static void pass1(void) {
                                 break;
                             }
                         }
-                        if (andi_index == -1) {
-                            for (int j = 5; j <= 14; j++) {
-                                if (insns[lw - has_extra - j].id == MIPS_INS_SLTIU) {
-                                    sltiu_index = j;
-                                    break;
-                                }
+                        for (int j = 5; j <= 14; j++) {
+                            if (insns[lw - has_extra - j].id == MIPS_INS_SLTIU &&
+                                insns[lw - has_extra - j].operands[0].reg == MIPS_REG_AT)
+                            {
+                                sltiu_index = j;
+                                break;
                             }
+                        }
+                        if (sltiu_index != -1) {
+                            andi_index = -1;
                         }
                         uint32_t num_cases;
                         bool found = false;
