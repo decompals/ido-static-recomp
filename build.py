@@ -6,6 +6,7 @@ import sys
 import re
 import platform
 import threading
+import shutil
 
 BINS = [
     "/usr/lib/as1",
@@ -29,6 +30,8 @@ def process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path
     c_file_path = os.path.join(build_dir, os.path.basename(prog) + "_c.c")
     o_file_path = os.path.join(build_dir, os.path.basename(prog) + "_c.o")
     out_file_path = os.path.join(out_dir, os.path.basename(prog))
+    if platform.system().startswith("CYGWIN_NT"):
+        out_file_path += ".exe"
     skeleton_file_path = os.path.join(build_dir, "skeleton_" + os.path.basename(prog) + ".c")
 
     if not args.onlylibc:
@@ -44,16 +47,22 @@ def process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path
         with open(skeleton_file_path, "w") as skeleton:
             skeleton.write(text)
 
-    o2_flag = "" if not args.O2 else " -O2"
+    flags = " -g -fno-strict-aliasing"
+    if args.O2:
+        flags += " -O2"
+
     if not args.onlylibc:
-        call("gcc " + skeleton_file_path + " -c -o " + o_file_path + " -g -fno-strict-aliasing" + o2_flag)
+        call("gcc " + skeleton_file_path + " -c -o " + o_file_path + flags)
 
-    pie_flag = " -no-pie"
+    flags = " -g -fno-strict-aliasing -lm"
     if platform.system() == "Darwin":
-        pie_flag = " -fno-pie"
+        flags += " -fno-pie"
+    else:
+        flags += " -no-pie"
+    if args.O2:
+        flags += " -O2"
 
-    call("gcc libc_impl.c " + o_file_path + " -o " + out_file_path + " -g -fno-strict-aliasing -lm" + pie_flag
-             + o2_flag + ido_flag)
+    call("gcc libc_impl.c " + o_file_path + " -o " + out_file_path + flags + ido_flag)
 
     return
 
@@ -89,6 +98,8 @@ def main(args):
         std_flag = "-std=c++11"
 
     recomp_path = os.path.join(build_dir, "recomp")
+    if platform.system().startswith("CYGWIN_NT"):
+        recomp_path += ".exe"
     call("g++ recomp.cpp -o " + recomp_path + " -g -lcapstone " + std_flag)
     
     threads = []
@@ -104,14 +115,7 @@ def main(args):
         for t in threads:
             t.join()
 
-    with open(os.path.join(out_dir, "cc_wrapper.sh"), "w") as wrapper:
-        wrapper.write(
-            '#!/bin/bash\n' \
-            'export PATH=$(dirname "$0"):$PATH\n' \
-            '$(dirname "$0")/cc $@\n'
-        )
-    os.chmod(os.path.join(out_dir, "cc_wrapper.sh"), 0o777)
-
+    shutil.copyfile(os.path.join(ido_path, "usr/lib/err.english.cc"), os.path.join(out_dir, "err.english.cc"))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Static ido recompilation build utility")
