@@ -17,6 +17,10 @@
 #define TRACE 0
 #endif
 
+#ifndef ugen53
+#define ugen53 0
+#endif
+
 #define LABELS_64_BIT 1
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -28,6 +32,14 @@
 
 using namespace std;
 
+struct Edge {
+    uint32_t i;
+    uint8_t function_entry: 1;
+    uint8_t function_exit: 1;
+    uint8_t extern_function: 1;
+    uint8_t function_pointer: 1;
+};
+
 struct Insn {
     uint32_t id;
     uint8_t op_count;
@@ -37,6 +49,7 @@ struct Insn {
 
     uint8_t is_jump: 1;
     uint8_t is_global_got_memop: 1;
+    uint8_t no_following_successor: 1;
     int linked_insn;
     union {
         uint32_t linked_value;
@@ -45,6 +58,21 @@ struct Insn {
     uint32_t jtbl_addr;
     uint32_t num_cases;
     uint32_t index_reg;
+    vector<Edge> successors;
+    vector<Edge> predecessors;
+    uint64_t b_liveout;
+    uint64_t b_livein;
+    uint64_t f_livein;
+    uint64_t f_liveout;
+};
+
+struct Function {
+    vector<uint32_t> returns; //points to delay slots
+    uint32_t end_addr; //address after end
+    uint32_t nargs;
+    uint32_t nret;
+    bool v0_in;
+    bool referenced_by_function_pointer;
 };
 
 static csh handle;
@@ -73,6 +101,14 @@ static uint32_t gp_value_adj;
 
 static map<uint32_t, string> symbol_names;
 
+static vector<pair<uint32_t, uint32_t>> data_function_pointers;
+static set<uint32_t> li_function_pointers;
+static map<uint32_t, Function> functions;
+static uint32_t main_addr;
+static uint32_t mcount_addr;
+static uint32_t procedure_table_start;
+static uint32_t procedure_table_len;
+
 #define FLAG_NO_MEM 1
 #define FLAG_VARARG 2
 
@@ -81,6 +117,8 @@ static const struct {
     const char *params;
     int flags;
 } extern_functions[] = {
+    {"exit", "vi"}, // override exit from application
+    {"abort", "v"},
     {"sbrk", "pi"},
     {"malloc", "pu"},
     {"calloc", "puu"},
@@ -98,6 +136,7 @@ static const struct {
     {"rename", "ipp"},
     {"utime", "ipp"},
     {"flock", "iii"},
+    {"chmod", "ipu"},
     {"umask", "ii", FLAG_NO_MEM},
     {"ecvt", "pdipp"},
     {"fcvt", "pdipp"},
@@ -106,10 +145,13 @@ static const struct {
     {"atoi", "ip"},
     {"atol", "ip"},
     {"atof", "dp"},
+    {"strtol", "ippi"},
     {"strtoul", "uppi"},
     {"strtod", "dpp"},
     {"strchr", "ppi"},
     {"strrchr", "ppi"},
+    {"strcspn", "upp"},
+    {"strpbrk", "ppp"},
     {"fstat", "iip"},
     {"stat", "ipp"},
     {"ftruncate", "iii"},
@@ -131,11 +173,12 @@ static const struct {
     {"pipe", "ip"},
     {"perror", "vp"},
     {"fdopen", "iip"},
-    {"memset", "vpiu"},
+    {"memset", "ppiu"},
     {"bcmp", "ippu"},
     {"memcmp", "ippu"},
     {"getpid", "i", FLAG_NO_MEM},
     {"getpgrp", "i"},
+    {"remove", "ip"},
     {"unlink", "ip"},
     {"close", "ii"},
     {"strcmp", "ipp"},
@@ -151,9 +194,11 @@ static const struct {
     {"tolower", "ii", FLAG_NO_MEM},
     {"gethostname", "ipu"},
     {"isatty", "ii"},
+    {"strftime", "upupp"},
     {"times", "ip"},
     {"clock", "i", FLAG_NO_MEM},
     {"ctime", "pp"},
+    {"localtime", "pp"},
     {"setvbuf", "ippiu"},
     {"__semgetc", "ip"},
     {"__semputc", "iip"},
@@ -215,14 +260,20 @@ static const struct {
     {"tempnam", "ppp"},
     {"tmpnam", "pp"},
     {"mktemp", "pp"},
+    {"mkstemp", "ip"},
+    {"tmpfile", "p"},
     {"wait", "ip"},
     {"kill", "iii"},
     {"execlp", "ip", FLAG_VARARG},
     {"execv", "ipp"},
     {"execvp", "ipp"},
     {"fork", "i"},
+    {"system", "ip"},
     {"tsearch", "pppp"},
     {"tfind", "pppp"},
+    {"qsort", "vpuut"},
+    {"regcmp", "pp", FLAG_VARARG},
+    {"regex", "ppp", FLAG_VARARG},
     {"__assert", "vppi"},
 };
 
@@ -248,6 +299,33 @@ static void disassemble(void) {
     }
     cs_free(disasm, disasm_size);
     cs_close(&handle);
+    
+    {
+        // Add dummy instruction to avoid out of bounds
+        insns.push_back(Insn());
+        Insn& insn = insns.back();
+        insn.id = MIPS_INS_NOP;
+        insn.mnemonic = "nop";
+        insn.no_following_successor = true;
+    }
+}
+
+static void add_function(uint32_t addr) {
+    if (addr >= text_vaddr && addr < text_vaddr + text_section_len) {
+        functions[addr];
+    }
+}
+
+static map<uint32_t, Function>::iterator find_function(uint32_t addr) {
+    if (functions.size() == 0) {
+        return functions.end();
+    }
+    auto it = functions.upper_bound(addr);
+    if (it == functions.begin()) {
+        return functions.end();
+    }
+    --it;
+    return it;
 }
 
 // try to find a matching LUI for a given register
@@ -301,6 +379,9 @@ static void link_with_lui(int offset, uint32_t reg, int mem_imm)
                                 insns[offset].mnemonic = "move";
                                 sprintf(buf, "$%s, $%s", cs_reg_name(handle, insns[offset].operands[0].reg), cs_reg_name(handle, rd));
                                 insns[offset].op_str = buf;
+                                if (addr >= text_vaddr && addr < text_vaddr + text_section_len) {
+                                    add_function(addr);
+                                }
                                 break;
                             case MIPS_INS_LB:
                             case MIPS_INS_LBU:
@@ -360,6 +441,8 @@ static void link_with_jalr(int offset)
                     insns[search].id = MIPS_INS_NOP;
                     insns[search].mnemonic = "nop";
                     insns[search].op_str = "";
+                    insns[search].is_global_got_memop = false;
+                    add_function(insns[search].linked_value);
                 }
                 break;
             } else if (insns[search].id == MIPS_INS_ADDIU) {
@@ -410,6 +493,7 @@ static void pass1(void) {
             if (insn.id == MIPS_INS_JAL || insn.id == MIPS_INS_J) {
                 uint32_t target  = (uint32_t)insn.operands[0].imm;
                 label_addresses.insert(target);
+                add_function(target);
             } else if (insn.id == MIPS_INS_JR) {
                 // sltiu $at, $ty, z
                 // sw    $reg, offset($sp)   (very seldom, one or more, usually in func entry)
@@ -458,6 +542,7 @@ static void pass1(void) {
                         uint32_t num_cases;
                         bool found = false;
                         bool and_variant = false;
+                        int end = 14;
                         if (insns[addu_index].id != MIPS_INS_ADDU) {
                             --addu_index;
                         }
@@ -477,7 +562,11 @@ static void pass1(void) {
                                 break;
                             }
                         }
-                        for (int j = 5; j <= 14; j++) {
+                        if (i == 368393) {
+                            // In copt
+                            end = 18;
+                        }
+                        for (int j = 5; j <= end; j++) {
                             if (insns[lw - has_extra - j].id == MIPS_INS_SLTIU &&
                                 insns[lw - has_extra - j].operands[0].reg == MIPS_REG_AT)
                             {
@@ -499,6 +588,14 @@ static void pass1(void) {
                             num_cases = insns[andi_index].operands[2].imm + 1;
                             found = true;
                             and_variant = true;
+                        } else if (i == 219382) {
+                            // Special hard case in copt where the initial sltiu is in another basic block
+                            found = true;
+                            num_cases = 13;
+                        } else if (i == 370995) {
+                            // Special hard case in copt where the initial sltiu is in another basic block
+                            found = true;
+                            num_cases = 12;
                         }
                         if (found) {
                             uint32_t jtbl_addr = insns[lw].linked_value;
@@ -660,6 +757,7 @@ static void pass1(void) {
                         insn.operands[0].type = MIPS_OP_IMM;
                         insn.operands[0].imm = insn.linked_value;
                         label_addresses.insert(insn.linked_value);
+                        add_function(insn.linked_value);
                     }
                 }
                 break;
@@ -676,12 +774,735 @@ static void pass1(void) {
     }
 }
 
+static uint32_t addr_to_i(uint32_t addr) {
+    return (addr - text_vaddr) / 4;
+}
+
 static void pass2(void) {
+    // Find returns in each function
     for (size_t i = 0; i < insns.size(); i++) {
+        uint32_t addr = text_vaddr + i * 4;
         Insn& insn = insns[i];
-        if (insn.is_jump) {
-            //if (insn.id == MIPS_INS_JAL || insn.id == MIPS_INS_J
+        if (insn.id == MIPS_INS_JR && insn.operands[0].reg == MIPS_REG_RA) {
+            auto it = find_function(addr);
+            assert(it != functions.end());
+            it->second.returns.push_back(addr + 4);
         }
+        if (insn.is_global_got_memop && text_vaddr <= insn.operands[1].imm && insn.operands[1].imm < text_vaddr + text_section_len) {
+            uint32_t faddr = insn.operands[1].imm;
+            li_function_pointers.insert(faddr);
+            functions[faddr].referenced_by_function_pointer = true;
+            fprintf(stderr, "li function pointer: 0x%x at 0x%x\n", faddr, addr);
+        }
+    }
+    for (auto it = functions.begin(); it != functions.end(); ++it) {
+        if (it->second.returns.size() == 0) {
+            uint32_t i = addr_to_i(it->first);
+            auto str_it = symbol_names.find(it->first);
+            if (str_it != symbol_names.end() && str_it->second == "__start") {
+                
+            } else if (str_it != symbol_names.end() && str_it->second == "xmalloc") {
+                // orig 5.3:
+                /*
+                496bf4:       3c1c0fb9        lui     gp,0xfb9
+                496bf8:       279c366c        addiu   gp,gp,13932
+                496bfc:       0399e021        addu    gp,gp,t9
+                496c00:       27bdffd8        addiu   sp,sp,-40
+                496c04:       8f858de8        lw      a1,-29208(gp)
+                496c08:       10000006        b       496c24 <alloc_new+0x14>
+                496c0c:       afbf0020        sw      ra,32(sp)
+                */
+                
+                // jal   alloc_new
+                //  lui  $a1, malloc_scb
+                // jr    $ra
+                //  nop
+                uint32_t alloc_new_addr = text_vaddr + (i + 7) * 4;
+                insns[i].id = MIPS_INS_JAL;
+                insns[i].op_count = 1;
+                insns[i].mnemonic = "jal";
+                insns[i].op_str = "alloc_new";
+                insns[i].operands[0].imm = alloc_new_addr;
+                assert(symbol_names.count(alloc_new_addr) && symbol_names[alloc_new_addr] == "alloc_new");
+                i++;
+                if (insns[i + 5].id == MIPS_INS_LI) {
+                    // 7.1
+                    insns[i] = insns[i + 5];
+                } else {
+                    // 5.3
+                    insns[i] = insns[i + 3];
+                }
+                i++;
+                insns[i].id = MIPS_INS_JR;
+                insns[i].op_count = 1;
+                insns[i].mnemonic = "jr";
+                insns[i].op_str = "$ra";
+                insns[i].operands[0].reg = MIPS_REG_RA;
+                it->second.returns.push_back(text_vaddr + i * 4 + 4);
+                i++;
+                for (uint32_t j = 0; j < 4; j++) {
+                    insns[i].id = MIPS_INS_NOP;
+                    insns[i].op_count = 0;
+                    insns[i].mnemonic = "nop";
+                    i++;
+                }
+            } else if (str_it != symbol_names.end() && str_it->second == "xfree") {
+                // jal   alloc_dispose
+                //  lui  $a1, malloc_scb
+                // jr    $ra
+                //  nop
+                uint32_t alloc_dispose_addr = text_vaddr + (i + 4) * 4;
+                if (symbol_names.count(alloc_dispose_addr + 4) && symbol_names[alloc_dispose_addr + 4] == "alloc_dispose") {
+                    alloc_dispose_addr += 4;
+                }
+                insns[i].id = MIPS_INS_JAL;
+                insns[i].op_count = 1;
+                insns[i].mnemonic = "jal";
+                insns[i].op_str = "alloc_dispose";
+                insns[i].operands[0].imm = alloc_dispose_addr;
+                assert(symbol_names.count(alloc_dispose_addr) && symbol_names[alloc_dispose_addr] == "alloc_dispose");
+                i++;
+                insns[i] = insns[i + 2];
+                i++;
+                insns[i].id = MIPS_INS_JR;
+                insns[i].op_count = 1;
+                insns[i].mnemonic = "jr";
+                insns[i].op_str = "$ra";
+                insns[i].operands[0].reg = MIPS_REG_RA;
+                it->second.returns.push_back(text_vaddr + i * 4 + 4);
+                i++;
+                insns[i].id = MIPS_INS_NOP;
+                insns[i].op_count = 0;
+                insns[i].mnemonic = "nop";
+            } else if (insns[i].id == MIPS_INS_LW && insns[i + 1].id == MIPS_INS_MOVE && insns[i + 2].id == MIPS_INS_JALR) {
+                /*
+                408f50:       8f998010        lw      t9,-32752(gp)
+                408f54:       03e07821        move    t7,ra
+                408f58:       0320f809        jalr    t9
+                */
+            } else if (it->first > mcount_addr) {
+                fprintf(stderr, "no ret: 0x%x\n", it->first);
+                abort();
+            }
+        }
+        auto next = it;
+        ++next;
+        if (next == functions.end()) {
+            it->second.end_addr = text_vaddr + text_section_len;
+        } else {
+            it->second.end_addr = next->first;
+        }
+    }
+}
+
+static void add_edge(uint32_t from, uint32_t to, bool function_entry = false, bool function_exit = false, bool extern_function = false, bool function_pointer = false) {
+    Edge fe = Edge(), be = Edge();
+    fe.i = to;
+    be.i = from;
+    fe.function_entry = function_entry;
+    be.function_entry = function_entry;
+    fe.function_exit = function_exit;
+    be.function_exit = function_exit;
+    fe.extern_function = extern_function;
+    be.extern_function = extern_function;
+    fe.function_pointer = function_pointer;
+    be.function_pointer = function_pointer;
+    insns[from].successors.push_back(fe);
+    insns[to].predecessors.push_back(be);
+}
+
+static void pass3(void) {
+    // Build graph
+    for (size_t i = 0; i < insns.size(); i++) {
+        uint32_t addr = text_vaddr + i * 4;
+        Insn& insn = insns[i];
+        if (insn.no_following_successor) {
+            continue;
+        }
+        switch (insn.id) {
+            case MIPS_INS_BEQ:
+            case MIPS_INS_BGEZ:
+            case MIPS_INS_BGTZ:
+            case MIPS_INS_BLEZ:
+            case MIPS_INS_BLTZ:
+            case MIPS_INS_BNE:
+            case MIPS_INS_BEQZ:
+            case MIPS_INS_BNEZ:
+            case MIPS_INS_BC1F:
+            case MIPS_INS_BC1T:
+                add_edge(i, i + 1);
+                add_edge(i + 1, addr_to_i((uint32_t)insn.operands[insn.op_count - 1].imm));
+                break;
+            
+            case MIPS_INS_BEQL:
+            case MIPS_INS_BGEZL:
+            case MIPS_INS_BGTZL:
+            case MIPS_INS_BLEZL:
+            case MIPS_INS_BLTZL:
+            case MIPS_INS_BNEL:
+            case MIPS_INS_BC1FL:
+            case MIPS_INS_BC1TL:
+                add_edge(i, i + 1);
+                add_edge(i, i + 2);
+                add_edge(i + 1, addr_to_i((uint32_t)insn.operands[insn.op_count - 1].imm));
+                insns[i + 1].no_following_successor = true; // don't inspect delay slot
+                break;
+            
+            case MIPS_INS_B:
+            case MIPS_INS_J:
+                add_edge(i, i + 1);
+                add_edge(i + 1, addr_to_i((uint32_t)insn.operands[0].imm));
+                insns[i + 1].no_following_successor = true; // don't inspect delay slot
+                break;
+            
+            case MIPS_INS_JR: {
+                add_edge(i, i + 1);
+                if (insn.jtbl_addr != 0) {
+                    uint32_t jtbl_pos = insn.jtbl_addr - rodata_vaddr;
+                    assert(jtbl_pos < rodata_section_len && jtbl_pos + insn.num_cases * 4 <= rodata_section_len);
+                    for (uint32_t j = 0; j < insn.num_cases; j++) {
+                        uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + j * 4) + gp_value;
+                        add_edge(i + 1, addr_to_i(dest_addr));
+                    }
+                } else {
+                    assert(insn.operands[0].reg == MIPS_REG_RA && "jump to address in register not supported");
+                }
+                insns[i + 1].no_following_successor = true; // don't inspect delay slot
+                break;
+            }
+            
+            case MIPS_INS_JAL: {
+                add_edge(i, i + 1);
+                uint32_t dest = (uint32_t)insn.operands[0].imm;
+                if (dest > mcount_addr && dest >= text_vaddr && dest < text_vaddr + text_section_len) {
+                    add_edge(i + 1, addr_to_i(dest), true);
+                    auto it = functions.find(dest);
+                    assert(it != functions.end());
+                    for (uint32_t ret_instr : it->second.returns) {
+                        add_edge(addr_to_i(ret_instr), i + 2, false, true);
+                    }
+                } else {
+                    add_edge(i + 1, i + 2, false, false, true);
+                }
+                insns[i + 1].no_following_successor = true; // don't inspect delay slot
+                break;
+            }
+            
+            case MIPS_INS_JALR:
+                // function pointer
+                add_edge(i, i + 1);
+                add_edge(i + 1, i + 2, false, false, false, true);
+                insns[i + 1].no_following_successor = true; // don't inspect delay slot
+                break;
+            
+            default:
+                add_edge(i, i + 1);
+                break;
+        }
+    }
+}
+
+static uint64_t map_reg(int32_t reg) {
+    if (reg > MIPS_REG_31) {
+        if (reg == MIPS_REG_HI) {
+            reg = 33;
+        } else if (reg == MIPS_REG_LO) {
+            reg = 34;
+        } else {
+            return 0;
+        }
+    }
+    return (uint64_t)1 << reg;
+}
+
+static uint64_t temporary_regs(void) {
+    return
+        map_reg(MIPS_REG_T0) |
+        map_reg(MIPS_REG_T1) |
+        map_reg(MIPS_REG_T2) |
+        map_reg(MIPS_REG_T3) |
+        map_reg(MIPS_REG_T4) |
+        map_reg(MIPS_REG_T5) |
+        map_reg(MIPS_REG_T6) |
+        map_reg(MIPS_REG_T7) |
+        map_reg(MIPS_REG_T8) |
+        map_reg(MIPS_REG_T9);
+}
+
+typedef enum {
+    TYPE_NOP,
+    TYPE_1S,
+    TYPE_2S,
+    TYPE_1D,
+    TYPE_1D_1S,
+    TYPE_1D_2S,
+    TYPE_D_LO_HI_2S,
+    TYPE_1S_POS1
+} TYPE;
+static TYPE insn_to_type(Insn& i) {
+    switch (i.id) {
+        case MIPS_INS_ADD:
+        case MIPS_INS_ADDU:
+            if (i.mnemonic != "add.s" && i.mnemonic != "add.d") {
+                return TYPE_1D_2S;
+            } else {
+                return TYPE_NOP;
+            }
+        
+        case MIPS_INS_ADDI:
+        case MIPS_INS_ADDIU:
+        case MIPS_INS_ANDI:
+        case MIPS_INS_ORI:
+        case MIPS_INS_LB:
+        case MIPS_INS_LBU:
+        case MIPS_INS_LH:
+        case MIPS_INS_LHU:
+        case MIPS_INS_LW:
+        case MIPS_INS_LWL:
+        //case MIPS_INS_LWR:
+        case MIPS_INS_MOVE:
+        case MIPS_INS_NEGU:
+        case MIPS_INS_NOT:
+        case MIPS_INS_SLL:
+        case MIPS_INS_SLTI:
+        case MIPS_INS_SLTIU:
+        case MIPS_INS_SRA:
+        case MIPS_INS_SRL:
+        case MIPS_INS_XORI:
+            return TYPE_1D_1S;
+        
+        case MIPS_INS_MFHI:
+            i.operands[1].reg = MIPS_REG_HI;
+            return TYPE_1D_1S;
+        
+        case MIPS_INS_MFLO:
+            i.operands[1].reg = MIPS_REG_LO;
+            return TYPE_1D_1S;
+        
+        case MIPS_INS_AND:
+        case MIPS_INS_OR:
+        case MIPS_INS_NOR:
+        case MIPS_INS_SLLV:
+        case MIPS_INS_SLT:
+        case MIPS_INS_SLTU:
+        case MIPS_INS_SRAV:
+        case MIPS_INS_SRLV:
+        case MIPS_INS_SUBU:
+        case MIPS_INS_XOR:
+            return TYPE_1D_2S;
+        
+        case MIPS_INS_CFC1:
+        case MIPS_INS_MFC1:
+        case MIPS_INS_LI:
+        case MIPS_INS_LUI:
+            return TYPE_1D;
+        
+        case MIPS_INS_CTC1:
+        case MIPS_INS_BGEZ:
+        case MIPS_INS_BGEZL:
+        case MIPS_INS_BGTZ:
+        case MIPS_INS_BGTZL:
+        case MIPS_INS_BLEZ:
+        case MIPS_INS_BLEZL:
+        case MIPS_INS_BLTZ:
+        case MIPS_INS_BLTZL:
+        case MIPS_INS_BEQZ:
+        case MIPS_INS_BNEZ:
+        case MIPS_INS_MTC1:
+            return TYPE_1S;
+        
+        case MIPS_INS_BEQ:
+        case MIPS_INS_BEQL:
+        case MIPS_INS_BNE:
+        case MIPS_INS_BNEL:
+        case MIPS_INS_SB:
+        case MIPS_INS_SH:
+        case MIPS_INS_SW:
+        case MIPS_INS_SWL:
+        //case MIPS_INS_SWR:
+        case MIPS_INS_TNE:
+        case MIPS_INS_TEQ:
+        case MIPS_INS_TGE:
+        case MIPS_INS_TGEU:
+        case MIPS_INS_TLT:
+            return TYPE_2S;
+        
+        case MIPS_INS_DIV:
+            if (i.mnemonic != "div.s" && i.mnemonic != "div.d") {
+                return TYPE_D_LO_HI_2S;
+            } else {
+                return TYPE_NOP;
+            }
+        
+        case MIPS_INS_DIVU:
+        case MIPS_INS_MULT:
+        case MIPS_INS_MULTU:
+            return TYPE_D_LO_HI_2S;
+        
+        case MIPS_INS_NEG:
+            if (i.mnemonic != "neg.s" && i.mnemonic != "neg.d") {
+                return TYPE_1D_1S;
+            } else {
+                return TYPE_NOP;
+            }
+        
+        case MIPS_INS_JALR:
+            return TYPE_1S;
+        
+        case MIPS_INS_JR:
+            if (i.jtbl_addr != 0) {
+                i.operands[0].reg = i.index_reg;
+            }
+            if (i.operands[0].reg == MIPS_REG_RA) {
+                return TYPE_NOP;
+            }
+            return TYPE_1S;
+        
+        case MIPS_INS_LWC1:
+        case MIPS_INS_LDC1:
+        case MIPS_INS_SWC1:
+        case MIPS_INS_SDC1:
+            return TYPE_1S_POS1;
+        
+        default:
+            return TYPE_NOP;
+    }
+}
+
+static void pass4(void) {
+    vector<uint32_t> q;
+    uint64_t livein_func_start = 1U | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) | map_reg(MIPS_REG_SP) | map_reg(MIPS_REG_ZERO);
+    
+    q.push_back(main_addr);
+    insns[addr_to_i(main_addr)].f_livein = livein_func_start;
+    
+    for (auto& it : data_function_pointers) {
+        q.push_back(it.second);
+        insns[addr_to_i(it.second)].f_livein = livein_func_start | map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3);
+    }
+    for (auto& addr : li_function_pointers) {
+        q.push_back(addr);
+        insns[addr_to_i(addr)].f_livein = livein_func_start | map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3);
+    }
+    
+    while (!q.empty()) {
+        uint32_t addr = q.back();
+        q.pop_back();
+        uint32_t idx = addr_to_i(addr);
+        Insn& i = insns[idx];
+        uint64_t live = i.f_livein | 1;
+        switch (insn_to_type(i)) {
+            case TYPE_1D:
+                live |= map_reg(i.operands[0].reg);
+                break;
+            
+            case TYPE_1D_1S:
+                if (live & map_reg(i.operands[1].reg)) {
+                    live |= map_reg(i.operands[0].reg);
+                }
+                break;
+            
+            case TYPE_1D_2S:
+                if ((live & map_reg(i.operands[1].reg)) && (live & map_reg(i.operands[2].reg))) {
+                    live |= map_reg(i.operands[0].reg);
+                }
+                break;
+            
+            case TYPE_D_LO_HI_2S:
+                if ((live & map_reg(i.operands[0].reg)) && (live & map_reg(i.operands[1].reg))) {
+                    live |= map_reg(MIPS_REG_LO);
+                    live |= map_reg(MIPS_REG_HI);
+                }
+                break;
+        }
+        if ((i.f_liveout | live) == i.f_liveout) {
+            // No new bits
+            continue;
+        }
+        live |= i.f_liveout;
+        i.f_liveout = live;
+        
+        bool function_entry = false;
+        for (Edge& e : i.successors) {
+            uint64_t new_live = live;
+            if (e.function_exit) {
+                new_live &= 1U | map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_V1) | map_reg(MIPS_REG_ZERO);
+            } else if (e.function_entry) {
+                new_live &= 1U | map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) |
+                            map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3) | map_reg(MIPS_REG_SP) | map_reg(MIPS_REG_ZERO);
+                function_entry = true;
+            } else if (e.extern_function) {
+                string name;
+                bool is_extern_function = false;
+                size_t extern_function_id;
+                auto it = symbol_names.find(insns[idx - 1].operands[0].imm);
+                if (it != symbol_names.end()) {
+                    name = it->second;
+                    for (size_t i = 0; i < sizeof(extern_functions) / sizeof(extern_functions[0]); i++) {
+                        if (name == extern_functions[i].name) {
+                            is_extern_function = true;
+                            extern_function_id = i;
+                            break;
+                        }
+                    }
+                    if (!is_extern_function) {
+                        fprintf(stderr, "missing extern function: %s\n", name.c_str());
+                    }
+                }
+                assert(is_extern_function);
+                auto& fn = extern_functions[extern_function_id];
+                char ret_type = fn.params[0];
+                new_live &= ~(map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) |
+                              map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3) | map_reg(MIPS_REG_V1) | temporary_regs());
+                switch (ret_type) {
+                    case 'i':
+                    case 'u':
+                    case 'p':
+                        new_live |= map_reg(MIPS_REG_V0);
+                        break;
+                    case 'f':
+                        break;
+                    case 'd':
+                        break;
+                    case 'v':
+                        break;
+                    case 'l':
+                    case 'j':
+                        new_live |= map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_V1);
+                        break;
+                }
+            } else if (e.function_pointer) {
+                new_live &= ~(map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) |
+                              map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3) | map_reg(MIPS_REG_V1) | temporary_regs());
+                new_live |= map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_V1);
+            }
+            if ((insns[e.i].f_livein | new_live) != insns[e.i].f_livein) {
+                insns[e.i].f_livein |= new_live;
+                q.push_back(text_vaddr + e.i * 4);
+            }
+        }
+        if (function_entry) {
+            // add one edge that skips the function call, for callee-saved register liveness propagation
+            live &= ~(map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) |
+                      map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3) | map_reg(MIPS_REG_V1) | temporary_regs());
+            if ((insns[idx + 1].f_livein | live) != insns[idx + 1].f_livein) {
+                insns[idx + 1].f_livein |= live;
+                q.push_back(text_vaddr + (idx + 1) * 4);
+            }
+        }
+    }
+}
+
+static void pass5(void) {
+    vector<uint32_t> q;
+    
+    assert(functions.count(main_addr));
+    
+    q = functions[main_addr].returns;
+    for (auto addr : q) {
+        insns[addr_to_i(addr)].b_liveout = 1U | map_reg(MIPS_REG_V0);
+    }
+    for (auto& it : data_function_pointers) {
+        for (auto addr : functions[it.second].returns) {
+            q.push_back(addr);
+            insns[addr_to_i(addr)].b_liveout = 1U | map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_V1);
+        }
+    }
+    for (auto& func_addr : li_function_pointers) {
+        for (auto addr : functions[func_addr].returns) {
+            q.push_back(addr);
+            insns[addr_to_i(addr)].b_liveout = 1U | map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_V1);
+        }
+    }
+    for (size_t i = 0; i < insns.size(); i++) {
+        if (insns[i].f_livein != 0) {
+            // Instruction is reachable
+            q.push_back(text_vaddr + i * 4);
+        }
+    }
+    
+    while (!q.empty()) {
+        uint32_t addr = q.back();
+        q.pop_back();
+        uint32_t idx = addr_to_i(addr);
+        Insn& i = insns[idx];
+        uint64_t live = i.b_liveout | 1;
+        switch (insn_to_type(i)) {
+            case TYPE_1S:
+                live |= map_reg(i.operands[0].reg);
+                break;
+            
+            case TYPE_1S_POS1:
+                live |= map_reg(i.operands[1].reg);
+                break;
+            
+            case TYPE_2S:
+                live |= map_reg(i.operands[0].reg);
+                live |= map_reg(i.operands[1].reg);
+                break;
+            
+            case TYPE_1D:
+                live &= ~map_reg(i.operands[0].reg);
+                break;
+            
+            case TYPE_1D_1S:
+                if (live & map_reg(i.operands[0].reg)) {
+                    live &= ~map_reg(i.operands[0].reg);
+                    live |= map_reg(i.operands[1].reg);
+                }
+                break;
+            
+            case TYPE_1D_2S:
+                if (live & map_reg(i.operands[0].reg)) {
+                    live &= ~map_reg(i.operands[0].reg);
+                    live |= map_reg(i.operands[1].reg);
+                    live |= map_reg(i.operands[2].reg);
+                }
+                break;
+            
+            case TYPE_D_LO_HI_2S: {
+                bool used = (live & map_reg(MIPS_REG_LO)) || (live & map_reg(MIPS_REG_HI));
+                live &= ~map_reg(MIPS_REG_LO);
+                live &= ~map_reg(MIPS_REG_HI);
+                if (used) {
+                    live |= map_reg(i.operands[0].reg);
+                    live |= map_reg(i.operands[1].reg);
+                }
+                break;
+            }
+        }
+        if ((i.b_livein | live) == i.b_livein) {
+            // No new bits
+            continue;
+        }
+        live |= i.b_livein;
+        i.b_livein = live;
+        
+        bool function_exit = false;
+        for (Edge& e : i.predecessors) {
+            uint64_t new_live = live;
+            if (e.function_exit) {
+                new_live &= 1U | map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_V1);
+                function_exit = true;
+            } else if (e.function_entry) {
+                new_live &= 1U | map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) |
+                            map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3) | map_reg(MIPS_REG_SP);
+            } else if (e.extern_function) {
+                string name;
+                bool is_extern_function = false;
+                size_t extern_function_id;
+                auto it = symbol_names.find(insns[idx - 2].operands[0].imm);
+                if (it != symbol_names.end()) {
+                    name = it->second;
+                    for (size_t i = 0; i < sizeof(extern_functions) / sizeof(extern_functions[0]); i++) {
+                        if (name == extern_functions[i].name) {
+                            is_extern_function = true;
+                            extern_function_id = i;
+                            break;
+                        }
+                    }
+                }
+                assert(is_extern_function);
+                auto& fn = extern_functions[extern_function_id];
+                uint64_t args = 1U;
+                if (fn.flags & FLAG_VARARG) {
+                    // Assume the worst, that all four registers are used
+                    for (int j = 0; j < 4; j++) {
+                        args |= map_reg(MIPS_REG_A0 + j);
+                    }
+                }
+                int pos = 0;
+                int pos_float = 0;
+                bool only_floats_so_far = true;
+                for (const char *p = fn.params + 1; *p != '\0'; ++p) {
+                    switch (*p) {
+                        case 'i':
+                        case 'u':
+                        case 'p':
+                        case 't':
+                            only_floats_so_far = false;
+                            if (pos < 4) {
+                                args |= map_reg(MIPS_REG_A0 + pos);
+                            }
+                            ++pos;
+                            break;
+                        case 'f':
+                            if (only_floats_so_far && pos_float < 4) {
+                                pos_float += 2;
+                            } else if (pos < 4) {
+                                args |= map_reg(MIPS_REG_A0 + pos);
+                            }
+                            ++pos;
+                            break;
+                        case 'd':
+                            if (pos % 1 != 0) {
+                                ++pos;
+                            }
+                            if (only_floats_so_far && pos_float < 4) {
+                                pos_float += 2;
+                            } else if (pos < 4) {
+                                args |= map_reg(MIPS_REG_A0 + pos) | map_reg(MIPS_REG_A0 + pos + 1);
+                            }
+                            pos += 2;
+                            break;
+                        case 'l':
+                        case 'j':
+                            if (pos % 1 != 0) {
+                                ++pos;
+                            }
+                            only_floats_so_far = false;
+                            if (pos < 4) {
+                                args |= map_reg(MIPS_REG_A0 + pos) | map_reg(MIPS_REG_A0 + pos + 1);
+                            }
+                            pos += 2;
+                            break;
+                    }
+                }
+                args |= map_reg(MIPS_REG_SP);
+                new_live &= ~(map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) |
+                              map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3) | map_reg(MIPS_REG_V1) | temporary_regs());
+                new_live |= args;
+            } else if (e.function_pointer) {
+                new_live &= ~(map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) |
+                              map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3) | map_reg(MIPS_REG_V1) | temporary_regs());
+                new_live |= map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) | map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3);
+            }
+            if ((insns[e.i].b_liveout | new_live) != insns[e.i].b_liveout) {
+                insns[e.i].b_liveout |= new_live;
+                q.push_back(text_vaddr + e.i * 4);
+            }
+        }
+        if (function_exit) {
+            // add one edge that skips the function call, for callee-saved register liveness propagation
+            live &= ~(map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) |
+                      map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3) | map_reg(MIPS_REG_V1) | temporary_regs());
+            if ((insns[idx - 1].b_liveout | live) != insns[idx - 1].b_liveout) {
+                insns[idx - 1].b_liveout |= live;
+                q.push_back(text_vaddr + (idx - 1) * 4);
+            }
+        }
+    }
+}
+
+static void pass6(void) {
+    for (auto& it : functions) {
+        uint32_t addr = it.first;
+        Function& f = it.second;
+        for (uint32_t ret : f.returns) {
+            Insn& i = insns[addr_to_i(ret)];
+            if (i.f_liveout & i.b_liveout & map_reg(MIPS_REG_V1)) {
+                f.nret = 2;
+            } else if ((i.f_liveout & i.b_liveout & map_reg(MIPS_REG_V0)) && f.nret == 0) {
+                f.nret = 1;
+            }
+        }
+        Insn& insn = insns.at(addr_to_i(addr));
+        for (int i = 0; i < 4; i++) {
+            if (insn.f_livein & insn.b_livein & map_reg(MIPS_REG_A0 + i)) {
+                f.nargs = 1 + i;
+            }
+        }
+        f.v0_in = (insn.f_livein & insn.b_livein & map_reg(MIPS_REG_V0)) != 0 && !f.referenced_by_function_pointer;
     }
 }
 
@@ -811,6 +1632,51 @@ static void dump_instr(int i) {
         printf("++cnt; printf(\"pc=0x%08x%s%s\\n\"); ", text_vaddr + i * 4, symbol_name ? " " : "", symbol_name ? symbol_name : "");
     }
     Insn& insn = insns[i];
+    if (!insn.is_jump && !ugen53) {
+        switch (insn_to_type(insn)) {
+            case TYPE_1S:
+                if (!(insn.f_livein & map_reg(insn.operands[0].reg))) {
+                    printf("// fdead %llx ", (unsigned long long)insn.f_livein);
+                }
+                break;
+            case TYPE_1S_POS1:
+                if (!(insn.f_livein & map_reg(insn.operands[1].reg))) {
+                    printf("// fdead %llx ", (unsigned long long)insn.f_livein);
+                }
+                break;
+            case TYPE_2S:
+                if (!(insn.f_livein & map_reg(insn.operands[0].reg)) || !(insn.f_livein & map_reg(insn.operands[1].reg))) {
+                    printf("// fdead %llx ", (unsigned long long)insn.f_livein);
+                }
+                break;
+            case TYPE_1D_2S:
+                if (!(insn.f_livein & map_reg(insn.operands[2].reg))) {
+                    printf("// fdead %llx ", (unsigned long long)insn.f_livein);
+                    break;
+                }
+                // fallthrough
+            case TYPE_1D_1S:
+                if (!(insn.f_livein & map_reg(insn.operands[1].reg))) {
+                    printf("// fdead %llx ", (unsigned long long)insn.f_livein);
+                    break;
+                }
+                // fallthrough
+            case TYPE_1D:
+                if (!(insn.b_liveout & map_reg(insn.operands[0].reg))) {
+                    printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
+                }
+                break;
+            case TYPE_D_LO_HI_2S:
+                if (!(insn.f_livein & map_reg(insn.operands[0].reg)) || !(insn.f_livein & map_reg(insn.operands[1].reg))) {
+                    printf("// fdead %llx ", (unsigned long long)insn.f_livein);
+                    break;
+                }
+                if (!(insn.b_liveout & (map_reg(MIPS_REG_LO) | map_reg(MIPS_REG_HI)))) {
+                    printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
+                }
+                break;
+        }
+    }
     switch (insn.id) {
         case MIPS_INS_ADD:
         case MIPS_INS_ADDU:
@@ -957,13 +1823,13 @@ static void dump_instr(int i) {
                 printf("%s = %s / %s;\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
             } else {
                 assert(insn.op_count == 2);
-                printf("lo = (int)%s / (int)%s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
+                printf("lo = (int)%s / (int)%s; ", r(insn.operands[0].reg), r(insn.operands[1].reg));
                 printf("hi = (int)%s %% (int)%s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
             }
             break;
         case MIPS_INS_DIVU:
             assert(insn.op_count == 2);
-            printf("lo = %s / %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
+            printf("lo = %s / %s; ", r(insn.operands[0].reg), r(insn.operands[1].reg));
             printf("hi = %s %% %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
             break;
         case MIPS_INS_MOV:
@@ -1022,19 +1888,6 @@ static void dump_instr(int i) {
                     }
                 }
             }
-            if (name == "exit") {
-                dump_instr(i + 1);
-                printf("if ((uint8_t)%s == 255) {\nabort();\n}\n", r(MIPS_REG_A0));
-                printf("return %s;\n", r(MIPS_REG_A0));
-                break;
-            }
-            if (!is_extern_function) {
-                if (LABELS_64_BIT) {
-                    printf("ra = (uint32_t)((uintptr_t)&&L%x - (uintptr_t)&&Loffset);\n", text_vaddr + (i + 2) * 4);
-                } else {
-                    printf("ra = (uint32_t)(uintptr_t)&&L%x;\n", text_vaddr + (i + 2) * 4);
-                }
-            }
             dump_instr(i + 1);
             if (is_extern_function) {
                 auto& fn = extern_functions[extern_function_id];
@@ -1072,12 +1925,17 @@ static void dump_instr(int i) {
                 int pos = 0;
                 int pos_float = 0;
                 bool only_floats_so_far = true;
+                bool needs_sp = false;
                 for (const char *p = fn.params + 1; *p != '\0'; ++p) {
                     if (!first) {
                         printf(", ");
                     }
                     first = false;
                     switch (*p) {
+                        case 't':
+                            printf("trampoline, ");
+                            needs_sp = true;
+                            // fallthrough
                         case 'i':
                         case 'u':
                         case 'p':
@@ -1132,7 +1990,7 @@ static void dump_instr(int i) {
                             break;
                     }
                 }
-                if (fn.flags & FLAG_VARARG) {
+                if ((fn.flags & FLAG_VARARG) || needs_sp) {
                     printf("%s%s", first ? "" : ", ", r(MIPS_REG_SP));
                 }
                 printf(");\n");
@@ -1143,30 +2001,44 @@ static void dump_instr(int i) {
                 if (!name.empty()) {
                     //printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(), r(MIPS_REG_A0));
                 }
-                printf("goto L%x;\n", text_vaddr + (i + 2) * 4);
             } else {
+                Function& f = functions.find((uint32_t)insn.operands[0].imm)->second;
+                if (f.nret == 1) {
+                    printf("v0 = ");
+                } else if (f.nret == 2) {
+                    printf("temp64 = ");
+                }
                 if (!name.empty()) {
                     //printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(), r(MIPS_REG_A0));
+                    printf("f_%s", name.c_str());
+                } else {
+                    printf("func_%x", (uint32_t)insn.operands[0].imm);
                 }
-                printf("goto L%x;", (uint32_t)insn.operands[0].imm);
-                if (!name.empty()) {
-                    printf(" // %s\n", name.c_str());
+                printf("(mem, sp");
+                if (f.v0_in) {
+                    printf(", %s", r(MIPS_REG_V0));
                 }
-                printf("\n");
+                for (uint32_t i = 0; i < f.nargs; i++) {
+                    printf(", %s", r(MIPS_REG_A0 + i));
+                }
+                printf(");\n");
+                if (f.nret == 2) {
+                    printf("%s = (uint32_t)(temp64 >> 32);\n", r(MIPS_REG_V0));
+                    printf("%s = (uint32_t)temp64;\n", r(MIPS_REG_V1));
+                }
             }
+            printf("goto L%x;\n", text_vaddr + (i + 2) * 4);
             label_addresses.insert(text_vaddr + (i + 2) * 4);
             break;
         }
         case MIPS_INS_JALR:
-            if (LABELS_64_BIT) {
-                printf("dest = (void *)((uintptr_t)%s + (uintptr_t)&&Loffset);\n", r(insn.operands[0].reg));
-                printf("ra = (uint32_t)((uintptr_t)&&L%x - (uintptr_t)&&Loffset);\n", text_vaddr + (i + 2) * 4);
-            } else {
-                printf("dest = (void *)(uintptr_t)%s;\n", r(insn.operands[0].reg));
-                printf("ra = (uint32_t)(uintptr_t)&&L%x;\n", text_vaddr + (i + 2) * 4);
-            }
+            printf("fp_dest = %s;\n", r(insn.operands[0].reg));
             dump_instr(i + 1);
-            printf("goto *dest;\n");
+            printf("temp64 = trampoline(mem, sp, %s, %s, %s, %s, fp_dest);\n",
+                r(MIPS_REG_A0), r(MIPS_REG_A1), r(MIPS_REG_A2), r(MIPS_REG_A3));
+            printf("%s = (uint32_t)(temp64 >> 32);\n", r(MIPS_REG_V0));
+            printf("%s = (uint32_t)temp64;\n", r(MIPS_REG_V1));
+            printf("goto L%x;\n", text_vaddr + (i + 2) * 4);
             label_addresses.insert(text_vaddr + (i + 2) * 4);
             break;
         case MIPS_INS_JR:
@@ -1184,13 +2056,22 @@ static void dump_instr(int i) {
                 dump_instr(i + 1);
                 printf("goto *dest;\n");
             } else {
-                if (LABELS_64_BIT) {
-                    printf("dest = (void *)((uintptr_t)%s + (uintptr_t)&&Loffset);\n", r(insn.operands[0].reg));
+                if (insn.operands[0].reg != MIPS_REG_RA) {
+                    printf("UNSUPPORTED JR %s %s\n", insn.op_str.c_str(), r(insn.operands[0].reg));
                 } else {
-                    printf("dest = (void *)(uintptr_t)%s;\n", r(insn.operands[0].reg));
+                    dump_instr(i + 1);
+                    switch (find_function(text_vaddr + i * 4)->second.nret) {
+                        case 0:
+                            printf("return;\n");
+                            break;
+                        case 1:
+                            printf("return v0;\n");
+                            break;
+                        case 2:
+                            printf("return ((uint64_t)v0 << 32) | v1;\n");
+                            break;
+                    }
                 }
-                dump_instr(i + 1);
-                printf("goto *dest;\n");
             }
             break;
         case MIPS_INS_LB:
@@ -1231,11 +2112,7 @@ static void dump_instr(int i) {
             break;
         case MIPS_INS_LI:
             if (insn.is_global_got_memop && text_vaddr <= insn.operands[1].imm && insn.operands[1].imm < text_vaddr + text_section_len) {
-                if (LABELS_64_BIT) {
-                    printf("%s = (uint32_t)((uintptr_t)&&L%x - (uintptr_t)&&Loffset);\n", r(insn.operands[0].reg), (uint32_t)insn.operands[1].imm);
-                } else {
-                    printf("%s = (uint32_t)(uintptr_t)&&L%x;\n", r(insn.operands[0].reg), (uint32_t)insn.operands[1].imm);
-                }
+                printf("%s = 0x%x; // function pointer\n", r(insn.operands[0].reg), (uint32_t)insn.operands[1].imm);
                 label_addresses.insert((uint32_t)insn.operands[1].imm);
             } else {
                 printf("%s = 0x%x;\n", r(insn.operands[0].reg), (uint32_t)insn.operands[1].imm);
@@ -1377,7 +2254,7 @@ static void dump_instr(int i) {
     }
 }
 
-static void inspect_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const uint8_t *section, uint32_t section_vaddr, uint32_t len) {
+static void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const uint8_t *section, uint32_t section_vaddr, uint32_t len) {
     for (uint32_t i = 0; i < len; i += 4) {
         uint32_t addr = read_u32_be(section + i);
         if (addr == 0x430b00 || addr == 0x433b00) {
@@ -1388,12 +2265,46 @@ static void inspect_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, con
             // in copt
             continue;
         }
+        if (section_vaddr + i >= procedure_table_start && section_vaddr + i < procedure_table_start + procedure_table_len) {
+            // some linking table with a "all" functions, in as1 5.3
+            continue;
+        }
         if (addr >= text_vaddr && addr < text_vaddr + text_section_len && addr % 4 == 0) {
             fprintf(stderr, "assuming function pointer 0x%x at 0x%x\n", addr, section_vaddr + i);
             ret.push_back(make_pair(section_vaddr + i, addr));
             label_addresses.insert(addr);
+            functions[addr].referenced_by_function_pointer = true;
         }
     }
+}
+
+static void dump_function_signature(Function& f, uint32_t vaddr) {
+    printf("static ");
+    switch (f.nret) {
+        case 0:
+            printf("void ");
+            break;
+        case 1:
+            printf("uint32_t ");
+            break;
+        case 2:
+            printf("uint64_t ");
+            break;
+    }
+    auto name_it = symbol_names.find(vaddr);
+    if (name_it != symbol_names.end()) {
+        printf("f_%s", name_it->second.c_str());
+    } else {
+        printf("func_%x", vaddr);
+    }
+    printf("(uint8_t *mem, uint32_t sp");
+    if (f.v0_in) {
+        printf(", uint32_t %s", r(MIPS_REG_V0));
+    }
+    for (uint32_t i = 0; i < f.nargs; i++) {
+        printf(", uint32_t %s", r(MIPS_REG_A0 + i));
+    }
+    printf(")");
 }
 
 static void dump_c(void) {
@@ -1425,6 +2336,10 @@ static void dump_c(void) {
     min_addr -= 1 * 1024 * 1024; // 1 MB stack
     stack_bottom -= 16; // for main's stack frame
 
+    printf("#include \"header.h\"\n");
+    if (ugen53) {
+        printf("static uint32_t s0, s1, s2, s3, s4, s5, s6, s7, fp;\n");
+    }
     printf("static const uint32_t rodata[] = {\n");
     for (size_t i = 0; i < rodata_section_len; i += 4) {
         printf("0x%x,%s", read_u32_be(rodata_section + i), i % 32 == 28 ? "\n" : "");
@@ -1436,73 +2351,201 @@ static void dump_c(void) {
     }
     printf("};\n");
 
-    vector<pair<uint32_t, uint32_t>> function_pointers;
-    inspect_function_pointers(function_pointers, rodata_section, rodata_vaddr, rodata_section_len);
-    inspect_function_pointers(function_pointers, data_section, data_vaddr, data_section_len);
-
-    if (!function_pointers.empty()) {
-        printf("static const struct { uint32_t orig_addr; void *recompiled_addr; } function_pointers[] = {\n");
-        for (auto item : function_pointers) {
+    /*if (!data_function_pointers.empty()) {
+        printf("static const struct { uint32_t orig_addr; void *recompiled_addr; } data_function_pointers[] = {\n");
+        for (auto item : data_function_pointers) {
             printf("{0x%x, &&L%x},\n", item.first, item.second);
         }
         printf("};\n");
+    }*/
+    
+    if (TRACE) {
+        printf("static unsigned long long int cnt = 0;\n");
+    }
+    
+    for (auto& f_it : functions) {
+        if (insns[addr_to_i(f_it.first)].f_livein != 0) {
+            // Function is used
+            dump_function_signature(f_it.second, f_it.first);
+            printf(";\n");
+        }
     }
 
+    if (!data_function_pointers.empty() || !li_function_pointers.empty()) {
+        printf("uint64_t trampoline(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t fp_dest) {\n");
+        printf("switch (fp_dest) {\n");
+        for (auto& it : functions) {
+            Function& f = it.second;
+            if (f.referenced_by_function_pointer) {
+                printf("case 0x%x: ", it.first);
+                if (f.nret == 1) {
+                    printf("return (uint64_t)");
+                } else if (f.nret == 2) {
+                    printf("return ");
+                }
+                auto name_it = symbol_names.find(it.first);
+                if (name_it != symbol_names.end()) {
+                    printf("f_%s", name_it->second.c_str());
+                } else {
+                    printf("func_%x", it.first);
+                }
+                printf("(mem, sp");
+                for (int i = 0; i < f.nargs; i++) {
+                    printf(", a%d", i);
+                }
+                printf(")");
+                if (f.nret == 1) {
+                    printf(" << 32");
+                }
+                printf(";");
+                if (f.nret == 0) {
+                    printf(" return 0;");
+                }
+                printf("\n");
+            }
+        }
+        printf("default: abort();");
+        printf("}\n");
+        printf("}\n");
+    }
+    
+    printf("int run(uint8_t *mem, int argc, char *argv[]) {\n");
     printf("mmap_initial_data_range(mem, 0x%x, 0x%x);\n", min_addr, max_addr);
 
     printf("memcpy(mem + 0x%x, rodata, 0x%x);\n", rodata_vaddr, rodata_section_len);
     printf("memcpy(mem + 0x%x, data, 0x%x);\n", data_vaddr, data_section_len);
 
-    if (!function_pointers.empty()) {
+    /*if (!data_function_pointers.empty()) {
         if (!LABELS_64_BIT) {
-            printf("for (int i = 0; i < %d; i++) MEM_U32(function_pointers[i].orig_addr) = (uint32_t)(uintptr_t)function_pointers[i].recompiled_addr;\n", (int)function_pointers.size());
+            printf("for (int i = 0; i < %d; i++) MEM_U32(data_function_pointers[i].orig_addr) = (uint32_t)(uintptr_t)data_function_pointers[i].recompiled_addr;\n", (int)data_function_pointers.size());
         } else {
-            printf("for (int i = 0; i < %d; i++) MEM_U32(function_pointers[i].orig_addr) = (uint32_t)((uintptr_t)function_pointers[i].recompiled_addr - (uintptr_t)&&Loffset);\n", (int)function_pointers.size());
+            printf("for (int i = 0; i < %d; i++) MEM_U32(data_function_pointers[i].orig_addr) = (uint32_t)((uintptr_t)data_function_pointers[i].recompiled_addr - (uintptr_t)&&Loffset);\n", (int)data_function_pointers.size());
         }
-    }
+    }*/
 
-    printf("{\n");
     printf("MEM_S32(0x%x) = argc;\n", symbol_names_inv.at("__Argc"));
     printf("MEM_S32(0x%x) = argc;\n", stack_bottom);
-    printf("%s = argc;\n", r(MIPS_REG_A0));
     printf("uint32_t al = argc * 4; for (int i = 0; i < argc; i++) al += strlen(argv[i]) + 1;\n");
     printf("uint32_t arg_addr = wrapper_malloc(mem, al);\n");
     printf("MEM_U32(0x%x) = arg_addr;\n", symbol_names_inv.at("__Argv"));
     printf("MEM_U32(0x%x) = arg_addr;\n", stack_bottom + 4);
-    printf("%s = arg_addr;\n", r(MIPS_REG_A1));
     printf("uint32_t arg_strpos = arg_addr + argc * 4;\n");
     printf("for (int i = 0; i < argc; i++) {MEM_U32(arg_addr + i * 4) = arg_strpos; uint32_t p = 0; do { MEM_S8(arg_strpos) = argv[i][p]; ++arg_strpos; } while (argv[i][p++] != '\\0');}\n");
-    printf("}\n");
-
+    
     printf("setup_libc_data(mem);\n");
     
-    printf("gp = 0x%x;\n", gp_value); // only to recreate the outcome when ugen reads uninitialized stack memory
+    //printf("gp = 0x%x;\n", gp_value); // only to recreate the outcome when ugen reads uninitialized stack memory
 
+    printf("int ret = f_main(mem, 0x%x", stack_bottom);
+    Function& main_func = functions[main_addr];
+    if (main_func.nargs >= 1) {
+        printf(", argc");
+    }
+    if (main_func.nargs >= 2) {
+        printf(", arg_addr");
+    }
+    printf(");\n");
     if (TRACE) {
-        printf("unsigned long long int cnt = 0;\n");
+        printf("end: fprintf(stderr, \"cnt: %%llu\\n\", cnt);\n");
     }
-    printf("Loffset:\n");
-    printf("%s = 0x%x;\n", r(MIPS_REG_SP), stack_bottom);
-    if (LABELS_64_BIT) {
-        printf("%s = (uint32_t)((uintptr_t)&&end - (uintptr_t)&&Loffset);\n", r(MIPS_REG_RA));
-    } else {
-        printf("%s = (uint32_t)(uintptr_t)&&end;\n", r(MIPS_REG_RA));
-    }
-    printf("goto L%x;\n", symbol_names_inv.at("main"));
-    if (!TRACE) {
-        printf("end: return %s;\n", r(MIPS_REG_V0));
-    } else {
-        printf("end: fprintf(stderr, \"cnt: %%llu\\n\", cnt); return %s;\n", r(MIPS_REG_V0));
-    }
+    printf("return ret;\n");
+    printf("}\n");
 
-    for (size_t i = 0; i < insns.size(); i++) {
+    for (auto& f_it : functions) {
+        Function& f = f_it.second;
+        uint32_t start_addr = f_it.first;
+        uint32_t end_addr = f.end_addr;
+        
+        if (insns[addr_to_i(start_addr)].f_livein == 0) {
+            // Non-used function, skip
+            continue;
+        }
+        
+        printf("\n");
+        dump_function_signature(f, start_addr);
+        printf(" {\n");
+        printf("const uint32_t zero = 0;\n");
+        if (!ugen53) {
+            printf("uint32_t at = 0, v1 = 0, t0 = 0, t1 = 0, t2 = 0,\n");
+            printf("t3 = 0, t4 = 0, t5 = 0, t6 = 0, t7 = 0, s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0,\n");
+            printf("s6 = 0, s7 = 0, t8 = 0, t9 = 0, gp = 0, fp = 0, s8 = 0, ra = 0;\n");
+        } else {
+            printf("uint32_t at = 0, v1 = 0, t0 = 0, t1 = 0, t2 = 0,\n");
+            printf("t3 = 0, t4 = 0, t5 = 0, t6 = 0, t7 = 0, t8 = 0, t9 = 0, gp = 0x10000, ra = 0x10000;\n");
+        }
+        printf("uint32_t lo = 0, hi = 0;\n");
+        printf("int cf = 0;\n");
+        printf("uint64_t temp64;\n");
+        printf("uint32_t fp_dest;\n");
+        printf("void *dest;\n");
+        if (!f.v0_in) {
+            printf("uint32_t v0 = 0;\n");
+        }
+        for (uint32_t j = f.nargs; j < 4; j++) {
+            printf("uint32_t %s = 0;\n", r(MIPS_REG_A0 + j));
+        }
+        
+        for (size_t i = addr_to_i(start_addr), end_i = addr_to_i(end_addr); i < end_i; i++) {
+            Insn& insn = insns[i];
+            uint32_t vaddr = text_vaddr + i * 4;
+            if (label_addresses.count(vaddr)) {
+                printf("L%x:\n", vaddr);
+            }
+            dump_instr(i);
+        }
+        
+        printf("}\n");
+    }
+    /*for (size_t i = 0; i < insns.size(); i++) {
         Insn& insn = insns[i];
         uint32_t vaddr = text_vaddr + i * 4;
+        auto fn_it = functions.find(vaddr);
+        if (fn_it != functions.end()) {
+            Function& f = fn_it->second;
+            printf("}\n\n");
+            switch (f.nret) {
+                case 0:
+                    printf("void ");
+                    break;
+                case 1:
+                    printf("uint32_t ");
+                    break;
+                case 2:
+                    printf("uint64_t ");
+                    break;
+            }
+            auto name_it = symbol_names.find(vaddr);
+            if (name_it != symbol_names.end()) {
+                printf("%s", name_it->second.c_str());
+            } else {
+                printf("func_%x", vaddr);
+            }
+            printf("(uint8_t *mem, uint32_t sp");
+            if (f.v0_in) {
+                printf(", uint32_t %s", r(MIPS_REG_V0));
+            }
+            for (uint32_t i = 0; i < f.nargs; i++) {
+                printf(", uint32_t %s", r(MIPS_REG_A0 + i));
+            }
+            printf(") {\n");
+            printf("const uint32_t zero = 0;\n");
+            printf("uint32_t at = 0, v1 = 0, t0 = 0, t1 = 0, t2 = 0,\n");
+            printf("t3 = 0, t4 = 0, t5 = 0, t6 = 0, t7 = 0, s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0,\n");
+            printf("s6 = 0, s7 = 0, t8 = 0, t9 = 0, gp = 0, fp = 0, s8 = 0, ra = 0;\n");
+            printf("uint32_t lo = 0, hi = 0;\n");
+            printf("int cf = 0;\n");
+            if (!f.v0_in) {
+                printf("uint32_t v0 = 0;\n");
+            }
+            for (uint32_t j = f.nargs; j < 4; j++) {
+                printf("uint32_t %s = 0;\n", r(MIPS_REG_A0 + j));
+            }
+        }
         if (label_addresses.count(vaddr)) {
             printf("L%x:\n", vaddr);
         }
         dump_instr(i);
-    }
+    }*/
 }
 
 static void parse_elf(const uint8_t *data, size_t file_len) {
@@ -1697,18 +2740,32 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
             uint32_t addr = u32be(sym->st_value);
             addr += vaddr_adj;
             uint8_t type = ELF32_ST_TYPE(sym->st_info);
+            if (!strcmp(name, "_procedure_table")) {
+                procedure_table_start = addr;
+            } else if (!strcmp(name, "_procedure_table_size")) {
+                procedure_table_len = 40 * u32be(sym->st_value);
+            }
             if ((u16be(sym->st_shndx) == SHN_MIPS_TEXT && type == STT_FUNC) ||
                  (type == STT_OBJECT && (u16be(sym->st_shndx) == SHN_MIPS_ACOMMON || u16be(sym->st_shndx) == SHN_MIPS_DATA)))
             {
                 //disasm_label_add(state, name, addr, u32be(sym->st_size), true);
                 if (type == STT_OBJECT) {
-                    //disasm_add_data_addr(state, addr);
                 }
                 if (u16be(sym->st_shndx) == SHN_MIPS_ACOMMON) {
                     if (addr < common_start) {
                         common_start = addr;
                     }
                     common_order.push_back(name);
+                }
+                if (type == STT_FUNC) {
+                    add_function(addr);
+                    if (strcmp(name, "main") == 0) {
+                        main_addr = addr;
+                    }
+                    if (strcmp(name, "_mcount") == 0) {
+                        mcount_addr = addr;
+                    }
+                    symbol_names[addr] = name;
                 }
             }
             if (i >= first_got_sym) {
@@ -1839,7 +2896,14 @@ int main(int argc, char *argv[]) {
     assert(cs_open(CS_ARCH_MIPS, (cs_mode)(CS_MODE_MIPS64 | CS_MODE_BIG_ENDIAN), &handle) == CS_ERR_OK);
     cs_option(handle, CS_OPT_DETAIL, CS_OPT_ON);
     disassemble();
+    inspect_data_function_pointers(data_function_pointers, rodata_section, rodata_vaddr, rodata_section_len);
+    inspect_data_function_pointers(data_function_pointers, data_section, data_vaddr, data_section_len);
     pass1();
+    pass2();
+    pass3();
+    pass4();
+    pass5();
+    pass6();
     //dump();
     dump_c();
     free(data);

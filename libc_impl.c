@@ -236,8 +236,8 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < 1; i++) {
         uint8_t *mem = memory_map(0x100000000ULL);
-        int func(uint8_t *mem, int argc, char *argv[]);
-        ret = func(mem, argc, argv);
+        int run(uint8_t *mem, int argc, char *argv[]);
+        ret = run(mem, argc, argv);
         wrapper_fflush(mem, 0);
         free_all_file_bufs(mem);
         memory_unmap(mem, 0x100000000ULL);
@@ -585,6 +585,11 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
         strcpy1(mem, str_addr, temp);
         return 1;
     }
+    if (!strcmp(format, "%*ld=")) {
+        sprintf(temp, "%*d=", MEM_U32(sp + 2 * 4), MEM_U32(sp + 3 * 4));
+        strcpy1(mem, str_addr, temp);
+        return 1;
+    }
 
     uint32_t orig_str_addr = str_addr;
     uint32_t pos = 0;
@@ -598,8 +603,19 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
             bool l = false;
             c = MEM_S8(format_addr + pos);
             ++pos;
+            uint32_t zeros = 0;
             continue_format:
             switch (c) {
+                case '0':
+                    do {
+                        c = MEM_S8(format_addr + pos);
+                        ++pos;
+                        if (c >= '0' && c <= '9') {
+                            zeros *= 10;
+                            zeros += c - '0';
+                        }
+                    } while (c >= '0' && c <= '9');
+                    goto continue_format;
                 case 'l':
                     assert(!l && "ll not implemented in fscanf");
                     c = MEM_S8(format_addr + pos);
@@ -608,7 +624,13 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
                     goto continue_format;
                     break;
                 case 'd':
-                    sprintf(temp, "%d", MEM_S32(sp));
+                    if (zeros != 0) {
+                        char temp1[32];
+                        sprintf(temp1, "%%0%dd", zeros);
+                        sprintf(temp, temp1, MEM_S32(sp));
+                    } else {
+                        sprintf(temp, "%d", MEM_S32(sp));
+                    }
                     sp += 4;
                     str_addr = strcpy1(mem, str_addr, temp);
                     ++ret;
@@ -635,6 +657,7 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
                     ++str_addr;
                     break;
                 default:
+                    fprintf(stderr, "%s\n", format);
                     assert(0 && "non-implemented sprintf format");
             }
         } else if (c == '\0') {
@@ -708,6 +731,18 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
             case 's':
             {
                 if (wrapper_fputs(mem, MEM_U32(sp), fp_addr) == -1) {
+                    return ret;
+                }
+                sp += 4;
+                ++ret;
+                break;
+            }
+            case 'c':
+            {
+                char buf[32];
+                sprintf(buf, "%c", MEM_U32(sp));
+                strcpy1(mem, INTBUF_ADDR, buf);
+                if (wrapper_fputs(mem, INTBUF_ADDR, fp_addr) == -1) {
                     return ret;
                 }
                 sp += 4;
@@ -811,6 +846,15 @@ int wrapper_flock(uint8_t *mem, int fd, int operation) {
     return ret;
 }
 
+int wrapper_chmod(uint8_t *mem, uint32_t path_addr, uint32_t mode) {
+    STRING(path)
+    int ret = chmod(path, mode);
+    if (ret < 0) {
+        MEM_U32(ERRNO_ADDR) = errno;
+    }
+    return ret;
+}
+
 int wrapper_umask(int mode) {
     return umask(mode);
 }
@@ -843,6 +887,24 @@ int wrapper_atol(uint8_t *mem, uint32_t nptr_addr) {
 double wrapper_atof(uint8_t *mem, uint32_t nptr_addr) {
     STRING(nptr);
     return atof(nptr);
+}
+
+int wrapper_strtol(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr, int base) {
+    STRING(nptr)
+    char *endptr = NULL;
+    int64_t res = strtoll(nptr, endptr_addr != 0 ? &endptr : NULL, base);
+    if (res > INT_MAX) {
+        MEM_U32(ERRNO_ADDR) = ERANGE;
+        res = INT_MAX;
+    }
+    if (res < INT_MIN) {
+        MEM_U32(ERRNO_ADDR) = ERANGE;
+        res = INT_MIN;
+    }
+    if (endptr != NULL) {
+        MEM_U32(endptr_addr) = nptr_addr + (uint32_t)(endptr - nptr);
+    }
+    return res;
 }
 
 uint32_t wrapper_strtoul(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr, int base) {
@@ -900,6 +962,38 @@ uint32_t wrapper_strrchr(uint8_t *mem, uint32_t str_addr, int c) {
         }
         ++str_addr;
     }
+}
+
+uint32_t wrapper_strcspn(uint8_t *mem, uint32_t str_addr, uint32_t invalid_addr) {
+    STRING(invalid)
+    uint32_t n = strlen(invalid);
+    uint32_t pos = 0;
+    char c;
+    while ((c = MEM_S8(str_addr)) != 0) {
+        for (int i = 0; i < n; i++) {
+            if (c == invalid[i]) {
+                return pos;
+            }
+        }
+        ++pos;
+        ++str_addr;
+    }
+    return pos;
+}
+
+uint32_t wrapper_strpbrk(uint8_t *mem, uint32_t str_addr, uint32_t accept_addr) {
+    STRING(accept)
+    uint32_t n = strlen(accept);
+    char c;
+    while ((c = MEM_S8(str_addr)) != 0) {
+        for (int i = 0; i < n; i++) {
+            if (c == accept[i]) {
+                return str_addr;
+            }
+        }
+        ++str_addr;
+    }
+    return 0;
 }
 
 static void stat_common(uint8_t *mem, uint32_t buf_addr, struct stat *statbuf) {
@@ -1038,17 +1132,17 @@ int wrapper_write(uint8_t *mem, int fd, uint32_t buf_addr, uint32_t nbytes) {
 
 static uint32_t init_file(uint8_t *mem, int fd, int i, const char *path, const char *mode) {
     int flags = O_RDONLY;
-    if (strcmp(mode, "r") == 0) {
+    if (strcmp(mode, "r") == 0 || strcmp(mode, "rb") == 0) {
         flags = O_RDONLY;
-    } else if (strcmp(mode, "w") == 0) {
+    } else if (strcmp(mode, "w") == 0 || strcmp(mode, "wb") == 0) {
         flags = O_WRONLY | O_CREAT | O_TRUNC;
-    } else if (strcmp(mode, "a") == 0) {
+    } else if (strcmp(mode, "a") == 0 || strcmp(mode, "ab") == 0) {
         flags = O_WRONLY | O_CREAT | O_APPEND;
-    } else if (strcmp(mode, "r+") == 0) {
+    } else if (strcmp(mode, "r+") == 0 || strcmp(mode, "r+b") == 0) {
         flags = O_RDWR;
-    } else if (strcmp(mode, "w+") == 0) {
+    } else if (strcmp(mode, "w+") == 0 || strcmp(mode, "w+b") == 0) {
         flags = O_RDWR | O_CREAT | O_TRUNC;
-    } else if (strcmp(mode, "a+") == 0) {
+    } else if (strcmp(mode, "a+") == 0 || strcmp(mode, "a+b") == 0) {
         flags = O_RDWR | O_CREAT | O_APPEND;
     }
     if (fd == -1) {
@@ -1319,6 +1413,15 @@ int wrapper_getpgrp(uint8_t *mem) {
     return ret;
 }
 
+int wrapper_remove(uint8_t *mem, uint32_t path_addr) {
+    STRING(path)
+    int ret = remove(path);
+    if (ret < 0) {
+        MEM_U32(ERRNO_ADDR) = errno;
+    }
+    return ret;
+}
+
 int wrapper_unlink(uint8_t *mem, uint32_t path_addr) {
     STRING(path)
     int ret = unlink(path);
@@ -1525,6 +1628,12 @@ int wrapper_isatty(uint8_t *mem, int fd) {
     return ret;
 }
 
+uint32_t wrapper_strftime(uint8_t *mem, uint32_t ptr_addr, uint32_t maxsize, uint32_t format_addr, uint32_t timeptr_addr) {
+    //assert(0 && "strftime not implemented");
+    MEM_S8(ptr_addr) = 0;
+    return 0;
+}
+
 int wrapper_times(uint8_t *mem, uint32_t buffer_addr) {
     struct tms_irix {
         int tms_utime;
@@ -1563,6 +1672,34 @@ uint32_t wrapper_ctime(uint8_t *mem, uint32_t timep_addr) {
     return ret_addr;
     //assert(0 && "ctime not implemented");
     //return 0;
+}
+
+uint32_t wrapper_localtime(uint8_t *mem, uint32_t timep_addr) {
+    time_t t = MEM_S32(timep_addr);
+    struct irix_tm {
+        int tm_sec;
+        int tm_min;
+        int tm_hour;
+        int tm_mday;
+        int tm_mon;
+        int tm_year;
+        int tm_wday;
+        int tm_yday;
+        int tm_isdst;
+    };
+    uint32_t ret = wrapper_malloc(mem, sizeof(struct irix_tm));
+    struct irix_tm *r = (struct irix_tm *)&MEM_U32(ret);
+    struct tm *l = localtime(&t);
+    r->tm_sec = l->tm_sec;
+    r->tm_min = l->tm_min;
+    r->tm_hour = l->tm_hour;
+    r->tm_mday = l->tm_mday;
+    r->tm_mon = l->tm_mon;
+    r->tm_year = l->tm_year;
+    r->tm_wday = l->tm_wday;
+    r->tm_yday = l->tm_yday;
+    r->tm_isdst = l->tm_isdst;
+    return ret;
 }
 
 int wrapper_setvbuf(uint8_t *mem, uint32_t fp_addr, uint32_t buf_addr, int mode, uint32_t size) {
@@ -1929,6 +2066,14 @@ double wrapper___ll_to_d(int64_t v) {
     return v;
 }
 
+void wrapper_abort(uint8_t *mem) {
+    abort();
+}
+
+void wrapper_exit(uint8_t *mem, int status) {
+    exit(status);
+}
+
 void wrapper__exit(uint8_t *mem, int status) {
     assert(0 && "_exit not implemented"); // exit() is already overridden
 }
@@ -2098,6 +2243,37 @@ uint32_t wrapper_mktemp(uint8_t *mem, uint32_t template_addr) {
     return template_addr;
 }
 
+int wrapper_mkstemp(uint8_t *mem, uint32_t name_addr) {
+    STRING(name)
+    int fd = mkstemp(name);
+    if (fd < 0) {
+        MEM_U32(ERRNO_ADDR) = errno;
+    } else {
+        strcpy1(mem, name_addr, name);
+    }
+    return fd;
+}
+
+uint32_t wrapper_tmpfile(uint8_t *mem) {
+    // create and fopen a temporary file that is removed when the program exits
+    char name[] = "/tmp/copt_temp_XXXXXX";
+    int fd = mkstemp(name);
+    if (fd < 0) {
+        MEM_U32(ERRNO_ADDR) = errno;
+        return 0;
+    }
+    
+    // the file will be removed from disk when it's closed later
+    unlink(name);
+    
+    // fdopen:
+    uint32_t ret = init_file(mem, fd, -1, NULL, "w+");
+    if (ret == 0) {
+        close(fd);
+    }
+    return ret;
+}
+
 int wrapper_wait(uint8_t *mem, uint32_t wstatus_addr) {
     int wstatus;
     pid_t ret = wait(&wstatus);
@@ -2193,6 +2369,11 @@ int wrapper_fork(uint8_t *mem) {
     return ret;
 }
 
+int wrapper_system(uint8_t *mem, uint32_t command_addr) {
+    STRING(command)
+    return system(command); // no errno
+}
+
 static int name_compare(uint8_t *mem, uint32_t a_addr, uint32_t b_addr) {
     //printf("pc=0x00438180\n");
     return wrapper_strcmp(mem, MEM_U32(a_addr), MEM_U32(b_addr));
@@ -2231,6 +2412,24 @@ uint32_t wrapper_tsearch(uint8_t *mem, uint32_t key_addr, uint32_t rootp_addr, u
 
 uint32_t wrapper_tfind(uint8_t *mem, uint32_t key_addr, uint32_t rootp_addr, uint32_t compar_addr) {
     return tsearch_tfind(mem, key_addr, rootp_addr, compar_addr, false);
+}
+
+uint32_t wrapper_qsort(uint8_t *mem, uint32_t base_addr, uint32_t num, uint32_t size, uint64_t (*trampoline)(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t fp_dest), uint32_t compare_addr, uint32_t sp) {
+    assert(0 && "qsort not implemented");
+    return 0;
+}
+
+uint32_t wrapper_regcmp(uint8_t *mem, uint32_t string1_addr, uint32_t sp) {
+    STRING(string1);
+    fprintf(stderr, "regex string: %s\n", string1);
+    assert(0 && "regcmp not implemented");
+    return 0;
+}
+
+uint32_t wrapper_regex(uint8_t *mem, uint32_t re_addr, uint32_t subject_addr, uint32_t sp) {
+    STRING(subject);
+    assert(0 && "regex not implemented");
+    return 0;
 }
 
 void wrapper___assert(uint8_t *mem, uint32_t assertion_addr, uint32_t file_addr, int line) {
