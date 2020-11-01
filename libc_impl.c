@@ -604,6 +604,7 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
             c = MEM_S8(format_addr + pos);
             ++pos;
             uint32_t zeros = 0;
+            bool zero_prefix = false;
             continue_format:
             switch (c) {
                 case '0':
@@ -619,6 +620,7 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
                 case '#':
                     c = MEM_S8(format_addr + pos);
                     ++pos;
+                    zero_prefix = true;
                     goto continue_format;
                     break;
                 case 'l':
@@ -641,13 +643,21 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
                     ++ret;
                     break;
                 case 'o':
-                    sprintf(temp, "%o", MEM_S32(sp));
+                    if (zero_prefix) {
+                        sprintf(temp, "%#o", MEM_S32(sp));
+                    } else {
+                        sprintf(temp, "%o", MEM_S32(sp));
+                    }
                     sp += 4;
                     str_addr = strcpy1(mem, str_addr, temp);
                     ++ret;
                     break;
                 case 'x':
-                    sprintf(temp, "%x", MEM_S32(sp));
+                    if (zero_prefix) {
+                        sprintf(temp, "%#x", MEM_S32(sp));
+                    } else {
+                        sprintf(temp, "%x", MEM_S32(sp));
+                    }
                     sp += 4;
                     str_addr = strcpy1(mem, str_addr, temp);
                     ++ret;
