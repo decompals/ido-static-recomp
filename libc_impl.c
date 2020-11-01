@@ -616,6 +616,11 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
                         }
                     } while (c >= '0' && c <= '9');
                     goto continue_format;
+                case '#':
+                    c = MEM_S8(format_addr + pos);
+                    ++pos;
+                    goto continue_format;
+                    break;
                 case 'l':
                     assert(!l && "ll not implemented in fscanf");
                     c = MEM_S8(format_addr + pos);
@@ -631,6 +636,18 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
                     } else {
                         sprintf(temp, "%d", MEM_S32(sp));
                     }
+                    sp += 4;
+                    str_addr = strcpy1(mem, str_addr, temp);
+                    ++ret;
+                    break;
+                case 'o':
+                    sprintf(temp, "%o", MEM_S32(sp));
+                    sp += 4;
+                    str_addr = strcpy1(mem, str_addr, temp);
+                    ++ret;
+                    break;
+                case 'x':
+                    sprintf(temp, "%x", MEM_S32(sp));
                     sp += 4;
                     str_addr = strcpy1(mem, str_addr, temp);
                     ++ret;
