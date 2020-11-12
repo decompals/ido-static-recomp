@@ -45,6 +45,9 @@
 #define IDO71
 #endif
 
+#define MEM_REGION_START 0xfb00000
+#define MEM_REGION_SIZE (512 * 1024 * 1024)
+
 #ifdef IDO53
 // IDO 5.3
 #define IOB_ADDR 0x0fb528e4
@@ -183,6 +186,8 @@ static uint8_t *memory_map(size_t length)
 
 static void memory_allocate(uint8_t *mem, uint32_t start, uint32_t end)
 {
+    assert(start >= MEM_REGION_START);
+    assert(end <= MEM_REGION_START + MEM_REGION_SIZE);
 #ifdef __CYGWIN__
     uintptr_t _start = ((uintptr_t)mem + start) & ~(g_Pagesize-1);
     uintptr_t _end = ((uintptr_t)mem + end + (g_Pagesize-1)) & ~(g_Pagesize-1);
@@ -235,12 +240,14 @@ int main(int argc, char *argv[]) {
 #endif
 
     for (int i = 0; i < 1; i++) {
-        uint8_t *mem = memory_map(0x100000000ULL);
+        uint8_t *mem = memory_map(MEM_REGION_SIZE);
+        mem -= MEM_REGION_START;
         int run(uint8_t *mem, int argc, char *argv[]);
         ret = run(mem, argc, argv);
         wrapper_fflush(mem, 0);
         free_all_file_bufs(mem);
-        memory_unmap(mem, 0x100000000ULL);
+        mem += MEM_REGION_START;
+        memory_unmap(mem, MEM_REGION_SIZE);
     }
     return ret;
 }
