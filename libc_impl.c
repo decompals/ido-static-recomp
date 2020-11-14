@@ -1,3 +1,4 @@
+#define _GNU_SOURCE // for sigset
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -28,6 +29,7 @@
 #include <fcntl.h>
 #include <utime.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include "libc_impl.h"
 #include "helpers.h"
@@ -77,6 +79,8 @@
 #define STRTOK_DATA_ADDR (MALLOC_BINS_ADDR + (30 - 3) * 4)
 #define INTBUF_ADDR (STRTOK_DATA_ADDR + 4)
 
+#define SIGNAL_HANDLER_STACK_START LIBC_ADDR
+
 #define NFILE 100
 
 #define IOFBF 0000 /* full buffered */
@@ -105,6 +109,15 @@ struct FILE_irix {
     uint8_t _file;
     uint8_t _flag;
 };
+
+static struct {
+    struct {
+        uint64_t (*trampoline)(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t fp_dest);
+        uint8_t *mem;
+        uint32_t fp_dest;
+    } handlers[65];
+    volatile uint32_t recursion_level;
+} signal_context;
 
 static uint32_t cur_sbrk;
 static uint32_t bufendtab[NFILE]; // this version contains the size and not the end ptr
@@ -1457,6 +1470,11 @@ int wrapper_remove(uint8_t *mem, uint32_t path_addr) {
 }
 
 int wrapper_unlink(uint8_t *mem, uint32_t path_addr) {
+    if (path_addr == 0) {
+        fprintf(stderr, "Warning: unlink with NULL as arguement\n");
+        MEM_U32(ERRNO_ADDR) = EFAULT;
+        return -1;
+    }
     STRING(path)
     int ret = unlink(path);
     if (ret < 0) {
@@ -2209,14 +2227,48 @@ int wrapper_fcntl(uint8_t *mem, int fd, int cmd, uint32_t sp) {
     return 0;
 }
 
-uint32_t wrapper_signal(uint8_t *mem, int signum, uint32_t handler_addr) {
+static void signal_handler(int signum) {
+    uint32_t level = signal_context.recursion_level++;
+    uint8_t *mem = signal_context.handlers[signum].mem;
+    uint32_t fp_dest = signal_context.handlers[signum].fp_dest;
+    uint32_t sp = SIGNAL_HANDLER_STACK_START - 16 - level * 0x1000;
+    signal_context.handlers[signum].trampoline(mem, sp, signum, 0, 0, 0, fp_dest);
+    signal_context.recursion_level--;
+}
+
+uint32_t wrapper_signal(uint8_t *mem, int signum, uint64_t (*trampoline)(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t fp_dest), uint32_t handler_addr, uint32_t sp) {
     //assert(0 && "signal not implemented");
     return 0;
 }
 
-uint32_t wrapper_sigset(uint8_t *mem, int signum, uint32_t disp_addr) {
-    // not implemented
-    return 0;
+uint32_t wrapper_sigset(uint8_t *mem, int signum, uint64_t (*trampoline)(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t fp_dest), uint32_t disp_addr, uint32_t sp) {
+    void (*handler)(int) = signal_handler;
+
+    if ((int)disp_addr >= -1 && (int)disp_addr <= 1) {
+        // SIG_DFL etc.
+        handler = (void (*)(int))(intptr_t)(int)disp_addr;
+    }
+
+    switch (signum) {
+        case 2:
+            signum = SIGINT;
+            break;
+        case 13:
+            signum = SIGPIPE;
+            break;
+        case 15:
+            signum = SIGTERM;
+            break;
+        default:
+            assert(0 && "sigset with this signum not implemented");
+            break;
+    }
+
+    signal_context.handlers[signum].trampoline = trampoline;
+    signal_context.handlers[signum].mem = mem;
+    signal_context.handlers[signum].fp_dest = disp_addr;
+
+    return (uint32_t)(uintptr_t)sigset(signum, handler); // for now only support SIG_DFL etc. as return value
 }
 
 int wrapper_get_fpc_csr(uint8_t *mem) {

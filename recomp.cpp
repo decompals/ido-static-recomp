@@ -251,8 +251,8 @@ static const struct {
     {"strerror", "pi"},
     {"ioctl", "iiu", FLAG_VARARG},
     {"fcntl", "iii", FLAG_VARARG},
-    {"signal", "pip"},
-    {"sigset", "pip"},
+    {"signal", "pit"},
+    {"sigset", "pit"},
     {"get_fpc_csr", "i"},
     {"set_fpc_csr", "ii"},
     {"setjmp", "ip"},
@@ -2045,6 +2045,7 @@ static void dump_instr(int i) {
             if (insn.jtbl_addr != 0) {
                 uint32_t jtbl_pos = insn.jtbl_addr - rodata_vaddr;
                 assert(jtbl_pos < rodata_section_len && jtbl_pos + insn.num_cases * 4 <= rodata_section_len);
+#if 1
                 printf(";static void *const Lswitch%x[] = {\n", insn.jtbl_addr);
                 for (uint32_t i = 0; i < insn.num_cases; i++) {
                     uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + i * 4) + gp_value;
@@ -2055,6 +2056,16 @@ static void dump_instr(int i) {
                 printf("dest = Lswitch%x[%s];\n", insn.jtbl_addr, r(insn.index_reg));
                 dump_instr(i + 1);
                 printf("goto *dest;\n");
+#else
+                assert(insns[i + 1].id == MIPS_INS_NOP);
+                printf("switch (%s) {\n", r(insn.index_reg));
+                for (uint32_t i = 0; i < insn.num_cases; i++) {
+                    uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + i * 4) + gp_value;
+                    printf("case %u: goto L%x;\n", i, dest_addr);
+                    label_addresses.insert(dest_addr);
+                }
+                printf("}\n");
+#endif
             } else {
                 if (insn.operands[0].reg != MIPS_REG_RA) {
                     printf("UNSUPPORTED JR %s %s\n", insn.op_str.c_str(), r(insn.operands[0].reg));
