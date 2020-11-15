@@ -173,7 +173,7 @@ static char ctype[] = { 0,
 #define REDIRECT_USR_LIB
 
 #ifdef REDIRECT_USR_LIB
-const char* g_binDir;
+static char bin_dir[PATH_MAX + 1];
 #endif
 static int g_file_max = 3;
 
@@ -235,33 +235,44 @@ static void free_all_file_bufs(uint8_t *mem) {
     }
 }
 
-int main(int argc, char *argv[]) {
-    int ret;
-    char binPath[PATH_MAX+1] = {0};
-
+static void find_bin_dir(void) {
 #ifdef REDIRECT_USR_LIB
     // gets the current executable's path
+    char path[PATH_MAX + 1] = {0};
 #ifdef __CYGWIN__
-    GetModuleFileName(NULL, binPath, PATH_MAX);
+    uint32_t size = GetModuleFileName(NULL, path, PATH_MAX);
+    if (size == 0 || size == PATH_MAX) {
+        return;
+    }
 #elif defined __APPLE__
-    uint32_t size = sizeof(binPath);
-    _NSGetExecutablePath(binPath, &size));
+    uint32_t size = PATH_MAX;
+    if (_NSGetExecutablePath(path, &size)) < 0) {
+        return;
+    }
 #else
-    readlink("/proc/self/exe", binPath, sizeof(binPath));
-#endif
-    g_binDir = dirname(binPath);
+    ssize_t size = readlink("/proc/self/exe", path, PATH_MAX);
+    if (size < 0 || size == PATH_MAX) {
+        return;
+    }
 #endif
 
-    for (int i = 0; i < 1; i++) {
-        uint8_t *mem = memory_map(MEM_REGION_SIZE);
-        mem -= MEM_REGION_START;
-        int run(uint8_t *mem, int argc, char *argv[]);
-        ret = run(mem, argc, argv);
-        wrapper_fflush(mem, 0);
-        free_all_file_bufs(mem);
-        mem += MEM_REGION_START;
-        memory_unmap(mem, MEM_REGION_SIZE);
-    }
+    strcpy(bin_dir, dirname(path));
+#endif
+}
+
+int main(int argc, char *argv[]) {
+    int ret;
+
+    find_bin_dir();
+
+    uint8_t *mem = memory_map(MEM_REGION_SIZE);
+    mem -= MEM_REGION_START;
+    int run(uint8_t *mem, int argc, char *argv[]);
+    ret = run(mem, argc, argv);
+    wrapper_fflush(mem, 0);
+    free_all_file_bufs(mem);
+    mem += MEM_REGION_START;
+    memory_unmap(mem, MEM_REGION_SIZE);
     return ret;
 }
 
@@ -1195,11 +1206,12 @@ static uint32_t init_file(uint8_t *mem, int fd, int i, const char *path, const c
     if (fd == -1) {
 
 #ifdef REDIRECT_USR_LIB
-        char fixedPath[PATH_MAX+1];
-        if (!memcmp(path, "/usr/lib/err.english.cc", 23+1))
-        {
-            snprintf(fixedPath, PATH_MAX, "%s/err.english.cc", g_binDir);
-            path = fixedPath;
+        char fixed_path[PATH_MAX + 1];
+        if (!strcmp(path, "/usr/lib/err.english.cc") && bin_dir[0] != '\0') {
+            int n = snprintf(fixed_path, sizeof(fixed_path), "%s/err.english.cc", bin_dir);
+            if (n >= 0 && n < sizeof(fixed_path)) {
+                path = fixed_path;
+            }
         }
 #endif
         fd = open(path, flags, 0666);
@@ -2348,10 +2360,10 @@ uint32_t wrapper_tmpfile(uint8_t *mem) {
         MEM_U32(ERRNO_ADDR) = errno;
         return 0;
     }
-    
+
     // the file will be removed from disk when it's closed later
     unlink(name);
-    
+
     // fdopen:
     uint32_t ret = init_file(mem, fd, -1, NULL, "w+");
     if (ret == 0) {
@@ -2426,15 +2438,20 @@ int wrapper_execvp(uint8_t *mem, uint32_t file_addr, uint32_t argv_addr) {
     argv[argc] = NULL;
 
 #ifdef REDIRECT_USR_LIB
-    if (!memcmp(file, "/usr/lib/", 9))
-    {
-        char fixedPath[PATH_MAX+1];
+    if (!strncmp(file, "/usr/lib/", 9) && bin_dir[0] != '\0') {
+        char fixed_path[PATH_MAX + 1];
 #ifdef __CYGWIN__
-        snprintf(fixedPath, PATH_MAX, "%s/%s.exe", g_binDir, file+9);
+        int n = snprintf(fixed_path, sizeof(fixed_path), "%s/%s.exe", bin_dir, file + 9);
 #else
-        snprintf(fixedPath, PATH_MAX, "%s/%s", g_binDir, file+9);
+        int n = snprintf(fixed_path, sizeof(fixed_path), "%s/%s", bin_dir, file + 9);
 #endif
-        execvp(fixedPath, argv);
+        if (n > 0 && n < sizeof(fixed_path)) {
+            execvp(fixed_path, argv);
+        } else {
+            execvp(file, argv);
+        }
+    } else {
+        execvp(file, argv);
     }
 #else
     execvp(file, argv);
