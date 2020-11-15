@@ -57,7 +57,7 @@ struct Insn {
     };
     uint32_t jtbl_addr;
     uint32_t num_cases;
-    uint32_t index_reg;
+    mips_reg index_reg;
     vector<Edge> successors;
     vector<Edge> predecessors;
     uint64_t b_liveout;
@@ -299,7 +299,7 @@ static void disassemble(void) {
     }
     cs_free(disasm, disasm_size);
     cs_close(&handle);
-    
+
     {
         // Add dummy instruction to avoid out of bounds
         insns.push_back(Insn());
@@ -546,7 +546,7 @@ static void pass1(void) {
                         if (insns[addu_index].id != MIPS_INS_ADDU) {
                             --addu_index;
                         }
-                        uint32_t index_reg = insns[addu_index - 1].operands[1].reg;
+                        mips_reg index_reg = (mips_reg)insns[addu_index - 1].operands[1].reg;
                         if (insns[addu_index].id != MIPS_INS_ADDU) {
                             goto skip;
                         }
@@ -800,7 +800,7 @@ static void pass2(void) {
             uint32_t i = addr_to_i(it->first);
             auto str_it = symbol_names.find(it->first);
             if (str_it != symbol_names.end() && str_it->second == "__start") {
-                
+
             } else if (str_it != symbol_names.end() && str_it->second == "xmalloc") {
                 // orig 5.3:
                 /*
@@ -812,7 +812,7 @@ static void pass2(void) {
                 496c08:       10000006        b       496c24 <alloc_new+0x14>
                 496c0c:       afbf0020        sw      ra,32(sp)
                 */
-                
+
                 // jal   alloc_new
                 //  lui  $a1, malloc_scb
                 // jr    $ra
@@ -933,7 +933,7 @@ static void pass3(void) {
                 add_edge(i, i + 1);
                 add_edge(i + 1, addr_to_i((uint32_t)insn.operands[insn.op_count - 1].imm));
                 break;
-            
+
             case MIPS_INS_BEQL:
             case MIPS_INS_BGEZL:
             case MIPS_INS_BGTZL:
@@ -947,14 +947,14 @@ static void pass3(void) {
                 add_edge(i + 1, addr_to_i((uint32_t)insn.operands[insn.op_count - 1].imm));
                 insns[i + 1].no_following_successor = true; // don't inspect delay slot
                 break;
-            
+
             case MIPS_INS_B:
             case MIPS_INS_J:
                 add_edge(i, i + 1);
                 add_edge(i + 1, addr_to_i((uint32_t)insn.operands[0].imm));
                 insns[i + 1].no_following_successor = true; // don't inspect delay slot
                 break;
-            
+
             case MIPS_INS_JR: {
                 add_edge(i, i + 1);
                 if (insn.jtbl_addr != 0) {
@@ -970,7 +970,7 @@ static void pass3(void) {
                 insns[i + 1].no_following_successor = true; // don't inspect delay slot
                 break;
             }
-            
+
             case MIPS_INS_JAL: {
                 add_edge(i, i + 1);
                 uint32_t dest = (uint32_t)insn.operands[0].imm;
@@ -987,14 +987,14 @@ static void pass3(void) {
                 insns[i + 1].no_following_successor = true; // don't inspect delay slot
                 break;
             }
-            
+
             case MIPS_INS_JALR:
                 // function pointer
                 add_edge(i, i + 1);
                 add_edge(i + 1, i + 2, false, false, false, true);
                 insns[i + 1].no_following_successor = true; // don't inspect delay slot
                 break;
-            
+
             default:
                 add_edge(i, i + 1);
                 break;
@@ -1005,14 +1005,14 @@ static void pass3(void) {
 static uint64_t map_reg(int32_t reg) {
     if (reg > MIPS_REG_31) {
         if (reg == MIPS_REG_HI) {
-            reg = 33;
+            reg = MIPS_REG_31 + 1;
         } else if (reg == MIPS_REG_LO) {
-            reg = 34;
+            reg = MIPS_REG_31 + 2;
         } else {
             return 0;
         }
     }
-    return (uint64_t)1 << reg;
+    return (uint64_t)1 << (reg - MIPS_REG_0 + 1);
 }
 
 static uint64_t temporary_regs(void) {
@@ -1048,7 +1048,7 @@ static TYPE insn_to_type(Insn& i) {
             } else {
                 return TYPE_NOP;
             }
-        
+
         case MIPS_INS_ADDI:
         case MIPS_INS_ADDIU:
         case MIPS_INS_ANDI:
@@ -1070,15 +1070,15 @@ static TYPE insn_to_type(Insn& i) {
         case MIPS_INS_SRL:
         case MIPS_INS_XORI:
             return TYPE_1D_1S;
-        
+
         case MIPS_INS_MFHI:
             i.operands[1].reg = MIPS_REG_HI;
             return TYPE_1D_1S;
-        
+
         case MIPS_INS_MFLO:
             i.operands[1].reg = MIPS_REG_LO;
             return TYPE_1D_1S;
-        
+
         case MIPS_INS_AND:
         case MIPS_INS_OR:
         case MIPS_INS_NOR:
@@ -1090,13 +1090,13 @@ static TYPE insn_to_type(Insn& i) {
         case MIPS_INS_SUBU:
         case MIPS_INS_XOR:
             return TYPE_1D_2S;
-        
+
         case MIPS_INS_CFC1:
         case MIPS_INS_MFC1:
         case MIPS_INS_LI:
         case MIPS_INS_LUI:
             return TYPE_1D;
-        
+
         case MIPS_INS_CTC1:
         case MIPS_INS_BGEZ:
         case MIPS_INS_BGEZL:
@@ -1110,7 +1110,7 @@ static TYPE insn_to_type(Insn& i) {
         case MIPS_INS_BNEZ:
         case MIPS_INS_MTC1:
             return TYPE_1S;
-        
+
         case MIPS_INS_BEQ:
         case MIPS_INS_BEQL:
         case MIPS_INS_BNE:
@@ -1126,29 +1126,29 @@ static TYPE insn_to_type(Insn& i) {
         case MIPS_INS_TGEU:
         case MIPS_INS_TLT:
             return TYPE_2S;
-        
+
         case MIPS_INS_DIV:
             if (i.mnemonic != "div.s" && i.mnemonic != "div.d") {
                 return TYPE_D_LO_HI_2S;
             } else {
                 return TYPE_NOP;
             }
-        
+
         case MIPS_INS_DIVU:
         case MIPS_INS_MULT:
         case MIPS_INS_MULTU:
             return TYPE_D_LO_HI_2S;
-        
+
         case MIPS_INS_NEG:
             if (i.mnemonic != "neg.s" && i.mnemonic != "neg.d") {
                 return TYPE_1D_1S;
             } else {
                 return TYPE_NOP;
             }
-        
+
         case MIPS_INS_JALR:
             return TYPE_1S;
-        
+
         case MIPS_INS_JR:
             if (i.jtbl_addr != 0) {
                 i.operands[0].reg = i.index_reg;
@@ -1157,13 +1157,13 @@ static TYPE insn_to_type(Insn& i) {
                 return TYPE_NOP;
             }
             return TYPE_1S;
-        
+
         case MIPS_INS_LWC1:
         case MIPS_INS_LDC1:
         case MIPS_INS_SWC1:
         case MIPS_INS_SDC1:
             return TYPE_1S_POS1;
-        
+
         default:
             return TYPE_NOP;
     }
@@ -1172,10 +1172,10 @@ static TYPE insn_to_type(Insn& i) {
 static void pass4(void) {
     vector<uint32_t> q;
     uint64_t livein_func_start = 1U | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) | map_reg(MIPS_REG_SP) | map_reg(MIPS_REG_ZERO);
-    
+
     q.push_back(main_addr);
     insns[addr_to_i(main_addr)].f_livein = livein_func_start;
-    
+
     for (auto& it : data_function_pointers) {
         q.push_back(it.second);
         insns[addr_to_i(it.second)].f_livein = livein_func_start | map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3);
@@ -1184,7 +1184,7 @@ static void pass4(void) {
         q.push_back(addr);
         insns[addr_to_i(addr)].f_livein = livein_func_start | map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3);
     }
-    
+
     while (!q.empty()) {
         uint32_t addr = q.back();
         q.pop_back();
@@ -1195,19 +1195,19 @@ static void pass4(void) {
             case TYPE_1D:
                 live |= map_reg(i.operands[0].reg);
                 break;
-            
+
             case TYPE_1D_1S:
                 if (live & map_reg(i.operands[1].reg)) {
                     live |= map_reg(i.operands[0].reg);
                 }
                 break;
-            
+
             case TYPE_1D_2S:
                 if ((live & map_reg(i.operands[1].reg)) && (live & map_reg(i.operands[2].reg))) {
                     live |= map_reg(i.operands[0].reg);
                 }
                 break;
-            
+
             case TYPE_D_LO_HI_2S:
                 if ((live & map_reg(i.operands[0].reg)) && (live & map_reg(i.operands[1].reg))) {
                     live |= map_reg(MIPS_REG_LO);
@@ -1221,7 +1221,7 @@ static void pass4(void) {
         }
         live |= i.f_liveout;
         i.f_liveout = live;
-        
+
         bool function_entry = false;
         for (Edge& e : i.successors) {
             uint64_t new_live = live;
@@ -1295,9 +1295,9 @@ static void pass4(void) {
 
 static void pass5(void) {
     vector<uint32_t> q;
-    
+
     assert(functions.count(main_addr));
-    
+
     q = functions[main_addr].returns;
     for (auto addr : q) {
         insns[addr_to_i(addr)].b_liveout = 1U | map_reg(MIPS_REG_V0);
@@ -1320,7 +1320,7 @@ static void pass5(void) {
             q.push_back(text_vaddr + i * 4);
         }
     }
-    
+
     while (!q.empty()) {
         uint32_t addr = q.back();
         q.pop_back();
@@ -1331,27 +1331,27 @@ static void pass5(void) {
             case TYPE_1S:
                 live |= map_reg(i.operands[0].reg);
                 break;
-            
+
             case TYPE_1S_POS1:
                 live |= map_reg(i.operands[1].reg);
                 break;
-            
+
             case TYPE_2S:
                 live |= map_reg(i.operands[0].reg);
                 live |= map_reg(i.operands[1].reg);
                 break;
-            
+
             case TYPE_1D:
                 live &= ~map_reg(i.operands[0].reg);
                 break;
-            
+
             case TYPE_1D_1S:
                 if (live & map_reg(i.operands[0].reg)) {
                     live &= ~map_reg(i.operands[0].reg);
                     live |= map_reg(i.operands[1].reg);
                 }
                 break;
-            
+
             case TYPE_1D_2S:
                 if (live & map_reg(i.operands[0].reg)) {
                     live &= ~map_reg(i.operands[0].reg);
@@ -1359,7 +1359,7 @@ static void pass5(void) {
                     live |= map_reg(i.operands[2].reg);
                 }
                 break;
-            
+
             case TYPE_D_LO_HI_2S: {
                 bool used = (live & map_reg(MIPS_REG_LO)) || (live & map_reg(MIPS_REG_HI));
                 live &= ~map_reg(MIPS_REG_LO);
@@ -1377,7 +1377,7 @@ static void pass5(void) {
         }
         live |= i.b_livein;
         i.b_livein = live;
-        
+
         bool function_exit = false;
         for (Edge& e : i.predecessors) {
             uint64_t new_live = live;
@@ -2323,7 +2323,7 @@ static void dump_c(void) {
     for (auto& it : symbol_names) {
         symbol_names_inv[it.second] = it.first;
     }
-    
+
     uint32_t min_addr = ~0;
     uint32_t max_addr = 0;
 
@@ -2369,11 +2369,11 @@ static void dump_c(void) {
         }
         printf("};\n");
     }*/
-    
+
     if (TRACE) {
         printf("static unsigned long long int cnt = 0;\n");
     }
-    
+
     for (auto& f_it : functions) {
         if (insns[addr_to_i(f_it.first)].f_livein != 0) {
             // Function is used
@@ -2419,7 +2419,7 @@ static void dump_c(void) {
         printf("}\n");
         printf("}\n");
     }
-    
+
     printf("int run(uint8_t *mem, int argc, char *argv[]) {\n");
     printf("mmap_initial_data_range(mem, 0x%x, 0x%x);\n", min_addr, max_addr);
 
@@ -2442,9 +2442,9 @@ static void dump_c(void) {
     printf("MEM_U32(0x%x) = arg_addr;\n", stack_bottom + 4);
     printf("uint32_t arg_strpos = arg_addr + argc * 4;\n");
     printf("for (int i = 0; i < argc; i++) {MEM_U32(arg_addr + i * 4) = arg_strpos; uint32_t p = 0; do { MEM_S8(arg_strpos) = argv[i][p]; ++arg_strpos; } while (argv[i][p++] != '\\0');}\n");
-    
+
     printf("setup_libc_data(mem);\n");
-    
+
     //printf("gp = 0x%x;\n", gp_value); // only to recreate the outcome when ugen reads uninitialized stack memory
 
     printf("int ret = f_main(mem, 0x%x", stack_bottom);
@@ -2466,12 +2466,12 @@ static void dump_c(void) {
         Function& f = f_it.second;
         uint32_t start_addr = f_it.first;
         uint32_t end_addr = f.end_addr;
-        
+
         if (insns[addr_to_i(start_addr)].f_livein == 0) {
             // Non-used function, skip
             continue;
         }
-        
+
         printf("\n");
         dump_function_signature(f, start_addr);
         printf(" {\n");
@@ -2495,7 +2495,7 @@ static void dump_c(void) {
         for (uint32_t j = f.nargs; j < 4; j++) {
             printf("uint32_t %s = 0;\n", r(MIPS_REG_A0 + j));
         }
-        
+
         for (size_t i = addr_to_i(start_addr), end_i = addr_to_i(end_addr); i < end_i; i++) {
             Insn& insn = insns[i];
             uint32_t vaddr = text_vaddr + i * 4;
@@ -2504,7 +2504,7 @@ static void dump_c(void) {
             }
             dump_instr(i);
         }
-        
+
         printf("}\n");
     }
     /*for (size_t i = 0; i < insns.size(); i++) {
