@@ -28,31 +28,17 @@ def process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path
     print("Recompiling " + ido_path + prog + "...")
 
     c_file_path = os.path.join(build_dir, os.path.basename(prog) + "_c.c")
-    o_file_path = os.path.join(build_dir, os.path.basename(prog) + "_c.o")
     out_file_path = os.path.join(out_dir, os.path.basename(prog))
     if platform.system().startswith("CYGWIN_NT"):
         out_file_path += ".exe"
-    skeleton_file_path = os.path.join(build_dir, "skeleton_" + os.path.basename(prog) + ".c")
 
     if not args.onlylibc:
         with open(c_file_path, "w") as cFile:
             call(recomp_path + " " + ido_path + prog, cFile)
 
-        with open("skeleton.c", "r") as skeleton:
-            text = re.sub(
-                    r"#include \"([^\r\n]+).c\"",
-                    "#include \"" + os.path.basename(prog) + "_c.c" + "\"",
-                    skeleton.read()
-                )
-        with open(skeleton_file_path, "w") as skeleton:
-            skeleton.write(text)
-
     flags = " -g -fno-strict-aliasing"
     if args.O2:
         flags += " -O2"
-
-    if not args.onlylibc:
-        call("gcc " + skeleton_file_path + " -c -o " + o_file_path + flags)
 
     flags = " -g -fno-strict-aliasing -lm"
     if platform.system() == "Darwin":
@@ -62,7 +48,7 @@ def process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path
     if args.O2:
         flags += " -O2"
 
-    call("gcc libc_impl.c " + o_file_path + " -o " + out_file_path + flags + ido_flag)
+    call("gcc libc_impl.c " + c_file_path + " -o " + out_file_path + flags + ido_flag)
 
     return
 
@@ -75,10 +61,12 @@ def main(args):
     if "7.1" in ido_dir:
         print("Detected IDO version 7.1")
         ido_flag = " -DIDO71"
+        ugen_flag = ""
         build_dir = "build71"
     elif "5.3" in ido_dir:
         print("Detected IDO version 5.3")
         ido_flag = " -DIDO53"
+        ugen_flag = " -Dugen53"
         build_dir = "build53"
     else:
         sys.exit("Unsupported ido dir: " + ido_dir)
@@ -88,6 +76,9 @@ def main(args):
 
     if not os.path.exists(build_dir):
         os.mkdir(build_dir)
+    shutil.copy("header.h", build_dir)
+    shutil.copy("libc_impl.h", build_dir)
+    shutil.copy("helpers.h", build_dir)
     
     out_dir = os.path.join(build_dir, "out")
     if not os.path.exists(out_dir):
@@ -95,12 +86,12 @@ def main(args):
 
     std_flag = ""
     if platform.system() == "Darwin":
-        std_flag = "-std=c++11"
+        std_flag = " -std=c++11"
 
     recomp_path = os.path.join(build_dir, "recomp")
     if platform.system().startswith("CYGWIN_NT"):
         recomp_path += ".exe"
-    call("g++ recomp.cpp -o " + recomp_path + " -g -lcapstone " + std_flag)
+    call("g++ recomp.cpp -o " + recomp_path + " -g -lcapstone" + std_flag + ugen_flag)
     
     threads = []
     for prog in BINS:
