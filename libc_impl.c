@@ -43,7 +43,7 @@
         param[i] = MEM_S8(param##_addr + i); \
     }
 
-#if !defined(IDO53) && !defined(IDO71)
+#if !defined(IDO53) && !defined(IDO71) && !defined(IDO72)
 #define IDO71
 #endif
 
@@ -66,6 +66,15 @@
 #define CTYPE_ADDR 0x0fb4cba0
 #define LIBC_ADDR 0x0fb4c000
 #define LIBC_SIZE 0x3000
+#endif
+
+#ifdef IDO72
+// IDO 7.2
+#define IOB_ADDR   0x0fb49454
+#define ERRNO_ADDR 0x0fb49290
+#define CTYPE_ADDR 0x0fb46db0
+#define LIBC_ADDR  0x0fb46000
+#define LIBC_SIZE  0x4000
 #endif
 
 #define STDIN_ADDR IOB_ADDR
