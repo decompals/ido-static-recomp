@@ -53,15 +53,13 @@ def process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path
         with open(c_file_path, "w") as cFile:
             call(recomp_path + " " + ido_path + prog, cFile)
 
-    flags = " -g -fno-strict-aliasing"
-    if args.O2:
-        flags += " -O2"
+    flags = "-fno-strict-aliasing -lm"
 
-    flags = " -g -fno-strict-aliasing -lm"
     if platform.system() == "Darwin":
         flags += " -fno-pie"
     else:
-        flags += " -no-pie"
+        flags += " -g -no-pie"
+
     if args.O2:
         flags += " -O2"
 
