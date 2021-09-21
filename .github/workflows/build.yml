@@ -30,7 +30,7 @@ jobs:
       - name: Run the build script
         shell: bash
         run: |
-          python3 build.py ido/${{ matrix.ido }}
+          python3 build.py ido/${{ matrix.ido }} -O2
       - name: Create release archive
         shell: bash
         run: |

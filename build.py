@@ -8,13 +8,30 @@ import platform
 import threading
 import shutil
 
-BINS = [
-    "/usr/lib/as1",
-    "/usr/lib/cfe",
-    "/usr/lib/ugen",
-    "/usr/lib/uopt",
-    "/usr/bin/cc",
-]
+BINS = {
+    "5.3": [
+        "usr/bin/cc",
+        "usr/lib/acpp",
+        "usr/lib/as0",
+        "usr/lib/as1",
+        "usr/lib/cfe",
+        "usr/lib/copt",
+        "usr/lib/ugen",
+        "usr/lib/ujoin",
+        "usr/lib/uld",
+        "usr/lib/umerge",
+        "usr/lib/uopt",
+        "usr/lib/usplit",
+    ],
+    "7.1": [
+        "usr/bin/cc",
+        "usr/lib/as1",
+        "usr/lib/cfe",
+        "usr/lib/ugen",
+        "usr/lib/umerge",
+        "usr/lib/uopt",
+    ]
+}
 
 
 def call(args, output_file=None):
@@ -63,11 +80,13 @@ def main(args):
         ido_flag = " -DIDO71"
         ugen_flag = ""
         build_dir = "build7.1"
+        bins = BINS["7.1"]
     elif "5.3" in ido_dir:
         print("Detected IDO version 5.3")
         ido_flag = " -DIDO53"
         ugen_flag = " -Dugen53"
         build_dir = "build5.3"
+        bins = BINS["5.3"]
     else:
         sys.exit("Unsupported ido dir: " + ido_dir)
 
@@ -94,7 +113,7 @@ def main(args):
     call("g++ recomp.cpp -o " + recomp_path + " -g -lcapstone" + std_flag + ugen_flag)
     
     threads = []
-    for prog in BINS:
+    for prog in bins:
         if args.multhreading:
             t = threading.Thread(target=process_prog, args=(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path))
             threads.append(t)
