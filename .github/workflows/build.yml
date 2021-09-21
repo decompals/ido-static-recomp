@@ -17,7 +17,7 @@ jobs:
 
       - name: Install dependencies (Ubuntu)
         shell: bash
-        if: matrix.TARGET.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bison file gperf python3
@@ -28,7 +28,7 @@ jobs:
       - name: Create release archive
         shell: bash
         run: |
-          tar -czf ido-${{ matrix.ido }}-recomp-${{ matrix.TARGET.os }} build${{ matrix.ido }}/out/*
+          tar -czf ido-${{ matrix.ido }}-recomp-${{ matrix.os }} build${{ matrix.ido }}/out/*
       - name: Upload archive
         uses: actions/upload-artifact@v2
         with:
