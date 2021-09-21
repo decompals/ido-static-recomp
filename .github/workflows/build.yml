@@ -24,7 +24,7 @@ jobs:
       - name: Run the build script
         shell: bash
         run: |
-          python3 src/ido_${{ matrix.ido }}
+          python3 src/ido${{ matrix.ido }}
       - name: Create release archive
         shell: bash
         run: |
