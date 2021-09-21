@@ -44,7 +44,7 @@ jobs:
             ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz
       - name: Update release
         uses: johnwbyrd/update-release@v1.0.0
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/per-function' }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           files: ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz
