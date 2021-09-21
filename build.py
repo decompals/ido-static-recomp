@@ -10,26 +10,26 @@ import shutil
 
 BINS = {
     "5.3": [
-        "usr/bin/cc",
-        "usr/lib/acpp",
-        "usr/lib/as0",
-        "usr/lib/as1",
-        "usr/lib/cfe",
-        "usr/lib/copt",
-        "usr/lib/ugen",
-        "usr/lib/ujoin",
-        "usr/lib/uld",
-        "usr/lib/umerge",
-        "usr/lib/uopt",
-        "usr/lib/usplit",
+        "/usr/bin/cc",
+        "/usr/lib/acpp",
+        "/usr/lib/as0",
+        "/usr/lib/as1",
+        "/usr/lib/cfe",
+        "/usr/lib/copt",
+        "/usr/lib/ugen",
+        "/usr/lib/ujoin",
+        "/usr/lib/uld",
+        "/usr/lib/umerge",
+        "/usr/lib/uopt",
+        "/usr/lib/usplit",
     ],
     "7.1": [
         "usr/bin/cc",
-        "usr/lib/as1",
-        "usr/lib/cfe",
-        "usr/lib/ugen",
-        "usr/lib/umerge",
-        "usr/lib/uopt",
+        "/usr/lib/as1",
+        "/usr/lib/cfe",
+        "/usr/lib/ugen",
+        "/usr/lib/umerge",
+        "/usr/lib/uopt",
     ]
 }
 
