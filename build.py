@@ -62,12 +62,12 @@ def main(args):
         print("Detected IDO version 7.1")
         ido_flag = " -DIDO71"
         ugen_flag = ""
-        build_dir = "build71"
+        build_dir = "build7.1"
     elif "5.3" in ido_dir:
         print("Detected IDO version 5.3")
         ido_flag = " -DIDO53"
         ugen_flag = " -Dugen53"
-        build_dir = "build53"
+        build_dir = "build5.3"
     else:
         sys.exit("Unsupported ido dir: " + ido_dir)
 
@@ -111,7 +111,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Static ido recompilation build utility")
     parser.add_argument("ido_path", help="Path to ido")
-    parser.add_argument("-O2", help="Build binaries with -O2 (warning: may take forever)", action='store_true')
+    parser.add_argument("-O2", help="Build binaries with -O2", action='store_true')
     parser.add_argument("-onlylibc", help="Builds libc_impl.c only", action='store_true')
     parser.add_argument("-multhreading", help="Enables multi threading (deprecated with O2)", action='store_true')
     rgs = parser.parse_args()
