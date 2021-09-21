@@ -34,7 +34,8 @@ jobs:
       - name: Create release archive
         shell: bash
         run: |
-          tar -czf ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz build${{ matrix.ido }}/out/*
+          cd build${{ matrix.ido }}/out
+          tar -czvf ../../ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz *
       - name: Upload archive
         uses: actions/upload-artifact@v2
         with:
