@@ -24,7 +24,7 @@ BINS = {
         "/usr/lib/usplit",
     ],
     "7.1": [
-        "usr/bin/cc",
+        "/usr/bin/cc",
         "/usr/lib/as1",
         "/usr/lib/cfe",
         "/usr/lib/ugen",
