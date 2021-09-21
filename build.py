@@ -8,13 +8,30 @@ import platform
 import threading
 import shutil
 
-BINS = [
-    "/usr/lib/as1",
-    "/usr/lib/cfe",
-    "/usr/lib/ugen",
-    "/usr/lib/uopt",
-    "/usr/bin/cc",
-]
+BINS = {
+    "5.3": [
+        "/usr/bin/cc",
+        "/usr/lib/acpp",
+        "/usr/lib/as0",
+        "/usr/lib/as1",
+        "/usr/lib/cfe",
+        "/usr/lib/copt",
+        "/usr/lib/ugen",
+        "/usr/lib/ujoin",
+        "/usr/lib/uld",
+        "/usr/lib/umerge",
+        "/usr/lib/uopt",
+        "/usr/lib/usplit",
+    ],
+    "7.1": [
+        "/usr/bin/cc",
+        "/usr/lib/as1",
+        "/usr/lib/cfe",
+        "/usr/lib/ugen",
+        "/usr/lib/umerge",
+        "/usr/lib/uopt",
+    ]
+}
 
 
 def call(args, output_file=None):
@@ -36,15 +53,13 @@ def process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path
         with open(c_file_path, "w") as cFile:
             call(recomp_path + " " + ido_path + prog, cFile)
 
-    flags = " -g -fno-strict-aliasing"
-    if args.O2:
-        flags += " -O2"
+    flags = " -fno-strict-aliasing -lm"
 
-    flags = " -g -fno-strict-aliasing -lm"
     if platform.system() == "Darwin":
         flags += " -fno-pie"
     else:
-        flags += " -no-pie"
+        flags += " -g -no-pie"
+
     if args.O2:
         flags += " -O2"
 
@@ -62,12 +77,14 @@ def main(args):
         print("Detected IDO version 7.1")
         ido_flag = " -DIDO71"
         ugen_flag = ""
-        build_dir = "build71"
+        build_dir = "build7.1"
+        bins = BINS["7.1"]
     elif "5.3" in ido_dir:
         print("Detected IDO version 5.3")
         ido_flag = " -DIDO53"
         ugen_flag = " -Dugen53"
-        build_dir = "build53"
+        build_dir = "build5.3"
+        bins = BINS["5.3"]
     else:
         sys.exit("Unsupported ido dir: " + ido_dir)
 
@@ -94,7 +111,7 @@ def main(args):
     call("g++ recomp.cpp -o " + recomp_path + " -g -lcapstone" + std_flag + ugen_flag)
     
     threads = []
-    for prog in BINS:
+    for prog in bins:
         if args.multhreading:
             t = threading.Thread(target=process_prog, args=(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path))
             threads.append(t)
@@ -111,7 +128,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Static ido recompilation build utility")
     parser.add_argument("ido_path", help="Path to ido")
-    parser.add_argument("-O2", help="Build binaries with -O2 (warning: may take forever)", action='store_true')
+    parser.add_argument("-O2", help="Build binaries with -O2", action='store_true')
     parser.add_argument("-onlylibc", help="Builds libc_impl.c only", action='store_true')
     parser.add_argument("-multhreading", help="Enables multi threading (deprecated with O2)", action='store_true')
     rgs = parser.parse_args()
