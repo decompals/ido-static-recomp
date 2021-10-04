@@ -3,33 +3,33 @@ import argparse
 import subprocess
 import os
 import sys
-import re
+from pathlib import Path
 import platform
 import threading
 import shutil
 
 BINS = {
     "5.3": [
-        "/usr/bin/cc",
-        "/usr/lib/acpp",
-        "/usr/lib/as0",
-        "/usr/lib/as1",
-        "/usr/lib/cfe",
-        "/usr/lib/copt",
-        "/usr/lib/ugen",
-        "/usr/lib/ujoin",
-        "/usr/lib/uld",
-        "/usr/lib/umerge",
-        "/usr/lib/uopt",
-        "/usr/lib/usplit",
+        "usr/bin/cc",
+        "usr/lib/acpp",
+        "usr/lib/as0",
+        "usr/lib/as1",
+        "usr/lib/cfe",
+        "usr/lib/copt",
+        "usr/lib/ugen",
+        "usr/lib/ujoin",
+        "usr/lib/uld",
+        "usr/lib/umerge",
+        "usr/lib/uopt",
+        "usr/lib/usplit",
     ],
     "7.1": [
-        "/usr/bin/cc",
-        "/usr/lib/as1",
-        "/usr/lib/cfe",
-        "/usr/lib/ugen",
-        "/usr/lib/umerge",
-        "/usr/lib/uopt",
+        "usr/bin/cc",
+        "usr/lib/as1",
+        "usr/lib/cfe",
+        "usr/lib/ugen",
+        "usr/lib/umerge",
+        "usr/lib/uopt",
     ]
 }
 
@@ -44,14 +44,15 @@ def call(args, output_file=None):
 def process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path):
     print("Recompiling " + ido_path + prog + "...")
 
-    c_file_path = os.path.join(build_dir, os.path.basename(prog) + "_c.c")
-    out_file_path = os.path.join(out_dir, os.path.basename(prog))
+    c_file_path = os.path.join(build_dir, prog.split("/")[-1] + "_c.c")
+    out_file_path = os.path.join(out_dir, prog)
+    os.makedirs(Path(out_file_path).parent, exist_ok=True)
     if platform.system().startswith("CYGWIN_NT"):
         out_file_path += ".exe"
 
     if not args.onlylibc:
         with open(c_file_path, "w") as cFile:
-            call(recomp_path + " " + ido_path + prog, cFile)
+            call(recomp_path + " " + os.path.join(ido_path, prog), cFile)
 
     flags = " -fno-strict-aliasing -lm"
 
