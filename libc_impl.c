@@ -1,3 +1,4 @@
+#define _GNU_SOURCE // for sigset
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -28,6 +29,7 @@
 #include <fcntl.h>
 #include <utime.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include "libc_impl.h"
 #include "helpers.h"
@@ -41,9 +43,12 @@
         param[i] = MEM_S8(param##_addr + i); \
     }
 
-#if !defined(IDO53) && !defined(IDO71)
+#if !defined(IDO53) && !defined(IDO71) && !defined(IDO72)
 #define IDO71
 #endif
+
+#define MEM_REGION_START 0xfb00000
+#define MEM_REGION_SIZE (512 * 1024 * 1024)
 
 #ifdef IDO53
 // IDO 5.3
@@ -63,6 +68,15 @@
 #define LIBC_SIZE 0x3000
 #endif
 
+#ifdef IDO72
+// IDO 7.2
+#define IOB_ADDR   0x0fb49454
+#define ERRNO_ADDR 0x0fb49290
+#define CTYPE_ADDR 0x0fb46db0
+#define LIBC_ADDR  0x0fb46000
+#define LIBC_SIZE  0x4000
+#endif
+
 #define STDIN_ADDR IOB_ADDR
 #define STDOUT_ADDR (IOB_ADDR + 0x10)
 #define STDERR_ADDR (IOB_ADDR + 0x20)
@@ -73,6 +87,8 @@
 #define MALLOC_BINS_ADDR custom_libc_data_addr
 #define STRTOK_DATA_ADDR (MALLOC_BINS_ADDR + (30 - 3) * 4)
 #define INTBUF_ADDR (STRTOK_DATA_ADDR + 4)
+
+#define SIGNAL_HANDLER_STACK_START LIBC_ADDR
 
 #define NFILE 100
 
@@ -102,6 +118,15 @@ struct FILE_irix {
     uint8_t _file;
     uint8_t _flag;
 };
+
+static struct {
+    struct {
+        uint64_t (*trampoline)(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t fp_dest);
+        uint8_t *mem;
+        uint32_t fp_dest;
+    } handlers[65];
+    volatile uint32_t recursion_level;
+} signal_context;
 
 static uint32_t cur_sbrk;
 static uint32_t bufendtab[NFILE]; // this version contains the size and not the end ptr
@@ -157,7 +182,7 @@ static char ctype[] = { 0,
 #define REDIRECT_USR_LIB
 
 #ifdef REDIRECT_USR_LIB
-const char* g_binDir;
+static char bin_dir[PATH_MAX + 1];
 #endif
 static int g_file_max = 3;
 
@@ -183,6 +208,8 @@ static uint8_t *memory_map(size_t length)
 
 static void memory_allocate(uint8_t *mem, uint32_t start, uint32_t end)
 {
+    assert(start >= MEM_REGION_START);
+    assert(end <= MEM_REGION_START + MEM_REGION_SIZE);
 #ifdef __CYGWIN__
     uintptr_t _start = ((uintptr_t)mem + start) & ~(g_Pagesize-1);
     uintptr_t _end = ((uintptr_t)mem + end + (g_Pagesize-1)) & ~(g_Pagesize-1);
@@ -217,31 +244,44 @@ static void free_all_file_bufs(uint8_t *mem) {
     }
 }
 
-int main(int argc, char *argv[]) {
-    int ret;
-    char binPath[PATH_MAX+1] = {0};
-
+static void find_bin_dir(void) {
 #ifdef REDIRECT_USR_LIB
     // gets the current executable's path
+    char path[PATH_MAX + 1] = {0};
 #ifdef __CYGWIN__
-    GetModuleFileName(NULL, binPath, PATH_MAX);
+    uint32_t size = GetModuleFileName(NULL, path, PATH_MAX);
+    if (size == 0 || size == PATH_MAX) {
+        return;
+    }
 #elif defined __APPLE__
-    uint32_t size = sizeof(binPath);
-    _NSGetExecutablePath(binPath, &size));
+    uint32_t size = PATH_MAX;
+    if (_NSGetExecutablePath(path, &size) < 0) {
+        return;
+    }
 #else
-    readlink("/proc/self/exe", binPath, sizeof(binPath));
-#endif
-    g_binDir = dirname(binPath);
+    ssize_t size = readlink("/proc/self/exe", path, PATH_MAX);
+    if (size < 0 || size == PATH_MAX) {
+        return;
+    }
 #endif
 
-    for (int i = 0; i < 1; i++) {
-        uint8_t *mem = memory_map(0x100000000ULL);
-        int func(uint8_t *mem, int argc, char *argv[]);
-        ret = func(mem, argc, argv);
-        wrapper_fflush(mem, 0);
-        free_all_file_bufs(mem);
-        memory_unmap(mem, 0x100000000ULL);
-    }
+    strcpy(bin_dir, dirname(path));
+#endif
+}
+
+int main(int argc, char *argv[]) {
+    int ret;
+
+    find_bin_dir();
+
+    uint8_t *mem = memory_map(MEM_REGION_SIZE);
+    mem -= MEM_REGION_START;
+    int run(uint8_t *mem, int argc, char *argv[]);
+    ret = run(mem, argc, argv);
+    wrapper_fflush(mem, 0);
+    free_all_file_bufs(mem);
+    mem += MEM_REGION_START;
+    memory_unmap(mem, MEM_REGION_SIZE);
     return ret;
 }
 
@@ -585,6 +625,11 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
         strcpy1(mem, str_addr, temp);
         return 1;
     }
+    if (!strcmp(format, "%*ld=")) {
+        sprintf(temp, "%*d=", MEM_U32(sp + 2 * 4), MEM_U32(sp + 3 * 4));
+        strcpy1(mem, str_addr, temp);
+        return 1;
+    }
 
     uint32_t orig_str_addr = str_addr;
     uint32_t pos = 0;
@@ -598,11 +643,24 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
             bool l = false;
             c = MEM_S8(format_addr + pos);
             ++pos;
+            uint32_t zeros = 0;
+            bool zero_prefix = false;
             continue_format:
             switch (c) {
+                case '0':
+                    do {
+                        c = MEM_S8(format_addr + pos);
+                        ++pos;
+                        if (c >= '0' && c <= '9') {
+                            zeros *= 10;
+                            zeros += c - '0';
+                        }
+                    } while (c >= '0' && c <= '9');
+                    goto continue_format;
                 case '#':
                     c = MEM_S8(format_addr + pos);
                     ++pos;
+                    zero_prefix = true;
                     goto continue_format;
                     break;
                 case 'l':
@@ -613,19 +671,33 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
                     goto continue_format;
                     break;
                 case 'd':
-                    sprintf(temp, "%d", MEM_S32(sp));
+                    if (zeros != 0) {
+                        char temp1[32];
+                        sprintf(temp1, "%%0%dd", zeros);
+                        sprintf(temp, temp1, MEM_S32(sp));
+                    } else {
+                        sprintf(temp, "%d", MEM_S32(sp));
+                    }
                     sp += 4;
                     str_addr = strcpy1(mem, str_addr, temp);
                     ++ret;
                     break;
                 case 'o':
-                    sprintf(temp, "%o", MEM_S32(sp));
+                    if (zero_prefix) {
+                        sprintf(temp, "%#o", MEM_S32(sp));
+                    } else {
+                        sprintf(temp, "%o", MEM_S32(sp));
+                    }
                     sp += 4;
                     str_addr = strcpy1(mem, str_addr, temp);
                     ++ret;
                     break;
                 case 'x':
-                    sprintf(temp, "%x", MEM_S32(sp));
+                    if (zero_prefix) {
+                        sprintf(temp, "%#x", MEM_S32(sp));
+                    } else {
+                        sprintf(temp, "%x", MEM_S32(sp));
+                    }
                     sp += 4;
                     str_addr = strcpy1(mem, str_addr, temp);
                     ++ret;
@@ -652,6 +724,7 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
                     ++str_addr;
                     break;
                 default:
+                    fprintf(stderr, "%s\n", format);
                     assert(0 && "non-implemented sprintf format");
             }
         } else if (c == '\0') {
@@ -725,6 +798,18 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
             case 's':
             {
                 if (wrapper_fputs(mem, MEM_U32(sp), fp_addr) == -1) {
+                    return ret;
+                }
+                sp += 4;
+                ++ret;
+                break;
+            }
+            case 'c':
+            {
+                char buf[32];
+                sprintf(buf, "%c", MEM_U32(sp));
+                strcpy1(mem, INTBUF_ADDR, buf);
+                if (wrapper_fputs(mem, INTBUF_ADDR, fp_addr) == -1) {
                     return ret;
                 }
                 sp += 4;
@@ -828,6 +913,15 @@ int wrapper_flock(uint8_t *mem, int fd, int operation) {
     return ret;
 }
 
+int wrapper_chmod(uint8_t *mem, uint32_t path_addr, uint32_t mode) {
+    STRING(path)
+    int ret = chmod(path, mode);
+    if (ret < 0) {
+        MEM_U32(ERRNO_ADDR) = errno;
+    }
+    return ret;
+}
+
 int wrapper_umask(int mode) {
     return umask(mode);
 }
@@ -860,6 +954,24 @@ int wrapper_atol(uint8_t *mem, uint32_t nptr_addr) {
 double wrapper_atof(uint8_t *mem, uint32_t nptr_addr) {
     STRING(nptr);
     return atof(nptr);
+}
+
+int wrapper_strtol(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr, int base) {
+    STRING(nptr)
+    char *endptr = NULL;
+    int64_t res = strtoll(nptr, endptr_addr != 0 ? &endptr : NULL, base);
+    if (res > INT_MAX) {
+        MEM_U32(ERRNO_ADDR) = ERANGE;
+        res = INT_MAX;
+    }
+    if (res < INT_MIN) {
+        MEM_U32(ERRNO_ADDR) = ERANGE;
+        res = INT_MIN;
+    }
+    if (endptr != NULL) {
+        MEM_U32(endptr_addr) = nptr_addr + (uint32_t)(endptr - nptr);
+    }
+    return res;
 }
 
 uint32_t wrapper_strtoul(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr, int base) {
@@ -917,6 +1029,38 @@ uint32_t wrapper_strrchr(uint8_t *mem, uint32_t str_addr, int c) {
         }
         ++str_addr;
     }
+}
+
+uint32_t wrapper_strcspn(uint8_t *mem, uint32_t str_addr, uint32_t invalid_addr) {
+    STRING(invalid)
+    uint32_t n = strlen(invalid);
+    uint32_t pos = 0;
+    char c;
+    while ((c = MEM_S8(str_addr)) != 0) {
+        for (int i = 0; i < n; i++) {
+            if (c == invalid[i]) {
+                return pos;
+            }
+        }
+        ++pos;
+        ++str_addr;
+    }
+    return pos;
+}
+
+uint32_t wrapper_strpbrk(uint8_t *mem, uint32_t str_addr, uint32_t accept_addr) {
+    STRING(accept)
+    uint32_t n = strlen(accept);
+    char c;
+    while ((c = MEM_S8(str_addr)) != 0) {
+        for (int i = 0; i < n; i++) {
+            if (c == accept[i]) {
+                return str_addr;
+            }
+        }
+        ++str_addr;
+    }
+    return 0;
 }
 
 static void stat_common(uint8_t *mem, uint32_t buf_addr, struct stat *statbuf) {
@@ -1055,27 +1199,28 @@ int wrapper_write(uint8_t *mem, int fd, uint32_t buf_addr, uint32_t nbytes) {
 
 static uint32_t init_file(uint8_t *mem, int fd, int i, const char *path, const char *mode) {
     int flags = O_RDONLY;
-    if (strcmp(mode, "r") == 0) {
+    if (strcmp(mode, "r") == 0 || strcmp(mode, "rb") == 0) {
         flags = O_RDONLY;
-    } else if (strcmp(mode, "w") == 0) {
+    } else if (strcmp(mode, "w") == 0 || strcmp(mode, "wb") == 0) {
         flags = O_WRONLY | O_CREAT | O_TRUNC;
-    } else if (strcmp(mode, "a") == 0) {
+    } else if (strcmp(mode, "a") == 0 || strcmp(mode, "ab") == 0) {
         flags = O_WRONLY | O_CREAT | O_APPEND;
-    } else if (strcmp(mode, "r+") == 0) {
+    } else if (strcmp(mode, "r+") == 0 || strcmp(mode, "r+b") == 0) {
         flags = O_RDWR;
-    } else if (strcmp(mode, "w+") == 0) {
+    } else if (strcmp(mode, "w+") == 0 || strcmp(mode, "w+b") == 0) {
         flags = O_RDWR | O_CREAT | O_TRUNC;
-    } else if (strcmp(mode, "a+") == 0) {
+    } else if (strcmp(mode, "a+") == 0 || strcmp(mode, "a+b") == 0) {
         flags = O_RDWR | O_CREAT | O_APPEND;
     }
     if (fd == -1) {
 
 #ifdef REDIRECT_USR_LIB
-        char fixedPath[PATH_MAX+1];
-        if (!memcmp(path, "/usr/lib/err.english.cc", 23+1))
-        {
-            snprintf(fixedPath, PATH_MAX, "%s/err.english.cc", g_binDir);
-            path = fixedPath;
+        char fixed_path[PATH_MAX + 1];
+        if (!strcmp(path, "/usr/lib/err.english.cc") && bin_dir[0] != '\0') {
+            int n = snprintf(fixed_path, sizeof(fixed_path), "%s/err.english.cc", bin_dir);
+            if (n >= 0 && n < sizeof(fixed_path)) {
+                path = fixed_path;
+            }
         }
 #endif
         fd = open(path, flags, 0666);
@@ -1336,7 +1481,21 @@ int wrapper_getpgrp(uint8_t *mem) {
     return ret;
 }
 
+int wrapper_remove(uint8_t *mem, uint32_t path_addr) {
+    STRING(path)
+    int ret = remove(path);
+    if (ret < 0) {
+        MEM_U32(ERRNO_ADDR) = errno;
+    }
+    return ret;
+}
+
 int wrapper_unlink(uint8_t *mem, uint32_t path_addr) {
+    if (path_addr == 0) {
+        fprintf(stderr, "Warning: unlink with NULL as arguement\n");
+        MEM_U32(ERRNO_ADDR) = EFAULT;
+        return -1;
+    }
     STRING(path)
     int ret = unlink(path);
     if (ret < 0) {
@@ -1542,6 +1701,12 @@ int wrapper_isatty(uint8_t *mem, int fd) {
     return ret;
 }
 
+uint32_t wrapper_strftime(uint8_t *mem, uint32_t ptr_addr, uint32_t maxsize, uint32_t format_addr, uint32_t timeptr_addr) {
+    //assert(0 && "strftime not implemented");
+    MEM_S8(ptr_addr) = 0;
+    return 0;
+}
+
 int wrapper_times(uint8_t *mem, uint32_t buffer_addr) {
     struct tms_irix {
         int tms_utime;
@@ -1580,6 +1745,34 @@ uint32_t wrapper_ctime(uint8_t *mem, uint32_t timep_addr) {
     return ret_addr;
     //assert(0 && "ctime not implemented");
     //return 0;
+}
+
+uint32_t wrapper_localtime(uint8_t *mem, uint32_t timep_addr) {
+    time_t t = MEM_S32(timep_addr);
+    struct irix_tm {
+        int tm_sec;
+        int tm_min;
+        int tm_hour;
+        int tm_mday;
+        int tm_mon;
+        int tm_year;
+        int tm_wday;
+        int tm_yday;
+        int tm_isdst;
+    };
+    uint32_t ret = wrapper_malloc(mem, sizeof(struct irix_tm));
+    struct irix_tm *r = (struct irix_tm *)&MEM_U32(ret);
+    struct tm *l = localtime(&t);
+    r->tm_sec = l->tm_sec;
+    r->tm_min = l->tm_min;
+    r->tm_hour = l->tm_hour;
+    r->tm_mday = l->tm_mday;
+    r->tm_mon = l->tm_mon;
+    r->tm_year = l->tm_year;
+    r->tm_wday = l->tm_wday;
+    r->tm_yday = l->tm_yday;
+    r->tm_isdst = l->tm_isdst;
+    return ret;
 }
 
 int wrapper_setvbuf(uint8_t *mem, uint32_t fp_addr, uint32_t buf_addr, int mode, uint32_t size) {
@@ -1946,6 +2139,14 @@ double wrapper___ll_to_d(int64_t v) {
     return v;
 }
 
+void wrapper_abort(uint8_t *mem) {
+    abort();
+}
+
+void wrapper_exit(uint8_t *mem, int status) {
+    exit(status);
+}
+
 void wrapper__exit(uint8_t *mem, int status) {
     assert(0 && "_exit not implemented"); // exit() is already overridden
 }
@@ -1988,8 +2189,15 @@ int wrapper_pathconf(uint8_t *mem, uint32_t path_addr, int name) {
 }
 
 uint32_t wrapper_getenv(uint8_t *mem, uint32_t name_addr) {
-    // Return null for everything, for now
-    return 0;
+    STRING(name);
+    const char *value = getenv(name);
+    if (value == NULL) {
+        return 0;
+    }
+    size_t value_size = strlen(value) + 1;
+    uint32_t buf_addr = wrapper_malloc(mem, value_size);
+    strcpy1(mem, buf_addr, value);
+    return buf_addr;
 }
 
 uint32_t wrapper_gettxt(uint8_t *mem, uint32_t msgid_addr, uint32_t default_str_addr) {
@@ -2047,14 +2255,48 @@ int wrapper_fcntl(uint8_t *mem, int fd, int cmd, uint32_t sp) {
     return 0;
 }
 
-uint32_t wrapper_signal(uint8_t *mem, int signum, uint32_t handler_addr) {
+static void signal_handler(int signum) {
+    uint32_t level = signal_context.recursion_level++;
+    uint8_t *mem = signal_context.handlers[signum].mem;
+    uint32_t fp_dest = signal_context.handlers[signum].fp_dest;
+    uint32_t sp = SIGNAL_HANDLER_STACK_START - 16 - level * 0x1000;
+    signal_context.handlers[signum].trampoline(mem, sp, signum, 0, 0, 0, fp_dest);
+    signal_context.recursion_level--;
+}
+
+uint32_t wrapper_signal(uint8_t *mem, int signum, uint64_t (*trampoline)(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t fp_dest), uint32_t handler_addr, uint32_t sp) {
     //assert(0 && "signal not implemented");
     return 0;
 }
 
-uint32_t wrapper_sigset(uint8_t *mem, int signum, uint32_t disp_addr) {
-    // not implemented
-    return 0;
+uint32_t wrapper_sigset(uint8_t *mem, int signum, uint64_t (*trampoline)(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t fp_dest), uint32_t disp_addr, uint32_t sp) {
+    void (*handler)(int) = signal_handler;
+
+    if ((int)disp_addr >= -1 && (int)disp_addr <= 1) {
+        // SIG_DFL etc.
+        handler = (void (*)(int))(intptr_t)(int)disp_addr;
+    }
+
+    switch (signum) {
+        case 2:
+            signum = SIGINT;
+            break;
+        case 13:
+            signum = SIGPIPE;
+            break;
+        case 15:
+            signum = SIGTERM;
+            break;
+        default:
+            assert(0 && "sigset with this signum not implemented");
+            break;
+    }
+
+    signal_context.handlers[signum].trampoline = trampoline;
+    signal_context.handlers[signum].mem = mem;
+    signal_context.handlers[signum].fp_dest = disp_addr;
+
+    return (uint32_t)(uintptr_t)sigset(signum, handler); // for now only support SIG_DFL etc. as return value
 }
 
 int wrapper_get_fpc_csr(uint8_t *mem) {
@@ -2113,6 +2355,49 @@ uint32_t wrapper_mktemp(uint8_t *mem, uint32_t template_addr) {
     mktemp(template);
     strcpy1(mem, template_addr, template);
     return template_addr;
+}
+
+int wrapper_mkstemp(uint8_t *mem, uint32_t name_addr) {
+    STRING(name)
+    int fd = mkstemp(name);
+    if (fd < 0) {
+        MEM_U32(ERRNO_ADDR) = errno;
+    } else {
+        strcpy1(mem, name_addr, name);
+    }
+    return fd;
+}
+
+uint32_t wrapper_tmpfile(uint8_t *mem) {
+    // create and fopen a temporary file that is removed when the program exits
+    const char *tmpdir = getenv("TMPDIR");
+    if (tmpdir == NULL) {
+        tmpdir = "/tmp";
+    }
+
+    char name[PATH_MAX + 1] = {0};
+    int n = snprintf(name, sizeof(name), "%s/copt_temp_XXXXXX", tmpdir);
+    if (n < 0 || n >= sizeof(name)) {
+        // This isn't the best errno code, but it is one that can be returned by tmpfile
+        MEM_U32(ERRNO_ADDR) = EACCES;
+        return 0;
+    }
+
+    int fd = mkstemp(name);
+    if (fd < 0) {
+        MEM_U32(ERRNO_ADDR) = errno;
+        return 0;
+    }
+
+    // the file will be removed from disk when it's closed later
+    unlink(name);
+
+    // fdopen:
+    uint32_t ret = init_file(mem, fd, -1, NULL, "w+");
+    if (ret == 0) {
+        close(fd);
+    }
+    return ret;
 }
 
 int wrapper_wait(uint8_t *mem, uint32_t wstatus_addr) {
@@ -2181,15 +2466,20 @@ int wrapper_execvp(uint8_t *mem, uint32_t file_addr, uint32_t argv_addr) {
     argv[argc] = NULL;
 
 #ifdef REDIRECT_USR_LIB
-    if (!memcmp(file, "/usr/lib/", 9))
-    {
-        char fixedPath[PATH_MAX+1];
+    if (!strncmp(file, "/usr/lib/", 9) && bin_dir[0] != '\0') {
+        char fixed_path[PATH_MAX + 1];
 #ifdef __CYGWIN__
-        snprintf(fixedPath, PATH_MAX, "%s/%s.exe", g_binDir, file+9);
+        int n = snprintf(fixed_path, sizeof(fixed_path), "%s/%s.exe", bin_dir, file + 9);
 #else
-        snprintf(fixedPath, PATH_MAX, "%s/%s", g_binDir, file+9);
+        int n = snprintf(fixed_path, sizeof(fixed_path), "%s/%s", bin_dir, file + 9);
 #endif
-        execvp(fixedPath, argv);
+        if (n > 0 && n < sizeof(fixed_path)) {
+            execvp(fixed_path, argv);
+        } else {
+            execvp(file, argv);
+        }
+    } else {
+        execvp(file, argv);
     }
 #else
     execvp(file, argv);
@@ -2208,6 +2498,11 @@ int wrapper_fork(uint8_t *mem) {
         MEM_U32(ERRNO_ADDR) = errno;
     }
     return ret;
+}
+
+int wrapper_system(uint8_t *mem, uint32_t command_addr) {
+    STRING(command)
+    return system(command); // no errno
 }
 
 static int name_compare(uint8_t *mem, uint32_t a_addr, uint32_t b_addr) {
@@ -2248,6 +2543,24 @@ uint32_t wrapper_tsearch(uint8_t *mem, uint32_t key_addr, uint32_t rootp_addr, u
 
 uint32_t wrapper_tfind(uint8_t *mem, uint32_t key_addr, uint32_t rootp_addr, uint32_t compar_addr) {
     return tsearch_tfind(mem, key_addr, rootp_addr, compar_addr, false);
+}
+
+uint32_t wrapper_qsort(uint8_t *mem, uint32_t base_addr, uint32_t num, uint32_t size, uint64_t (*trampoline)(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t fp_dest), uint32_t compare_addr, uint32_t sp) {
+    assert(0 && "qsort not implemented");
+    return 0;
+}
+
+uint32_t wrapper_regcmp(uint8_t *mem, uint32_t string1_addr, uint32_t sp) {
+    STRING(string1);
+    fprintf(stderr, "regex string: %s\n", string1);
+    assert(0 && "regcmp not implemented");
+    return 0;
+}
+
+uint32_t wrapper_regex(uint8_t *mem, uint32_t re_addr, uint32_t subject_addr, uint32_t sp) {
+    STRING(subject);
+    assert(0 && "regex not implemented");
+    return 0;
 }
 
 void wrapper___assert(uint8_t *mem, uint32_t assertion_addr, uint32_t file_addr, int line) {

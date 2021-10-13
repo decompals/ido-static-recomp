@@ -1,0 +1,50 @@
+name: Recompile ido and publish releases
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        ido: [5.3, 7.1]
+
+    name: Recompiling ido ${{ matrix.ido }} for ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install dependencies (Ubuntu)
+        shell: bash
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bison file gperf libcapstone-dev python3
+      - name: Install dependencies (MacOS)
+        shell: bash
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install capstone
+          
+      - name: Run the build script
+        shell: bash
+        run: |
+          python3 build.py ido/${{ matrix.ido }} -O2
+      - name: Create release archive
+        shell: bash
+        run: |
+          cd build${{ matrix.ido }}/out
+          tar -czvf ../../ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz *
+      - name: Upload archive
+        uses: actions/upload-artifact@v2
+        with:
+          name: ido-${{ matrix.ido }}-recomp-${{ matrix.os }}
+          path: |
+            ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz
+      - name: Update release
+        uses: johnwbyrd/update-release@v1.0.0
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz
