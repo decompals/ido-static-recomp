@@ -124,7 +124,7 @@ def main(args):
         for t in threads:
             t.join()
 
-    shutil.copyfile(os.path.join(ido_path, "usr/lib/err.english.cc"), os.path.join(out_dir, "err.english.cc"))
+    shutil.copyfile(os.path.join(ido_path, "usr/lib/err.english.cc"), os.path.join(out_dir, "usr/lib/err.english.cc"))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Static ido recompilation build utility")
