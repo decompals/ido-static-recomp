@@ -782,6 +782,10 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
         }
         ++pos;
         ch = MEM_S8(pos);
+        if (ch == '1') {
+            ++pos;
+            ch = MEM_S8(pos);
+        }
         switch (ch) {
             case 'd':
             {
