@@ -764,6 +764,12 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
             return 1;
         }
     }*/
+    // Special-case this one format string. This seems to be the only one that uses `%f` or width specifiers.
+    if (!strcmp(format, "%.2fu %.2fs %u:%04.1f %.0f%%\n") && fp_addr == STDERR_ADDR) {
+        fprintf(stderr, format, MEM_U32(sp + 0), MEM_U32(sp + 4), MEM_U32(sp + 8), MEM_U32(sp + 12), MEM_U32(sp + 16));
+        fflush(stderr);
+        return 1;
+    }
     int ret = 0;
     for (;;) {
         uint32_t pos = format_addr;
