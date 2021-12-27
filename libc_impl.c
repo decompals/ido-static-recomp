@@ -1336,7 +1336,7 @@ int wrapper_ftell(uint8_t *mem, uint32_t fp_addr) {
     return res;
 }
 
-int wrapper_rewind(uint8_t *mem, uint32_t fp_addr) {
+void wrapper_rewind(uint8_t *mem, uint32_t fp_addr) {
     (void)wrapper_fseek(mem, fp_addr, 0, SEEK_SET);
     struct FILE_irix *f = (struct FILE_irix *)&MEM_U32(fp_addr);
     f->_flag &= ~IOERR;
@@ -1787,6 +1787,7 @@ int wrapper_setvbuf(uint8_t *mem, uint32_t fp_addr, uint32_t buf_addr, int mode,
     f->_ptr_addr = buf_addr;
     f->_cnt = 0;
     bufendtab[(fp_addr - IOB_ADDR) / sizeof(struct FILE_irix)] = size;
+    return 0;
 }
 
 int wrapper___semgetc(uint8_t *mem, uint32_t fp_addr) {
