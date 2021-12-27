@@ -988,6 +988,30 @@ uint32_t wrapper_strtoul(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr,
     return res;
 }
 
+uint64_t wrapper_strtoll(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr, int base) {
+    STRING(nptr)
+    char *endptr = NULL;
+    uint64_t res = strtoll(nptr, endptr_addr != 0 ? &endptr : NULL, base);
+
+    if(endptr != NULL) {
+        MEM_U32(endptr_addr) = nptr_addr + (uint32_t)(endptr - nptr);
+    }
+
+    return res;
+}
+
+uint64_t wrapper_strtoull(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr, int base) {
+    STRING(nptr)
+    char *endptr = NULL;
+    uint64_t res = strtoull(nptr, endptr_addr != 0 ? &endptr : NULL, base);
+
+    if(endptr != NULL) {
+        MEM_U32(endptr_addr) = nptr_addr + (uint32_t)(endptr - nptr);
+    }
+
+    return res;
+}
+
 double wrapper_strtod(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr) {
     STRING(nptr)
     char *endptr = NULL;
