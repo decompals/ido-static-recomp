@@ -97,7 +97,7 @@ def main(args):
     shutil.copy("header.h", build_dir)
     shutil.copy("libc_impl.h", build_dir)
     shutil.copy("helpers.h", build_dir)
-    
+
     out_dir = os.path.join(build_dir, "out")
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
@@ -109,8 +109,9 @@ def main(args):
     recomp_path = os.path.join(build_dir, "recomp")
     if platform.system().startswith("CYGWIN_NT"):
         recomp_path += ".exe"
-    call("g++ recomp.cpp -o " + recomp_path + " -g -lcapstone" + std_flag + ugen_flag)
-    
+    if not args.norecomp:
+        call("g++ recomp.cpp -o " + recomp_path + " -g -lcapstone" + std_flag + ugen_flag)
+
     threads = []
     for prog in bins:
         if args.multhreading:
@@ -119,7 +120,7 @@ def main(args):
             t.start()
         else:
             process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path)
-    
+
     if args.multhreading:
         for t in threads:
             t.join()
@@ -132,5 +133,6 @@ if __name__ == "__main__":
     parser.add_argument("-O2", help="Build binaries with -O2", action='store_true')
     parser.add_argument("-onlylibc", help="Builds libc_impl.c only", action='store_true')
     parser.add_argument("-multhreading", help="Enables multi threading (deprecated with O2)", action='store_true')
+    parser.add_argument("-norecomp", help="Do not build the recomp binary", action='store_true')
     rgs = parser.parse_args()
     main(rgs)
