@@ -62,7 +62,7 @@ endif
 
 # --- Functions
 # fn irix_binary(ToolName) -> PathToOriginalTool
-#     all binaries are in usr/lib expect for cc which is in usr/bin 
+#     all binaries are in usr/lib except for cc which is in usr/bin 
 irix_binary = $(IRIX_USR_DIR)/$(if $(filter cc,$(1)),bin,lib)/$(1)
 
 # fn translated_src(ToolName) -> PathToOutputCFile
