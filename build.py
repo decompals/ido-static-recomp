@@ -41,7 +41,7 @@ def call(args, output_file=None):
     if output_file:
         output_file.flush()
 
-def process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path):
+def process_prog(prog, ido_path, ido_flag, fix_ugen, build_dir, out_dir, args, recomp_path):
     print("Recompiling " + ido_path + prog + "...")
 
     c_file_path = os.path.join(build_dir, os.path.basename(prog) + "_c.c")
@@ -49,14 +49,17 @@ def process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path
     if platform.system().startswith("CYGWIN_NT"):
         out_file_path += ".exe"
 
+    prog_name = os.path.basename(prog)
+    conservative_flag = " --conservative " if fix_ugen and prog_name == "ugen" else " "
+
     if not args.onlylibc:
         with open(c_file_path, "w") as cFile:
-            call(recomp_path + " " + ido_path + prog, cFile)
+            call(recomp_path + conservative_flag + ido_path + prog, cFile)
 
-    flags = " -fno-strict-aliasing -lm"
+    flags = " -Wno-tautological-compare -fno-strict-aliasing -lm"
 
     if platform.system() == "Darwin":
-        flags += " -fno-pie"
+        flags += " -fno-pie -Wno-deprecated-declarations"
     else:
         flags += " -g -no-pie"
 
@@ -76,13 +79,13 @@ def main(args):
     if "7.1" in ido_dir:
         print("Detected IDO version 7.1")
         ido_flag = " -DIDO71"
-        ugen_flag = ""
+        fix_ugen = False
         build_dir = "build7.1"
         bins = BINS["7.1"]
     elif "5.3" in ido_dir:
         print("Detected IDO version 5.3")
         ido_flag = " -DIDO53"
-        ugen_flag = " -Dugen53"
+        fix_ugen = True
         build_dir = "build5.3"
         bins = BINS["5.3"]
     else:
@@ -108,16 +111,19 @@ def main(args):
     recomp_path = os.path.join(build_dir, "recomp")
     if platform.system().startswith("CYGWIN_NT"):
         recomp_path += ".exe"
-    call("g++ recomp.cpp -o " + recomp_path + " -g -lcapstone" + std_flag + ugen_flag)
+    
+    capstone = " `pkg-config --cflags --libs capstone` "
+    recomp_flags = " -Wno-switch "
+    call("g++ recomp.cpp -o " + recomp_path + " -O2 " + std_flag + recomp_flags + capstone)
     
     threads = []
     for prog in bins:
         if args.multhreading:
-            t = threading.Thread(target=process_prog, args=(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path))
+            t = threading.Thread(target=process_prog, args=(prog, ido_path, ido_flag, fix_ugen, build_dir, out_dir, args, recomp_path))
             threads.append(t)
             t.start()
         else:
-            process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path)
+            process_prog(prog, ido_path, ido_flag, fix_ugen, build_dir, out_dir, args, recomp_path)
     
     if args.multhreading:
         for t in threads:
