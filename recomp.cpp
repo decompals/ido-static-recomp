@@ -10,6 +10,10 @@
 #include <vector>
 #include <string>
 
+#ifdef __APPLE__
+#include <mach/vm_page_size.h>
+#endif
+
 #include <capstone.h>
 
 #include "elf.h"
@@ -2357,8 +2361,18 @@ static void dump_c(void) {
         max_addr = std::max(max_addr, bss_vaddr + bss_section_len);
     }
 
-    min_addr = min_addr & ~0xfff;
-    max_addr = (max_addr + 0xfff) & ~0xfff;
+    uint32_t page_size;
+#if defined(__APPLE__) && defined(__MACH__)
+    // use apple's recommendation for determining page size
+    // https://developer.apple.com/documentation/apple-silicon/addressing-architectural-differences-in-your-macos-code 
+    // either 4KB (intel) or 16KB (arm)
+    page_size = vm_page_size;
+#else
+    page_size = 1024 * 4; // default to 4KB page
+#endif /* __APPLE__ && __MACH__ */
+
+    min_addr = min_addr & ~(page_size - 1);
+    max_addr = (max_addr + (page_size - 1)) & ~(page_size - 1);
 
     uint32_t stack_bottom = min_addr;
     min_addr -= 1 * 1024 * 1024; // 1 MB stack
