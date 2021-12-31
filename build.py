@@ -59,7 +59,9 @@ def process_prog(prog, ido_path, ido_flag, fix_ugen, build_dir, out_dir, args, r
     flags = " -Wno-tautological-compare -fno-strict-aliasing -lm"
 
     if platform.system() == "Darwin":
-        flags += " -fno-pie -Wno-deprecated-declarations"
+        flags += " -Wno-deprecated-declarations"
+        if "arm" not in platform.processor():
+            flags += " -fno-pie"
     else:
         flags += " -g -no-pie"
 
