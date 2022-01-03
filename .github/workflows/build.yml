@@ -29,8 +29,14 @@ jobs:
           
       - name: Run the build script
         shell: bash
+        if: matrix.os != 'macos-latest'
         run: |
           python3 build.py ido/${{ matrix.ido }} -O2
+      - name: Run the build script (MacOS)
+        shell: bash
+        if: matrix.os == 'macos-latest'
+        run: |
+          python3 build.py ido/${{ matrix.ido }} -O2 -universal
       - name: Create release archive
         shell: bash
         run: |
