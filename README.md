@@ -13,7 +13,7 @@ Likewise, the `make` dependency is only needed if building with `make`.
 
 ## Linux (Debian / Ubuntu)
 ```bash
-sudo apt-get install build-essential libcapstone-dev pkg-config python3
+sudo apt-get install build-essential libcapstone3 pkg-config python3
 ```
 
 ## macOS
@@ -21,35 +21,39 @@ sudo apt-get install build-essential libcapstone-dev pkg-config python3
 ```bash
 brew install make python3 pkg-config capstone
 ```
-Use `gmake` instead of `make` in order to use homebrew's `make`
+When building, use `gmake` instead of `make` in order to use homebrew's `make`
 
-## Build using Make
+# Build using Make
 ```bash
 make VERSION=5.3
 make VERSION=7.1
 ```
-The build artifacts are located in `build/{IDO71|IDO53}/bin`
+The build artifacts are located in `build/{7.1|5.3}/out`.
 
-## Build using Python3
+# Build using Python3
 Using `build.py`
 ```bash
 ./build.py -O2 ido/5.3
 ./build.py -O2 ido/7.1
 ```
-The build artifacts are located in `{build7.1|build5.3}/out`
+The build artifacts are located in `build/{7.1|5.3}/out`. For more options, run `./build.py --help`.
 
-## Manual Building
+## Creating Universal ARM/x86_64 macOS Builds
+By default, the python and make build script create native binaries on macOS. This was done to minimize the time to build the recompiled suite.
+In order to create "fat," universal ARM and x86_64, pass the `-universal` flag to `build.py`, or `TARGET=universal` to `gmake`.
+
+# Manual Building
 
 Example for compiling `as1` in a Linux environment:
 
 ```
-1. g++ recomp.cpp -o recomp -g -lcapstone
-2. ./recomp ~/ido7.1_compiler/usr/lib/as1 > as1_c.c
-3. gcc libc_impl.c as1_c.c -o as1 -g -fno-strict-aliasing -lm -no-pie -DIDO71
+g++ recomp.cpp -o recomp -g -lcapstone
+./recomp ~/ido7.1_compiler/usr/lib/as1 > as1_c.c
+gcc libc_impl.c as1_c.c -o as1 -g -fno-strict-aliasing -lm -no-pie -DIDO71
 ```
 
 Use the same approach for `cc`, `cfe`, `uopt`, `ugen`, `as1` (and `copt` if you need that).
 
 Use `-DIDO53` instead of `-DIDO71` if the program you are trying to recompile was compiled with IDO 5.3 rather than IDO 7.1.
 
-You can add `-O2` to step 3. To compile ugen for IDO 5.3, add `--conservative` after `./recomp` in step 2. This mimics UB present in `ugen53`. That program reads uninitialized stack memory and its result depends on that stack memory.
+You can add `-O2` to step 3. To compile `ugen` for IDO 5.3, add `--conservative` after `./recomp` in step 2. This mimics UB present in `ugen53`. That program reads uninitialized stack memory and its result depends on that stack memory.
