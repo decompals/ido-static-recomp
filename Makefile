@@ -38,8 +38,8 @@ MACOS_FAT_TARGETS ?= arm64-apple-macos11 x86_64-apple-macos10.14
 
 # -- Build Directories
 BUILD_BASE ?= build
-BUILD_DIR  := $(BUILD_BASE)/$(IDO_VERSION)
-BUILT_BIN  := $(BUILD_DIR)/bin
+BUILD_DIR  := $(BUILD_BASE)/$(VERSION)
+BUILT_BIN  := $(BUILD_DIR)/out
 
 # -- Location of original IDO binaries
 IRIX_BASE    ?= ido

@@ -149,20 +149,21 @@ def stitch_artifacts(out, artifacts, v):
 
 
 def main(args):
-    ido_path = Path(args.ido_path)
+    build_base = Path("build")
 
+    ido_path = Path(args.ido_path)
     ido_dir = ido_path.parts[-1]
     if "7.1" in ido_dir:
         print("Detected IDO version 7.1")
         ido_flag = "-DIDO71"
         fix_ugen = False
-        build_dir = Path("build7.1")
+        build_dir = build_base / "7.1"
         bins = BINS["7.1"]
     elif "5.3" in ido_dir:
         print("Detected IDO version 5.3")
         ido_flag = "-DIDO53"
         fix_ugen = True
-        build_dir = Path("build5.3")
+        build_dir = build_base / "5.3"
         bins = BINS["5.3"]
     else:
         sys.exit("Unsupported ido dir: " + ido_dir)
@@ -179,7 +180,7 @@ def main(args):
     out_dir = build_dir / "out"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    recomp = build_recompiler(build_dir, args.verbose)
+    recomp = build_recompiler(build_base, args.verbose)
     
     threads = []
     for prog in bins:
