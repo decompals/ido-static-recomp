@@ -146,6 +146,9 @@ def stitch_artifacts(out, artifacts):
     print_step('LIPO', artifacts, out, rev=True)
     call(f'lipo -create -output {out} {artifacts}')
 
+def cpy(src, dst):
+    print_step('CP', src, dst)
+    shutil.copyfile(src, dst)
 
 def main(args):
     build_base = Path("build")
@@ -201,7 +204,7 @@ def main(args):
         for t in threads:
             t.join()
 
-    shutil.copyfile(ido_path / "usr/lib/err.english.cc", out_dir / "err.english.cc")
+    cpy(ido_path / "usr/lib/err.english.cc", out_dir / "err.english.cc")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Static ido recompilation build utility")
