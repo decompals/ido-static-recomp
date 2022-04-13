@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 import subprocess
-import os
 import sys
 import platform
 import threading
@@ -53,6 +52,7 @@ class Colors:
         self.YELLOW = ""
 
 COLORS = Colors()
+VERBOSE = False
 
 def print_step(cmd, input, output, rev=False):
     if rev:
@@ -60,8 +60,8 @@ def print_step(cmd, input, output, rev=False):
     else:
         print(f"{COLORS.GREEN}{cmd}\t{COLORS.YELLOW}{input}{COLORS.GREEN} -> {COLORS.BLUE}{output}{COLORS.NO_COL}")
 
-def call(args, output_file=None, verbose=False):
-    if verbose:
+def call(args, output_file=None):
+    if VERBOSE:
         print(args)
 
     subprocess.run(args, shell=True, universal_newlines=True, stdout=output_file, check=True)
@@ -76,7 +76,7 @@ def process_prog(prog, ido_path, ido_flag, fix_ugen, build_dir, out_dir, args, r
 
     conservative_flag = " --conservative " if fix_ugen and prog_name == "ugen" else " "
 
-    emit_translated_c(recomp, conservative_flag, prog_path, c_file_path, args.verbose)
+    emit_translated_c(recomp, conservative_flag, prog_path, c_file_path)
 
     flags = f"-I. {ido_flag} -Wno-tautological-compare -fno-strict-aliasing -lm"
 
@@ -102,13 +102,13 @@ def process_prog(prog, ido_path, ido_flag, fix_ugen, build_dir, out_dir, args, r
             if 'x86' in target:
                 f += ' -fno-pie'
             
-            compile_translated_c(c_file_path, 'libc_impl.c', out, f, args.verbose)
+            compile_translated_c(c_file_path, 'libc_impl.c', out, f)
 
         artifacts = " ".join(cross_bins)
-        stitch_artifacts(out_file_path, artifacts, args.verbose)
+        stitch_artifacts(out_file_path, artifacts)
 
     else:
-        compile_translated_c(c_file_path, 'libc_impl.c', out_file_path, flags, args.verbose)
+        compile_translated_c(c_file_path, 'libc_impl.c', out_file_path, flags)
     
     return
 
@@ -118,7 +118,7 @@ def name_executable(location, name):
     else:
         return location / name
 
-def build_recompiler(in_dir, v):
+def build_recompiler(in_dir):
     opt = "-O2"
     capstone = "`pkg-config --cflags --libs capstone`"
     flags = "-Wno-switch"
@@ -129,22 +129,22 @@ def build_recompiler(in_dir, v):
     recomp = name_executable(in_dir, "recomp")
 
     print_step('C++','recomp.cpp',recomp)
-    call(f"g++ recomp.cpp -o {recomp} {opt} {flags} {capstone}", verbose=v)
+    call(f"g++ recomp.cpp -o {recomp} {opt} {flags} {capstone}")
 
     return recomp
 
-def emit_translated_c(recomp, flags, idoprog, output_path, v):
+def emit_translated_c(recomp, flags, idoprog, output_path):
     print_step('RECOMP', idoprog, output_path)
     with open(output_path, 'w') as cFile:
-        call(f"{recomp} {flags} {idoprog}", cFile, verbose=v)
+        call(f"{recomp} {flags} {idoprog}", cFile)
 
-def compile_translated_c(c_file, libc, out, flags, v):
+def compile_translated_c(c_file, libc, out, flags):
     print_step('CC', c_file, out)
-    call(f"gcc {libc} {c_file} -o {out} {flags}", verbose=v)
+    call(f"gcc {libc} {c_file} -o {out} {flags}")
 
-def stitch_artifacts(out, artifacts, v):
+def stitch_artifacts(out, artifacts):
     print_step('LIPO', artifacts, out, rev=True)
-    call(f'lipo -create -output {out} {artifacts}', verbose=v)
+    call(f'lipo -create -output {out} {artifacts}')
 
 
 def main(args):
@@ -176,11 +176,15 @@ def main(args):
     if args.nocolor:
         COLORS.disable()
     
+    if args.verbose:
+        global VERBOSE
+        VERBOSE = True
+    
     out_dir = build_dir / "out"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if not args.norecomp:
-        recomp = build_recompiler(build_base, args.verbose)
+        recomp = build_recompiler(build_base)
     else:
         recomp = name_executable(build_base, "recomp")
     
