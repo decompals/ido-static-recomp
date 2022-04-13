@@ -41,7 +41,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |-
           mkdir -p build${{ matrix.ido }}
-          g++ recomp.cpp -o build/${{ matrix.ido }}/recomp.exe -g -lcapstone -static
+          g++ recomp.cpp -o build/recomp.exe -g -lcapstone -static
 
       - name: Run the build script (Ubuntu)
         shell: bash

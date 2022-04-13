@@ -180,7 +180,10 @@ def main(args):
     out_dir = build_dir / "out"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    recomp = build_recompiler(build_base, args.verbose)
+    if not args.norecomp:
+        recomp = build_recompiler(build_base, args.verbose)
+    else:
+        recomp = name_executable(build_base, "recomp")
     
     threads = []
     for prog in bins:
@@ -205,8 +208,8 @@ if __name__ == "__main__":
     parser.add_argument("-universal", help="Create universal ARM and x86_64 binaries on macOS", action='store_true')
     parser.add_argument("-verbose", help="Print detailed build commands", action='store_true')
     parser.add_argument("-nocolor", help="Disable colored printing", action='store_true')
+    parser.add_argument("-norecomp", help="Do not build the recomp binary", action='store_true')
     # TODO: add these options back
     parser.add_argument("-onlylibc", help="Builds libc_impl.c only", action='store_true')
-    parser.add_argument("-norecomp", help="Do not build the recomp binary", action='store_true')
     rgs = parser.parse_args()
     main(rgs)
