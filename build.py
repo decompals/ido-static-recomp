@@ -64,8 +64,7 @@ def call(args, output_file=None, verbose=False):
     if verbose:
         print(args)
 
-    p = subprocess.Popen(args, shell=True, universal_newlines=True, stdout=output_file)
-    p.wait()
+    subprocess.run(args, shell=True, universal_newlines=True, stdout=output_file, check=True)
     if output_file:
         output_file.flush()
 
