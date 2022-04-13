@@ -195,7 +195,7 @@ def main(args):
         for t in threads:
             t.join()
 
-    shutil.copyfile(os.path.join(ido_path, "usr/lib/err.english.cc"), os.path.join(out_dir, "err.english.cc"))
+    shutil.copyfile(ido_path / "usr/lib/err.english.cc", out_dir / "err.english.cc")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Static ido recompilation build utility")
@@ -205,5 +205,8 @@ if __name__ == "__main__":
     parser.add_argument("-universal", help="Create universal ARM and x86_64 binaries on macOS", action='store_true')
     parser.add_argument("-verbose", help="Print detailed build commands", action='store_true')
     parser.add_argument("-nocolor", help="Disable colored printing", action='store_true')
+    # TODO: add these options back
+    parser.add_argument("-onlylibc", help="Builds libc_impl.c only", action='store_true')
+    parser.add_argument("-norecomp", help="Do not build the recomp binary", action='store_true')
     rgs = parser.parse_args()
     main(rgs)
