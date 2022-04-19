@@ -216,6 +216,6 @@ if __name__ == "__main__":
     parser.add_argument("-nocolor", help="Disable colored printing", action='store_true')
     parser.add_argument("-norecomp", help="Do not build the recomp binary", action='store_true')
     # TODO: add these options back
-    parser.add_argument("-onlylibc", help="Builds libc_impl.c only", action='store_true')
+    #parser.add_argument("-onlylibc", help="Builds libc_impl.c only", action='store_true')
     rgs = parser.parse_args()
     main(rgs)
