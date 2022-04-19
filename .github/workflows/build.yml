@@ -45,7 +45,7 @@ jobs:
 
       - name: Run the build script (Ubuntu)
         shell: bash
-        if: matrix.os == 'maubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         run: |
           python3 build.py ido/${{ matrix.ido }} -O2
       - name: Run the build script (MacOS)
