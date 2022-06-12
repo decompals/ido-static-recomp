@@ -37,9 +37,19 @@ HOST_TARGET := $(HOST_OS)-$(TARGET)
 MACOS_FAT_TARGETS ?= arm64-apple-macos11 x86_64-apple-macos10.14
 
 # -- Build Directories
+# designed to work with Make 3.81 (macOS/last GPL-2 version)
+# https://ismail.badawi.io/blog/automatic-directory-creation-in-make/
 BUILD_BASE ?= build
 BUILD_DIR  := $(BUILD_BASE)/$(VERSION)
 BUILT_BIN  := $(BUILD_DIR)/out
+
+.PRECIOUS: $(BUILD_BASE)/. $(BUILD_BASE)%/.
+
+$(BUILD_BASE)/.:
+	mkdir -p $@
+
+$(BUILD_BASE)%/.:
+	mkdir -p $@
 
 # -- Location of original IDO binaries
 IRIX_BASE    ?= ido
@@ -48,16 +58,6 @@ IRIX_USR_DIR ?= $(IRIX_BASE)/$(VERSION)/usr
 # -- Location of the irix tool chain error messages
 ERR_STRS_SRC := $(IRIX_USR_DIR)/lib/err.english.cc
 ERR_STRS_DST := $(BUILT_BIN)/err.english.cc
-
-# -- ensure build directories exist before compiling anything
-ifeq ($(filter clean,$(MAKECMDGOALS)),)
-  ALL_DIRS := $(BUILD_BASE) $(BUILD_DIR) $(BUILT_BIN)
-  ifeq ($(HOST_TARGET),macOS-universal)
-    ALL_DIRS += $(foreach target,$(MACOS_FAT_TARGETS),$(BUILD_DIR)/$(target))
-  endif
-
-  DUMMY != mkdir -p $(ALL_DIRS)
-endif
 
 # -- Settings for the static recompilation tool `recomp`
 RECOMP       := $(BUILD_BASE)/recomp
@@ -102,10 +102,10 @@ recompiled_binary = $(BUILT_BIN)/$(1)
 
 # fn recomple(ToolName, LibcObj) -> MakeRules
 define recompile
-$(call translated_src,$1): $(call irix_binary,$1) $(RECOMP)
+$(call translated_src,$1): $(call irix_binary,$1) $(RECOMP) | $$$$(@D)/.
 	$(RECOMP) $(CONSERVATIVE_$1) $$< > $$@
 
-$(call recompiled_binary,$1): $(call translated_src,$1) $(COMPILE_DEPS) $2
+$(call recompiled_binary,$1): $(call translated_src,$1) $(COMPILE_DEPS) $2 | $$$$(@D)/.
 	$$(CC) $2 $$< -o $$@ -I. $(COMPILE_OPT) $(COMPILE_FLAGS)
 endef
 
@@ -114,28 +114,33 @@ target_specific = $(BUILD_DIR)/$1/$2
 
 # fn target_libc(ClangTarget) -> MakeRules
 define target_libc
-$(call target_specific,$1,$(LIBC_OBJ)): $(LIBC_IMPL) $(LIBC_IMPL:.c=.h)
+$(call target_specific,$1,$(LIBC_OBJ)): $(LIBC_IMPL) $(LIBC_IMPL:.c=.h) | $$$$(@D)/.
 	$$(CC) $$< -c $(LIBC_OPT) $(LIBC_FLAGS) -target $1 -D$(IDO_VERSION) -o $$@
 endef
 # fn target_tool(ClangTarget, ToolName) -> MakeRules
 define target_tool
-$(call target_specific,$1,$2): $(call translated_src,$2) $(COMPILE_DEPS) $(call target_specific,$1,$(LIBC_OBJ))
+$(call target_specific,$1,$2): $(call translated_src,$2) $(COMPILE_DEPS) $(call target_specific,$1,$(LIBC_OBJ)) | $$$$(@D)/.
 	$$(CC) $(call target_specific,$1,$(LIBC_OBJ)) $$< -o $$@ -I. $(COMPILE_OPT) $(COMPILE_FLAGS) $(if $(findstring x86,$1),-fno-pie) -target $1
 endef
 
 # fn recompile_universal(ToolName) -> MakeRules
 define recompile_universal
-$(call translated_src,$1): $(call irix_binary,$1) $(RECOMP)
+$(call translated_src,$1): $(call irix_binary,$1) $(RECOMP) | $$$$(@D)/.
 	$(RECOMP) $(CONSERVATIVE_$1) $$< > $$@
 
 $(foreach target,$(MACOS_FAT_TARGETS),$(eval $(call target_tool,$(target),$1)))
 
-$(call recompiled_binary,$1): $(foreach target,$(MACOS_FAT_TARGETS),$(BUILD_DIR)/$(target)/$1)
+$(call recompiled_binary,$1): $(foreach target,$(MACOS_FAT_TARGETS),$(BUILD_DIR)/$(target)/$1) | $$$$(@D)/.
 	lipo -create -output $$@ $$^
 endef
 
 
 # --- Recipes
+.DEFAULT_GOAL := all
+.PHONY: all clean
+
+.SECONDEXPANSION:
+
 ALL_TOOLS := $(foreach tool,$(IDO_TC),$(call recompiled_binary,$(tool)))
 
 all: $(ALL_TOOLS)
@@ -143,10 +148,10 @@ all: $(ALL_TOOLS)
 clean:
 	$(RM) -rf $(BUILD_BASE)
 
-$(RECOMP): recomp.cpp elf.h
+$(RECOMP): recomp.cpp elf.h | $$(@D)/.
 	$(CXX) $< -o $@ $(RECOMP_OPT) $(RECOMP_FLAGS)
 
-$(ERR_STRS_DST): $(ERR_STRS_SRC)
+$(ERR_STRS_DST): $(ERR_STRS_SRC) | $$(@D)/.
 	cp $^ $@
 
 ifeq ($(HOST_TARGET),macOS-universal)
@@ -157,14 +162,12 @@ $(foreach tool,$(IDO_TC),$(eval $(call recompile_universal,$(tool))))
 else 
 
 LIBC_SHIM := $(BUILD_DIR)/$(LIBC_OBJ)
-$(LIBC_SHIM): $(LIBC_IMPL) $(LIBC_IMPL:.c=.h)
+$(LIBC_SHIM): $(LIBC_IMPL) $(LIBC_IMPL:.c=.h) | $$(@D)/.
 	$(CC) $< -c $(LIBC_FLAGS) $(LIBC_OPT) -D$(IDO_VERSION) -o $@
 
 $(foreach tool,$(IDO_TC),$(eval $(call recompile,$(tool),$(LIBC_SHIM))))
 
 endif
-
-.PHONY: all clean
 
 # Remove built-in rules, to improve performance
 MAKEFLAGS += --no-builtin-rules
