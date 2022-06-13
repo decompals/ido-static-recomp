@@ -34,6 +34,7 @@ jobs:
             mingw-w64-x86_64-capstone
             mingw-w64-x86_64-gcc
             python3
+            pkg-config
         if: matrix.os == 'windows-latest'
 
       - name: Build recomp binary (Windows-only)
