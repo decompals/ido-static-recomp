@@ -15,6 +15,10 @@
 
 #include "elf.h"
 
+#if defined(_WIN32) && !defined(__CYGWIN__)
+#include <windows.h>
+#endif /* _WIN32 && !__CYGWIN__ */
+
 #define INSPECT_FUNCTION_POINTERS 0 // set this to 1 when testing a new program, to verify that no false function pointers are found
 
 #ifndef TRACE
@@ -2359,7 +2363,13 @@ static void dump_c(void) {
     }
 
     // get pagesize at runtime
+#if defined(_WIN32) && !defined(__CYGWIN__)
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    uint32_t page_size = si.dwPageSize;
+#else
     uint32_t page_size = sysconf(_SC_PAGESIZE);
+#endif /* _WIN32 && !__CYGWIN__ */
     min_addr = min_addr & ~(page_size - 1);
     max_addr = (max_addr + (page_size - 1)) & ~(page_size - 1);
 
