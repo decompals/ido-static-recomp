@@ -41,7 +41,7 @@ jobs:
         shell: msys2 {0}
         if: matrix.os == 'windows-latest'
         run: |-
-          mkdir -p build${{ matrix.ido }}
+          mkdir -p build/
           g++ recomp.cpp -o build/recomp.exe -g `pkg-config --cflags --libs capstone` -static
 
       - name: Run the build script (Ubuntu)
