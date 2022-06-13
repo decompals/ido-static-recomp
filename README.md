@@ -19,16 +19,15 @@ sudo apt-get install build-essential libcapstone3 pkg-config python3
 ## macOS
 [Install homebrew](https://brew.sh/) and then:
 ```bash
-brew install make python3 pkg-config capstone
+brew install python3 pkg-config capstone
 ```
-When building, use `gmake` instead of `make` in order to use homebrew's `make`
 
 # Build using Make
 ```bash
 make VERSION=5.3
 make VERSION=7.1
 ```
-The build artifacts are located in `build/{7.1|5.3}/out`.
+The build artifacts are located in `build/{7.1|5.3}/out`. Add `-j{thread num}` for multithreaded building.
 
 # Build using Python3
 Using `build.py`
