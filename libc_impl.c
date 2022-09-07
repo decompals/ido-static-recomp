@@ -269,7 +269,7 @@ static void find_bin_dir(void) {
 #endif
 }
 
-void clean(uint8_t *mem) {
+void final_cleanup(uint8_t *mem) {
     wrapper_fflush(mem, 0);
     free_all_file_bufs(mem);
     mem += MEM_REGION_START;
@@ -285,7 +285,7 @@ int main(int argc, char *argv[]) {
     mem -= MEM_REGION_START;
     int run(uint8_t *mem, int argc, char *argv[]);
     ret = run(mem, argc, argv);
-    clean(mem);
+    final_cleanup(mem);
     return ret;
 }
 
@@ -770,12 +770,7 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
     }*/
     // Special-case this one format string. This seems to be the only one that uses `%f` or width specifiers.
     if (!strcmp(format, "%.2fu %.2fs %u:%04.1f %.0f%%\n") && fp_addr == STDERR_ADDR) {
-        float arg0 = MEM_F32(sp + 0);
-        float arg1 = MEM_F32(sp + 8);
-        float arg2 = MEM_U32(sp + 16);
-        float arg3 = MEM_F32(sp + 24);
-        float arg4 = MEM_F32(sp + 32);
-        fprintf(stderr, format, arg0, arg1, arg2, arg3, arg4);
+        fprintf(stderr, format, MEM_U32(sp + 0), MEM_U32(sp + 8), MEM_U32(sp + 16), MEM_U32(sp + 24), MEM_U32(sp + 32));
         fflush(stderr);
         return 1;
     }
@@ -2191,7 +2186,7 @@ void wrapper_abort(uint8_t *mem) {
 }
 
 void wrapper_exit(uint8_t *mem, int status) {
-    clean(mem); //! TODO: is this what we want to do?
+    final_cleanup(mem);
     exit(status);
 }
 
