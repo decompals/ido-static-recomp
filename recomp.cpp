@@ -1579,22 +1579,22 @@ static const char *fr(uint32_t reg) {
 
 static const char *dr(uint32_t reg) {
     static const char *regs[] = {
-        "f0.d",
-        "f2.d",
-        "f4.d",
-        "f6.d",
-        "f8.d",
-        "f10.d",
-        "f12.d",
-        "f14.d",
-        "f16.d",
-        "f18.d",
-        "f20.d",
-        "f22.d",
-        "f24.d",
-        "f26.d",
-        "f28.d",
-        "f30.d"
+        "f0",
+        "f2",
+        "f4",
+        "f6",
+        "f8",
+        "f10",
+        "f12",
+        "f14",
+        "f16",
+        "f18",
+        "f20",
+        "f22",
+        "f24",
+        "f26",
+        "f28",
+        "f30"
     };
     assert(reg >= MIPS_REG_F0 && reg <= MIPS_REG_F31 && (reg - MIPS_REG_F0) % 2 == 0);
     return regs[(reg - MIPS_REG_F0) / 2];
@@ -1689,7 +1689,8 @@ static void dump_instr(int i) {
             if (insn.mnemonic == "add.s") {
                 printf("%s = %s + %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg), fr(insn.operands[2].reg));
             } else if (insn.mnemonic == "add.d") {
-                printf("%s = %s + %s;\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
+                //printf("%s = %s + %s;\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
+                printf("instructrionwrapper_add_d(&%s, %s, %s);\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
             } else {
                 printf("%s = %s + %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), r(insn.operands[2].reg));
             }
@@ -1788,24 +1789,24 @@ static void dump_instr(int i) {
             } else if (insn.mnemonic == "c.eq.s") {
                 printf("cf = %s == %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg));
             } else if (insn.mnemonic == "c.lt.d") {
-                printf("cf = %s < %s;\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
+                printf("cf = double_from_FloatReg(%s) < double_from_FloatReg(%s);\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
             } else if (insn.mnemonic == "c.le.d") {
-                printf("cf = %s <= %s;\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
+                printf("cf = double_from_FloatReg(%s) <= double_from_FloatReg(%s);\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
             } else if (insn.mnemonic == "c.eq.d") {
-                printf("cf = %s == %s;\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
+                printf("cf = double_from_FloatReg(%s) == double_from_FloatReg(%s);\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
             }
             break;
         case MIPS_INS_CVT:
             if (insn.mnemonic == "cvt.s.w") {
                 printf("%s = (int)%s;\n", fr(insn.operands[0].reg), wr(insn.operands[1].reg));
             } else if (insn.mnemonic == "cvt.d.w") {
-                printf("%s = (int)%s;\n", dr(insn.operands[0].reg), wr(insn.operands[1].reg));
+                printf("instructrionwrapper_set_to_dr_from_double(&%s, (int)%s);\n", dr(insn.operands[0].reg), wr(insn.operands[1].reg));
             } else if (insn.mnemonic == "cvt.d.s") {
-                printf("%s = %s;\n", dr(insn.operands[0].reg), fr(insn.operands[1].reg));
+                printf("instructrionwrapper_set_to_dr_from_double(&%s, %s);\n", dr(insn.operands[0].reg), fr(insn.operands[1].reg));
             } else if (insn.mnemonic == "cvt.s.d") {
-                printf("%s = %s;\n", fr(insn.operands[0].reg), dr(insn.operands[1].reg));
+                printf("%s = double_from_FloatReg(%s);\n", fr(insn.operands[0].reg), dr(insn.operands[1].reg));
             } else if (insn.mnemonic == "cvt.w.d") {
-                printf("%s = cvt_w_d(%s);\n", wr(insn.operands[0].reg), dr(insn.operands[1].reg));
+                printf("%s = cvt_w_d(double_from_FloatReg(%s));\n", wr(insn.operands[0].reg), dr(insn.operands[1].reg));
             } else if (insn.mnemonic == "cvt.w.s") {
                 printf("%s = cvt_w_s(%s);\n", wr(insn.operands[0].reg), fr(insn.operands[1].reg));
             } else {
@@ -1826,7 +1827,7 @@ static void dump_instr(int i) {
                 printf("%s = %s / %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg), fr(insn.operands[2].reg));
             } else if (insn.mnemonic == "div.d") {
                 assert(insn.op_count == 3);
-                printf("%s = %s / %s;\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
+                printf("instructrionwrapper_div_d(&%s, %s, %s);\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
             } else {
                 assert(insn.op_count == 2);
                 printf("lo = (int)%s / (int)%s; ", r(insn.operands[0].reg), r(insn.operands[1].reg));
@@ -1842,7 +1843,7 @@ static void dump_instr(int i) {
             if (insn.mnemonic == "mov.s") {
                 printf("%s = %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg));
             } else if (insn.mnemonic == "mov.d") {
-                printf("%s = %s;\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
+                printf("instructrionwrapper_set_to_dr_from_double(&%s, double_from_FloatReg(%s));\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
             } else {
                 goto unimplemented;
             }
@@ -1851,7 +1852,7 @@ static void dump_instr(int i) {
             if (insn.mnemonic == "mul.s") {
                 printf("%s = %s * %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg), fr(insn.operands[2].reg));
             } else if (insn.mnemonic == "mul.d") {
-                printf("%s = %s * %s;\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
+                printf("instructrionwrapper_mul_d(&%s, %s, %s);\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
             } else {
                 goto unimplemented;
             }
@@ -1860,7 +1861,7 @@ static void dump_instr(int i) {
             if (insn.mnemonic == "neg.s") {
                 printf("%s = -%s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg));
             } else if (insn.mnemonic == "neg.d") {
-                printf("%s = -%s;\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
+                printf("instructrionwrapper_neg_d(&%s, %s);\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
             } else {
                 printf("%s = -%s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
             }
@@ -1869,7 +1870,7 @@ static void dump_instr(int i) {
             if (insn.mnemonic == "sub.s") {
                 printf("%s = %s - %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg), fr(insn.operands[2].reg));
             } else if (insn.mnemonic == "sub.d") {
-                printf("%s = %s - %s;\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
+                printf("instructrionwrapper_sub_d(&%s, %s, %s);\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
             } else {
                 goto unimplemented;
             }
@@ -1914,7 +1915,8 @@ static void dump_instr(int i) {
                             printf("%s = ", fr(MIPS_REG_F0));
                             break;
                         case 'd':
-                            printf("%s = ", dr(MIPS_REG_F0));
+                            //printf("%s = ", dr(MIPS_REG_F0));
+                            printf("tempf64 = ");
                             break;
                         case 'l':
                         case 'j':
@@ -1969,7 +1971,7 @@ static void dump_instr(int i) {
                                 ++pos;
                             }
                             if (only_floats_so_far && pos_float < 4) {
-                                printf("%s", dr(MIPS_REG_F12 + pos_float));
+                                printf("double_from_FloatReg(%s)", dr(MIPS_REG_F12 + pos_float));
                                 pos_float += 2;
                             } else if (pos < 4) {
                                 printf("BITCAST_U64_TO_F64(((uint64_t)%s << 32) | (uint64_t)%s)", r(MIPS_REG_A0 + pos), r(MIPS_REG_A0 + pos + 1));
@@ -2003,6 +2005,8 @@ static void dump_instr(int i) {
                 if (ret_type == 'l' || ret_type == 'j') {
                     printf("%s = (uint32_t)(temp64 >> 32);\n", r(MIPS_REG_V0));
                     printf("%s = (uint32_t)temp64;\n", r(MIPS_REG_V1));
+                } else if (ret_type == 'd') {
+                    printf("instructrionwrapper_set_to_dr_from_double(&%s, temp64);\n", dr(MIPS_REG_F0));
                 }
                 if (!name.empty()) {
                     //printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(), r(MIPS_REG_A0));
@@ -2241,7 +2245,7 @@ static void dump_instr(int i) {
             if (insn.mnemonic == "trunc.w.s") {
                 printf("%s = (int)%s;\n", wr(insn.operands[0].reg), fr(insn.operands[1].reg));
             } else if (insn.mnemonic == "trunc.w.d") {
-                printf("%s = (int)%s;\n", wr(insn.operands[0].reg), dr(insn.operands[1].reg));
+                printf("%s = (int)double_from_FloatReg(%s);\n", wr(insn.operands[0].reg), dr(insn.operands[1].reg));
             } else {
                 goto unimplemented;
             }
@@ -2501,6 +2505,7 @@ static void dump_c(void) {
         printf("uint32_t lo = 0, hi = 0;\n");
         printf("int cf = 0;\n");
         printf("uint64_t temp64;\n");
+        printf("double tempf64;\n");
         printf("uint32_t fp_dest;\n");
         printf("void *dest;\n");
         if (!f.v0_in) {

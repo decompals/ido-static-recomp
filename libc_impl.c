@@ -33,6 +33,7 @@
 
 #include "libc_impl.h"
 #include "helpers.h"
+#include "header.h"
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -2622,4 +2623,57 @@ void wrapper___assert(uint8_t *mem, uint32_t assertion_addr, uint32_t file_addr,
     STRING(assertion)
     STRING(file)
     __assert(assertion, file, line);
+}
+
+void instructrionwrapper_set_to_dr_from_double(union FloatReg *dst, double src) {
+    *dst = FloatReg_from_double(src);
+}
+
+void instructrionwrapper_add_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft) {
+    double d_fs = double_from_FloatReg(fs);
+    double d_ft = double_from_FloatReg(ft);
+    double result;
+
+    result = d_fs + d_ft;
+
+    *dst = FloatReg_from_double(result);
+}
+
+void instructrionwrapper_sub_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft) {
+    double d_fs = double_from_FloatReg(fs);
+    double d_ft = double_from_FloatReg(ft);
+    double result;
+
+    result = d_fs - d_ft;
+
+    *dst = FloatReg_from_double(result);
+}
+
+void instructrionwrapper_mul_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft) {
+    double d_fs = double_from_FloatReg(fs);
+    double d_ft = double_from_FloatReg(ft);
+    double result;
+
+    result = d_fs * d_ft;
+
+    *dst = FloatReg_from_double(result);
+}
+
+void instructrionwrapper_div_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft) {
+    double d_fs = double_from_FloatReg(fs);
+    double d_ft = double_from_FloatReg(ft);
+    double result;
+
+    result = d_fs / d_ft;
+
+    *dst = FloatReg_from_double(result);
+}
+
+void instructrionwrapper_neg_d(union FloatReg *dst, union FloatReg fs) {
+    double d_fs = double_from_FloatReg(fs);
+    double result;
+
+    result = -d_fs;
+
+    *dst = FloatReg_from_double(result);
 }

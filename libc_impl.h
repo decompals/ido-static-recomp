@@ -1,4 +1,13 @@
+#ifndef LIBC_IMPL_H
+#define LIBC_IMPL_H
+
 #include <stdint.h>
+
+union FloatReg {
+    float f[2];
+    uint32_t w[2];
+    //double d;
+};
 
 void mmap_initial_data_range(uint8_t *mem, uint32_t start, uint32_t end);
 void setup_libc_data(uint8_t *mem);
@@ -163,3 +172,12 @@ uint32_t wrapper_qsort(uint8_t *mem, uint32_t base_addr, uint32_t num, uint32_t 
 uint32_t wrapper_regcmp(uint8_t *mem, uint32_t string1_addr, uint32_t sp);
 uint32_t wrapper_regex(uint8_t *mem, uint32_t re_addr, uint32_t subject_addr, uint32_t sp);
 void wrapper___assert(uint8_t *mem, uint32_t assertion_addr, uint32_t file_addr, int line);
+
+void instructrionwrapper_set_to_dr_from_double(union FloatReg *dst, double src);
+void instructrionwrapper_add_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft);
+void instructrionwrapper_sub_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft);
+void instructrionwrapper_mul_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft);
+void instructrionwrapper_div_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft);
+void instructrionwrapper_neg_d(union FloatReg *dst, union FloatReg fs);
+
+#endif
