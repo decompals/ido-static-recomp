@@ -770,7 +770,12 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
     }*/
     // Special-case this one format string. This seems to be the only one that uses `%f` or width specifiers.
     if (!strcmp(format, "%.2fu %.2fs %u:%04.1f %.0f%%\n") && fp_addr == STDERR_ADDR) {
-        fprintf(stderr, format, MEM_U32(sp + 0), MEM_U32(sp + 8), MEM_U32(sp + 16), MEM_U32(sp + 24), MEM_U32(sp + 32));
+        double arg0 = MEM_F64(sp + 0);
+        double arg1 = MEM_F64(sp + 8);
+        uint32_t arg2 = MEM_U32(sp + 16);
+        double arg3 = MEM_F64(sp + 24);
+        double arg4 = MEM_F64(sp + 32);
+        fprintf(stderr, format, arg0, arg1, arg2, arg3, arg4);
         fflush(stderr);
         return 1;
     }
@@ -1295,6 +1300,9 @@ static uint32_t init_file(uint8_t *mem, int fd, int i, const char *path, const c
 }
 
 uint32_t wrapper_fopen(uint8_t *mem, uint32_t path_addr, uint32_t mode_addr) {
+    assert(path_addr != 0);
+    assert(mode_addr != 0);
+
     STRING(path)
     STRING(mode)
     return init_file(mem, -1, -1, path, mode);
@@ -1765,6 +1773,10 @@ int wrapper_times(uint8_t *mem, uint32_t buffer_addr) {
         r.tms_stime = t.tms_stime;
         r.tms_cutime = t.tms_cutime;
         r.tms_cstime = t.tms_cstime;
+        MEM_U32(buffer_addr + 0x0) = t.tms_utime;
+        MEM_U32(buffer_addr + 0x4) = t.tms_stime;
+        MEM_U32(buffer_addr + 0x8) = t.tms_cutime;
+        MEM_U32(buffer_addr + 0xC) = t.tms_cstime;
     }
     return (int)ret;
 }
