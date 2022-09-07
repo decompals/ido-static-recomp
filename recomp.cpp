@@ -149,6 +149,8 @@ static const struct {
     {"atof", "dp"},
     {"strtol", "ippi"},
     {"strtoul", "uppi"},
+    {"strtoll", "lppi"},
+    {"strtoull", "jppi"},
     {"strtod", "dpp"},
     {"strchr", "ppi"},
     {"strrchr", "ppi"},

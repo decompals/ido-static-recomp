@@ -3,33 +3,33 @@ import argparse
 import subprocess
 import os
 import sys
-import re
+from pathlib import Path
 import platform
 import threading
 import shutil
 
 BINS = {
     "5.3": [
-        "/usr/bin/cc",
-        "/usr/lib/acpp",
-        "/usr/lib/as0",
-        "/usr/lib/as1",
-        "/usr/lib/cfe",
-        "/usr/lib/copt",
-        "/usr/lib/ugen",
-        "/usr/lib/ujoin",
-        "/usr/lib/uld",
-        "/usr/lib/umerge",
-        "/usr/lib/uopt",
-        "/usr/lib/usplit",
+        "usr/bin/cc",
+        "usr/lib/acpp",
+        "usr/lib/as0",
+        "usr/lib/as1",
+        "usr/lib/cfe",
+        "usr/lib/copt",
+        "usr/lib/ugen",
+        "usr/lib/ujoin",
+        "usr/lib/uld",
+        "usr/lib/umerge",
+        "usr/lib/uopt",
+        "usr/lib/usplit",
     ],
     "7.1": [
-        "/usr/bin/cc",
-        "/usr/lib/as1",
-        "/usr/lib/cfe",
-        "/usr/lib/ugen",
-        "/usr/lib/umerge",
-        "/usr/lib/uopt",
+        "usr/bin/cc",
+        "usr/lib/as1",
+        "usr/lib/cfe",
+        "usr/lib/ugen",
+        "usr/lib/umerge",
+        "usr/lib/uopt",
     ]
 }
 
@@ -44,14 +44,15 @@ def call(args, output_file=None):
 def process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path):
     print("Recompiling " + ido_path + prog + "...")
 
-    c_file_path = os.path.join(build_dir, os.path.basename(prog) + "_c.c")
-    out_file_path = os.path.join(out_dir, os.path.basename(prog))
+    c_file_path = os.path.join(build_dir, prog.split("/")[-1] + "_c.c")
+    out_file_path = os.path.join(out_dir, prog)
+    os.makedirs(Path(out_file_path).parent, exist_ok=True)
     if platform.system().startswith("CYGWIN_NT"):
         out_file_path += ".exe"
 
     if not args.onlylibc:
         with open(c_file_path, "w") as cFile:
-            call(recomp_path + " " + ido_path + prog, cFile)
+            call(recomp_path + " " + os.path.join(ido_path, prog), cFile)
 
     flags = " -fno-strict-aliasing -lm"
 
@@ -96,7 +97,7 @@ def main(args):
     shutil.copy("header.h", build_dir)
     shutil.copy("libc_impl.h", build_dir)
     shutil.copy("helpers.h", build_dir)
-    
+
     out_dir = os.path.join(build_dir, "out")
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
@@ -108,8 +109,9 @@ def main(args):
     recomp_path = os.path.join(build_dir, "recomp")
     if platform.system().startswith("CYGWIN_NT"):
         recomp_path += ".exe"
-    call("g++ recomp.cpp -o " + recomp_path + " -g -lcapstone" + std_flag + ugen_flag)
-    
+    if not args.norecomp:
+        call("g++ recomp.cpp -o " + recomp_path + " -g -lcapstone" + std_flag + ugen_flag)
+
     threads = []
     for prog in bins:
         if args.multhreading:
@@ -118,12 +120,12 @@ def main(args):
             t.start()
         else:
             process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path)
-    
+
     if args.multhreading:
         for t in threads:
             t.join()
 
-    shutil.copyfile(os.path.join(ido_path, "usr/lib/err.english.cc"), os.path.join(out_dir, "err.english.cc"))
+    shutil.copyfile(os.path.join(ido_path, "usr/lib/err.english.cc"), os.path.join(out_dir, "usr/lib/err.english.cc"))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Static ido recompilation build utility")
@@ -131,5 +133,6 @@ if __name__ == "__main__":
     parser.add_argument("-O2", help="Build binaries with -O2", action='store_true')
     parser.add_argument("-onlylibc", help="Builds libc_impl.c only", action='store_true')
     parser.add_argument("-multhreading", help="Enables multi threading (deprecated with O2)", action='store_true')
+    parser.add_argument("-norecomp", help="Do not build the recomp binary", action='store_true')
     rgs = parser.parse_args()
     main(rgs)

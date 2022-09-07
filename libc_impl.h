@@ -31,6 +31,8 @@ int wrapper_atol(uint8_t *mem, uint32_t nptr_addr);
 double wrapper_atof(uint8_t *mem, uint32_t nptr_addr);
 int wrapper_strtol(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr, int base);
 uint32_t wrapper_strtoul(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr, int base);
+int64_t wrapper_strtoll(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr, int base);
+uint64_t wrapper_strtoull(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr, int base);
 double wrapper_strtod(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr);
 uint32_t wrapper_strchr(uint8_t *mem, uint32_t str_addr, int c);
 uint32_t wrapper_strrchr(uint8_t *mem, uint32_t str_addr, int c);
