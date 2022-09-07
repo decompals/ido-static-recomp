@@ -173,11 +173,8 @@ uint32_t wrapper_regcmp(uint8_t *mem, uint32_t string1_addr, uint32_t sp);
 uint32_t wrapper_regex(uint8_t *mem, uint32_t re_addr, uint32_t subject_addr, uint32_t sp);
 void wrapper___assert(uint8_t *mem, uint32_t assertion_addr, uint32_t file_addr, int line);
 
-void instructrionwrapper_set_to_dr_from_double(union FloatReg *dst, double src);
-void instructrionwrapper_add_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft);
-void instructrionwrapper_sub_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft);
-void instructrionwrapper_mul_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft);
-void instructrionwrapper_div_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft);
-void instructrionwrapper_neg_d(union FloatReg *dst, union FloatReg fs);
+union FloatReg FloatReg_from_double(double d);
+double double_from_FloatReg(union FloatReg floatreg);
+double double_from_memory(uint8_t *mem, uint32_t address);
 
 #endif

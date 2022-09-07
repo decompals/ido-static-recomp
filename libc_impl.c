@@ -2625,55 +2625,37 @@ void wrapper___assert(uint8_t *mem, uint32_t assertion_addr, uint32_t file_addr,
     __assert(assertion, file, line);
 }
 
-void instructrionwrapper_set_to_dr_from_double(union FloatReg *dst, double src) {
-    *dst = FloatReg_from_double(src);
+union host_doubleword {
+    uint64_t ww;
+    double d;
+};
+
+union FloatReg FloatReg_from_double(double d) {
+    union host_doubleword val;
+    union FloatReg floatreg;
+
+    val.d = d;
+
+    floatreg.w[0] = val.ww & 0xFFFFFFFF;
+    floatreg.w[1] = (val.ww >> 32) & 0xFFFFFFFF;
+
+    return floatreg;
 }
 
-void instructrionwrapper_add_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft) {
-    double d_fs = double_from_FloatReg(fs);
-    double d_ft = double_from_FloatReg(ft);
-    double result;
+double double_from_FloatReg(union FloatReg floatreg) {
+    union host_doubleword val;
 
-    result = d_fs + d_ft;
-
-    *dst = FloatReg_from_double(result);
+    val.ww = floatreg.w[1];
+    val.ww <<= 32;
+    val.ww |= floatreg.w[0];
+    return val.d;
 }
 
-void instructrionwrapper_sub_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft) {
-    double d_fs = double_from_FloatReg(fs);
-    double d_ft = double_from_FloatReg(ft);
-    double result;
+double double_from_memory(uint8_t *mem, uint32_t address) {
+    union host_doubleword val;
 
-    result = d_fs - d_ft;
-
-    *dst = FloatReg_from_double(result);
-}
-
-void instructrionwrapper_mul_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft) {
-    double d_fs = double_from_FloatReg(fs);
-    double d_ft = double_from_FloatReg(ft);
-    double result;
-
-    result = d_fs * d_ft;
-
-    *dst = FloatReg_from_double(result);
-}
-
-void instructrionwrapper_div_d(union FloatReg *dst, union FloatReg fs, union FloatReg ft) {
-    double d_fs = double_from_FloatReg(fs);
-    double d_ft = double_from_FloatReg(ft);
-    double result;
-
-    result = d_fs / d_ft;
-
-    *dst = FloatReg_from_double(result);
-}
-
-void instructrionwrapper_neg_d(union FloatReg *dst, union FloatReg fs) {
-    double d_fs = double_from_FloatReg(fs);
-    double result;
-
-    result = -d_fs;
-
-    *dst = FloatReg_from_double(result);
+    val.ww = MEM_U32(address);
+    val.ww <<= 32;
+    val.ww |= MEM_U32(address + 4);
+    return val.d;
 }
