@@ -1914,7 +1914,6 @@ static void dump_instr(int i) {
                             printf("%s = ", fr(MIPS_REG_F0));
                             break;
                         case 'd':
-                            //printf("%s = ", dr(MIPS_REG_F0));
                             printf("tempf64 = ");
                             break;
                         case 'l':
