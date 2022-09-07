@@ -8,8 +8,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         ido: [5.3, 7.1]
+        include:
+          - { ido: 5.3, ugen: "-Dugen53" }
 
     name: Recompiling ido ${{ matrix.ido }} for ${{ matrix.os }}
     steps:
@@ -26,11 +28,35 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           brew install capstone
-          
-      - name: Run the build script
+      - name: Install dependencies (Windows)
+        uses: msys2/setup-msys2@v2
+        with:
+          install: |-
+            gcc
+            mingw-w64-x86_64-capstone
+            mingw-w64-x86_64-gcc
+            python3
+        if: matrix.os == 'windows-latest'
+
+      - name: Build recomp binary (Windows-only)
+        shell: msys2 {0}
+        run: |-
+          mkdir -p build${{ matrix.ido }}
+          g++ recomp.cpp -o build${{ matrix.ido }}/recomp.exe -g -lcapstone ${{ matrix.ugen }} -static
+        if: matrix.os == 'windows-latest'
+
+      - name: Run the build script (Non-Windows)
         shell: bash
         run: |
           python3 build.py ido/${{ matrix.ido }} -O2
+        if: matrix.os != 'windows-latest'
+      - name: Run the build script (Windows)
+        shell: cmd
+        run: |-
+          set MSYSTEM=MSYS
+          msys2 -c 'python3 build.py ido/${{ matrix.ido }} -O2 -norecomp'
+        if: matrix.os == 'windows-latest'
+
       - name: Create release archive
         shell: bash
         run: |
@@ -44,7 +70,7 @@ jobs:
             ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz
       - name: Update release
         uses: johnwbyrd/update-release@v1.0.0
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/per-function' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           files: ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz
