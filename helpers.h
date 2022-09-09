@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define MEM_F64(a) (double_from_memory(mem, a))
+#define MEM_F32(a) (*(float *)(mem + a))
 #define MEM_U32(a) (*(uint32_t *)(mem + a))
 #define MEM_S32(a) (*(int32_t *)(mem + a))
 #define MEM_U16(a) (*(uint16_t *)(mem + ((a) ^ 2)))
