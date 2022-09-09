@@ -2004,7 +2004,7 @@ static void dump_instr(int i) {
                     printf("%s = (uint32_t)(temp64 >> 32);\n", r(MIPS_REG_V0));
                     printf("%s = (uint32_t)temp64;\n", r(MIPS_REG_V1));
                 } else if (ret_type == 'd') {
-                    printf("%s = FloatReg_from_double(temp64);\n", dr(MIPS_REG_F0));
+                    printf("%s = FloatReg_from_double(tempf64);\n", dr(MIPS_REG_F0));
                 }
                 if (!name.empty()) {
                     //printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(), r(MIPS_REG_A0));
