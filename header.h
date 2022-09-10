@@ -13,12 +13,6 @@
 #define RM_RP 2
 #define RM_RM 3
 
-union FloatReg {
-    float f[2];
-    uint32_t w[2];
-    double d;
-};
-
 #define cvt_w_d(f) \
     ((fcsr & RM_RZ) ? ((isnan(f) || f <= -2147483649.0 || f >= 2147483648.0) ? (fcsr |= 0x40, 2147483647) : (int)f) : (assert(0), 0))
 

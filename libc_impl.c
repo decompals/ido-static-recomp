@@ -35,6 +35,7 @@
 
 #include "libc_impl.h"
 #include "helpers.h"
+#include "header.h"
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -295,6 +296,13 @@ static void find_bin_dir(void) {
 #endif
 }
 
+void final_cleanup(uint8_t *mem) {
+    wrapper_fflush(mem, 0);
+    free_all_file_bufs(mem);
+    mem += MEM_REGION_START;
+    memory_unmap(mem, MEM_REGION_SIZE);
+}
+
 int main(int argc, char *argv[]) {
     int ret;
 
@@ -307,10 +315,7 @@ int main(int argc, char *argv[]) {
     mem -= MEM_REGION_START;
     int run(uint8_t *mem, int argc, char *argv[]);
     ret = run(mem, argc, argv);
-    wrapper_fflush(mem, 0);
-    free_all_file_bufs(mem);
-    mem += MEM_REGION_START;
-    memory_unmap(mem, MEM_REGION_SIZE);
+    final_cleanup(mem);
     return ret;
 }
 
@@ -798,6 +803,17 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
             return 1;
         }
     }*/
+    // Special-case this one format string. This seems to be the only one that uses `%f` or width specifiers.
+    if (!strcmp(format, "%.2fu %.2fs %u:%04.1f %.0f%%\n") && fp_addr == STDERR_ADDR) {
+        double arg0 = MEM_F64(sp + 0);
+        double arg1 = MEM_F64(sp + 8);
+        uint32_t arg2 = MEM_U32(sp + 16);
+        double arg3 = MEM_F64(sp + 24);
+        double arg4 = MEM_F64(sp + 32);
+        fprintf(stderr, format, arg0, arg1, arg2, arg3, arg4);
+        fflush(stderr);
+        return 1;
+    }
     int ret = 0;
     for (;;) {
         uint32_t pos = format_addr;
@@ -816,6 +832,10 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
         }
         ++pos;
         ch = MEM_S8(pos);
+        if (ch == '1') {
+            ++pos;
+            ch = MEM_S8(pos);
+        }
         switch (ch) {
             case 'd':
             {
@@ -1022,27 +1042,31 @@ uint32_t wrapper_strtoul(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr,
     return res;
 }
 
-uint64_t wrapper_strtoll(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr, int base) {
+int64_t wrapper_strtoll(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr, int base) {
     STRING(nptr)
     char *endptr = NULL;
-    uint64_t res = strtoll(nptr, endptr_addr != 0 ? &endptr : NULL, base);
-
-    if(endptr != NULL) {
+    errno = 0;
+    int64_t res = strtoll(nptr, endptr_addr != 0 ? &endptr : NULL, base);
+    if (errno != 0) {
+        MEM_U32(ERRNO_ADDR) = errno;
+    }
+    if (endptr != NULL) {
         MEM_U32(endptr_addr) = nptr_addr + (uint32_t)(endptr - nptr);
     }
-
     return res;
 }
 
 uint64_t wrapper_strtoull(uint8_t *mem, uint32_t nptr_addr, uint32_t endptr_addr, int base) {
     STRING(nptr)
     char *endptr = NULL;
+    errno = 0;
     uint64_t res = strtoull(nptr, endptr_addr != 0 ? &endptr : NULL, base);
-
-    if(endptr != NULL) {
+    if (errno != 0) {
+        MEM_U32(ERRNO_ADDR) = errno;
+    }
+    if (endptr != NULL) {
         MEM_U32(endptr_addr) = nptr_addr + (uint32_t)(endptr - nptr);
     }
-
     return res;
 }
 
@@ -1311,6 +1335,9 @@ static uint32_t init_file(uint8_t *mem, int fd, int i, const char *path, const c
 }
 
 uint32_t wrapper_fopen(uint8_t *mem, uint32_t path_addr, uint32_t mode_addr) {
+    assert(path_addr != 0);
+    assert(mode_addr != 0);
+
     STRING(path)
     STRING(mode)
     return init_file(mem, -1, -1, path, mode);
@@ -1781,6 +1808,10 @@ int wrapper_times(uint8_t *mem, uint32_t buffer_addr) {
         r.tms_stime = t.tms_stime;
         r.tms_cutime = t.tms_cutime;
         r.tms_cstime = t.tms_cstime;
+        MEM_U32(buffer_addr + 0x0) = t.tms_utime;
+        MEM_U32(buffer_addr + 0x4) = t.tms_stime;
+        MEM_U32(buffer_addr + 0x8) = t.tms_cutime;
+        MEM_U32(buffer_addr + 0xC) = t.tms_cstime;
     }
     return (int)ret;
 }
@@ -2203,6 +2234,7 @@ void wrapper_abort(uint8_t *mem) {
 }
 
 void wrapper_exit(uint8_t *mem, int status) {
+    final_cleanup(mem);
     exit(status);
 }
 
@@ -2626,4 +2658,39 @@ void wrapper___assert(uint8_t *mem, uint32_t assertion_addr, uint32_t file_addr,
     STRING(assertion)
     STRING(file)
     __assert(assertion, file, line);
+}
+
+union host_doubleword {
+    uint64_t ww;
+    double d;
+};
+
+union FloatReg FloatReg_from_double(double d) {
+    union host_doubleword val;
+    union FloatReg floatreg;
+
+    val.d = d;
+
+    floatreg.w[0] = val.ww & 0xFFFFFFFF;
+    floatreg.w[1] = (val.ww >> 32) & 0xFFFFFFFF;
+
+    return floatreg;
+}
+
+double double_from_FloatReg(union FloatReg floatreg) {
+    union host_doubleword val;
+
+    val.ww = floatreg.w[1];
+    val.ww <<= 32;
+    val.ww |= floatreg.w[0];
+    return val.d;
+}
+
+double double_from_memory(uint8_t *mem, uint32_t address) {
+    union host_doubleword val;
+
+    val.ww = MEM_U32(address);
+    val.ww <<= 32;
+    val.ww |= MEM_U32(address + 4);
+    return val.d;
 }
