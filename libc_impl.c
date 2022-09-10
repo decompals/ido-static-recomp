@@ -375,41 +375,6 @@ uint32_t wrapper_sbrk(uint8_t *mem, int increment) {
     return old;
 }
 
-#if 0
-uint32_t wrapper_malloc(uint8_t *mem, uint32_t size) {
-    uint32_t orig_size = size;
-    size += 8;
-    size = (size + 0xfff) & ~0xfff;
-    uint32_t ret = wrapper_sbrk(mem, size);
-    MEM_U32(ret) = orig_size;
-    return ret + 8;
-}
-
-uint32_t wrapper_calloc(uint8_t *mem, uint32_t num, uint32_t size) {
-    uint64_t new_size = (uint64_t)num * size;
-    assert(new_size == (uint32_t)new_size);
-    uint32_t ret = wrapper_malloc(mem, new_size);
-    return wrapper_memset(mem, ret, 0, new_size);
-}
-
-uint32_t wrapper_realloc(uint8_t *mem, uint32_t data_addr, uint32_t size) {
-    if (data_addr == 0) {
-        return wrapper_malloc(mem, size);
-    }
-    uint32_t orig_size = MEM_U32(data_addr - 8);
-    if (size < orig_size || orig_size < 4088 && size < 4088) {
-        MEM_U32(data_addr - 8) = size;
-        return data_addr;
-    }
-    uint32_t new_addr = wrapper_malloc(mem, size);
-    return wrapper_memcpy(mem, new_addr, data_addr, MIN(size, orig_size));
-}
-
-void wrapper_free(uint8_t *mem, uint32_t data_addr) {
-    // NOP
-}
-#else
-
 /*
 Simple bin-based malloc algorithm
 
@@ -540,7 +505,6 @@ void wrapper_free(uint8_t *mem, uint32_t data_addr) {
     MEM_U32(list_ptr) = node_ptr;
     mem_used -= size;
 }
-#endif
 
 int wrapper_fscanf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32_t sp) {
     struct FILE_irix *f = (struct FILE_irix *)&MEM_U32(fp_addr);
@@ -565,7 +529,6 @@ int wrapper_fscanf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32_
                     return ret;
                 }
                 if (!isspace(ch)) {
-                    //wrapper_ungetc(mem, ch, fp_addr);
                     break;
                 }
             }
@@ -775,8 +738,6 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
     }
 
     MEM_S8(str_addr) = '\0';
-    STRING(orig_str) // for debug
-    //printf("result: '%s' '%s'\n", format, orig_str);
     return ret;
 }
 
@@ -784,25 +745,7 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
     struct FILE_irix *f = (struct FILE_irix *)&MEM_U32(fp_addr);
     STRING(format)
     sp += 8;
-    /*if (!strcmp(format, "%s")) {
-        uint32_t s_addr = MEM_U32(sp);
-        STRING(s)
-        if (fp_addr == STDERR_ADDR) {
-            fprintf(stderr, "%s", s);
-            fflush(stderr);
-            return 1;
-        }
-    }
-    if (!strcmp(format, "%s: %s: ")) {
-        uint32_t s1_addr = MEM_U32(sp), s2_addr = MEM_U32(sp + 4);
-        STRING(s1)
-        STRING(s2)
-        if (fp_addr == STDERR_ADDR) {
-            fprintf(stderr, "%s: %s: ", s1, s2);
-            fflush(stderr);
-            return 1;
-        }
-    }*/
+
     // Special-case this one format string. This seems to be the only one that uses `%f` or width specifiers.
     if (!strcmp(format, "%.2fu %.2fs %u:%04.1f %.0f%%\n") && fp_addr == STDERR_ADDR) {
         double arg0 = MEM_F64(sp + 0);
@@ -1787,7 +1730,6 @@ int wrapper_isatty(uint8_t *mem, int fd) {
 }
 
 uint32_t wrapper_strftime(uint8_t *mem, uint32_t ptr_addr, uint32_t maxsize, uint32_t format_addr, uint32_t timeptr_addr) {
-    //assert(0 && "strftime not implemented");
     MEM_S8(ptr_addr) = 0;
     return 0;
 }
@@ -1832,8 +1774,6 @@ uint32_t wrapper_ctime(uint8_t *mem, uint32_t timep_addr) {
         ++res;
     }
     return ret_addr;
-    //assert(0 && "ctime not implemented");
-    //return 0;
 }
 
 uint32_t wrapper_localtime(uint8_t *mem, uint32_t timep_addr) {
@@ -2356,7 +2296,6 @@ static void signal_handler(int signum) {
 }
 
 uint32_t wrapper_signal(uint8_t *mem, int signum, uint64_t (*trampoline)(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t fp_dest), uint32_t handler_addr, uint32_t sp) {
-    //assert(0 && "signal not implemented");
     return 0;
 }
 
@@ -2391,12 +2330,10 @@ uint32_t wrapper_sigset(uint8_t *mem, int signum, uint64_t (*trampoline)(uint8_t
 }
 
 int wrapper_get_fpc_csr(uint8_t *mem) {
-    //assert(0 && "get_fpc_csr not implemented");
     return 0;
 }
 
 int wrapper_set_fpc_csr(uint8_t *mem, int csr) {
-    //assert(0 && "set_fpc_csr not implemented");
     return 0;
 }
 
@@ -2597,13 +2534,10 @@ int wrapper_system(uint8_t *mem, uint32_t command_addr) {
 }
 
 static int name_compare(uint8_t *mem, uint32_t a_addr, uint32_t b_addr) {
-    //printf("pc=0x00438180\n");
     return wrapper_strcmp(mem, MEM_U32(a_addr), MEM_U32(b_addr));
 }
 
 static uint32_t tsearch_tfind(uint8_t *mem, uint32_t key_addr, uint32_t rootp_addr, uint32_t compar_addr, bool insert) {
-    //assert(compar_addr == 0x438180); // name_compare in as1
-
     if (rootp_addr == 0) {
         return 0;
     }
