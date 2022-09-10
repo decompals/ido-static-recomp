@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 import argparse
 import subprocess
-import os
 import sys
-from pathlib import Path
 import platform
 import threading
 import shutil
+from pathlib import Path
 
 BINS = {
     "5.3": [
@@ -33,108 +32,190 @@ BINS = {
     ]
 }
 
+MACOS_TARGETS = [
+    "arm64-apple-macos11", 
+    "x86_64-apple-macos10.14"
+]
+
+class Colors:
+    NO_COL = "\033[0m"
+    RED    = "\033[0;31m"
+    GREEN  = "\033[0;32m"
+    BLUE   = "\033[0;34m"
+    YELLOW = "\033[0;33m"
+
+    def disable(self):
+        self.NO_COL = ""
+        self.RED    = ""
+        self.GREEN  = ""
+        self.BLUE   = ""
+        self.YELLOW = ""
+
+COLORS = Colors()
+VERBOSE = False
+
+def print_step(cmd, input, output, rev=False):
+    if rev:
+        print(f"{COLORS.GREEN}{cmd}\t{COLORS.BLUE}{output}{COLORS.GREEN} <- {COLORS.YELLOW}{input}{COLORS.NO_COL}")
+    else:
+        print(f"{COLORS.GREEN}{cmd}\t{COLORS.YELLOW}{input}{COLORS.GREEN} -> {COLORS.BLUE}{output}{COLORS.NO_COL}")
 
 def call(args, output_file=None):
-    print(args)
-    p = subprocess.Popen(args, shell=True, universal_newlines=True, stdout=output_file)
-    p.wait()
+    if VERBOSE:
+        print(args)
+
+    subprocess.run(args, shell=True, universal_newlines=True, stdout=output_file, check=True)
     if output_file:
         output_file.flush()
 
-def process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path):
-    print("Recompiling " + ido_path + prog + "...")
+def process_prog(prog, ido_path, ido_flag, fix_ugen, build_dir, out_dir, args, recomp):
+    prog_path = ido_path / prog
+    prog_name = prog_path.name
+    c_file_path = build_dir / (prog_name + ".c")
+    out_file_path = name_executable(out_dir, prog_name)
 
-    c_file_path = os.path.join(build_dir, prog.split("/")[-1] + "_c.c")
-    out_file_path = os.path.join(out_dir, prog)
-    os.makedirs(Path(out_file_path).parent, exist_ok=True)
-    if platform.system().startswith("CYGWIN_NT"):
-        out_file_path += ".exe"
+    conservative_flag = " --conservative " if fix_ugen and prog_name == "ugen" else " "
 
-    if not args.onlylibc:
-        with open(c_file_path, "w") as cFile:
-            call(recomp_path + " " + os.path.join(ido_path, prog), cFile)
+    emit_translated_c(recomp, conservative_flag, prog_path, c_file_path)
 
-    flags = " -fno-strict-aliasing -lm"
+    flags = f"-I. {ido_flag} -Wno-tautological-compare -fno-strict-aliasing -lm"
 
     if platform.system() == "Darwin":
-        flags += " -fno-pie"
+        flags += " -Wno-deprecated-declarations"
+        if "x86" in platform.processor() and not args.universal:
+            flags += " -fno-pie"
     else:
         flags += " -g -no-pie"
 
     if args.O2:
         flags += " -O2"
 
-    flags += " -Wno-deprecated-declarations"
+    if args.universal:
+        cross_bins = []
+        for target in MACOS_TARGETS:
+            cross_dir = build_dir / target
+            cross_dir.mkdir(parents=True, exist_ok=True)
+            out = name_executable(cross_dir, prog_name)
+            cross_bins.append(str(out))
 
-    call("gcc libc_impl.c " + c_file_path + " -o " + out_file_path + flags + ido_flag)
+            f = f"{flags} -target {target}"
+            if 'x86' in target:
+                f += ' -fno-pie'
+            
+            compile_translated_c(c_file_path, 'libc_impl.c', out, f)
 
+        artifacts = " ".join(cross_bins)
+        stitch_artifacts(out_file_path, artifacts)
+
+    else:
+        compile_translated_c(c_file_path, 'libc_impl.c', out_file_path, flags)
+    
     return
 
-def main(args):
-    ido_path = args.ido_path
-    if ido_path[len(ido_path)-1] == "/":
-        ido_path = ido_path[:len(ido_path)-1]
+def name_executable(location, name):
+    if platform.system().startswith("CYGWIN_NT"):
+        return location / (name + ".exe")
+    else:
+        return location / name
 
-    ido_dir = ido_path.split(os.path.sep)[-1]
+def build_recompiler(in_dir):
+    opt = "-O2"
+    capstone = "`pkg-config --cflags --libs capstone`"
+    flags = "-Wno-switch"
+
+    if platform.system() == "Darwin":
+        flags += " -std=c++11"
+    
+    recomp = name_executable(in_dir, "recomp")
+
+    print_step('C++','recomp.cpp',recomp)
+    call(f"g++ recomp.cpp -o {recomp} {opt} {flags} {capstone}")
+
+    return recomp
+
+def emit_translated_c(recomp, flags, idoprog, output_path):
+    print_step('RECOMP', idoprog, output_path)
+    with open(output_path, 'w') as cFile:
+        call(f"{recomp} {flags} {idoprog}", cFile)
+
+def compile_translated_c(c_file, libc, out, flags):
+    print_step('CC', c_file, out)
+    call(f"gcc {libc} {c_file} -o {out} {flags}")
+
+def stitch_artifacts(out, artifacts):
+    print_step('LIPO', artifacts, out, rev=True)
+    call(f'lipo -create -output {out} {artifacts}')
+
+def cpy(src, dst):
+    print_step('CP', src, dst)
+    shutil.copyfile(src, dst)
+
+def main(args):
+    build_base = Path("build")
+
+    ido_path = Path(args.ido_path)
+    ido_dir = ido_path.parts[-1]
     if "7.1" in ido_dir:
         print("Detected IDO version 7.1")
-        ido_flag = " -DIDO71"
-        ugen_flag = ""
-        build_dir = "build7.1"
+        ido_flag = "-DIDO71"
+        fix_ugen = False
+        build_dir = build_base / "7.1"
         bins = BINS["7.1"]
     elif "5.3" in ido_dir:
         print("Detected IDO version 5.3")
-        ido_flag = " -DIDO53"
-        ugen_flag = " -Dugen53"
-        build_dir = "build5.3"
+        ido_flag = "-DIDO53"
+        fix_ugen = True
+        build_dir = build_base / "5.3"
         bins = BINS["5.3"]
     else:
         sys.exit("Unsupported ido dir: " + ido_dir)
 
     if args.multhreading and args.O2:
         print("WARNING: -O2 and -multhreading used together")
+    
+    if args.universal and platform.system() != "Darwin":
+        sys.exit("'-universal' only supported on macOS")
 
-    if not os.path.exists(build_dir):
-        os.mkdir(build_dir)
-    shutil.copy("header.h", build_dir)
-    shutil.copy("libc_impl.h", build_dir)
-    shutil.copy("helpers.h", build_dir)
+    if args.nocolor:
+        COLORS.disable()
+    
+    if args.verbose:
+        global VERBOSE
+        VERBOSE = True
+    
+    out_dir = build_dir / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    out_dir = os.path.join(build_dir, "out")
-    if not os.path.exists(out_dir):
-        os.mkdir(out_dir)
-
-    std_flag = ""
-    if platform.system() == "Darwin":
-        std_flag = " -std=c++11"
-
-    recomp_path = os.path.join(build_dir, "recomp")
-    if platform.system().startswith("CYGWIN_NT"):
-        recomp_path += ".exe"
     if not args.norecomp:
-        call("g++ recomp.cpp -o " + recomp_path + " -g -lcapstone" + std_flag + ugen_flag)
-
+        recomp = build_recompiler(build_base)
+    else:
+        recomp = name_executable(build_base, "recomp")
+    
     threads = []
     for prog in bins:
         if args.multhreading:
-            t = threading.Thread(target=process_prog, args=(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path))
+            t = threading.Thread(target=process_prog, args=(prog, ido_path, ido_flag, fix_ugen, build_dir, out_dir, args, recomp))
             threads.append(t)
             t.start()
         else:
-            process_prog(prog, ido_path, ido_flag, build_dir, out_dir, args, recomp_path)
-
+            process_prog(prog, ido_path, ido_flag, fix_ugen, build_dir, out_dir, args, recomp)
+    
     if args.multhreading:
         for t in threads:
             t.join()
 
-    shutil.copyfile(os.path.join(ido_path, "usr/lib/err.english.cc"), os.path.join(out_dir, "usr/lib/err.english.cc"))
+    cpy(ido_path / "usr/lib/err.english.cc", out_dir / "err.english.cc")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Static ido recompilation build utility")
     parser.add_argument("ido_path", help="Path to ido")
     parser.add_argument("-O2", help="Build binaries with -O2", action='store_true')
-    parser.add_argument("-onlylibc", help="Builds libc_impl.c only", action='store_true')
     parser.add_argument("-multhreading", help="Enables multi threading (deprecated with O2)", action='store_true')
+    parser.add_argument("-universal", help="Create universal ARM and x86_64 binaries on macOS", action='store_true')
+    parser.add_argument("-verbose", help="Print detailed build commands", action='store_true')
+    parser.add_argument("-nocolor", help="Disable colored printing", action='store_true')
     parser.add_argument("-norecomp", help="Do not build the recomp binary", action='store_true')
+    # TODO: add these options back
+    #parser.add_argument("-onlylibc", help="Builds libc_impl.c only", action='store_true')
     rgs = parser.parse_args()
     main(rgs)

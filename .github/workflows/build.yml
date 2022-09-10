@@ -10,8 +10,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         ido: [5.3, 7.1]
-        include:
-          - { ido: 5.3, ugen: "-Dugen53" }
 
     name: Recompiling ido ${{ matrix.ido }} for ${{ matrix.os }}
     steps:
@@ -27,7 +25,7 @@ jobs:
         shell: bash
         if: matrix.os == 'macos-latest'
         run: |
-          brew install capstone
+          brew install capstone pkg-config
       - name: Install dependencies (Windows)
         uses: msys2/setup-msys2@v2
         with:
@@ -36,32 +34,38 @@ jobs:
             mingw-w64-x86_64-capstone
             mingw-w64-x86_64-gcc
             python3
+            pkg-config
         if: matrix.os == 'windows-latest'
 
       - name: Build recomp binary (Windows-only)
         shell: msys2 {0}
-        run: |-
-          mkdir -p build${{ matrix.ido }}
-          g++ recomp.cpp -o build${{ matrix.ido }}/recomp.exe -g -lcapstone ${{ matrix.ugen }} -static
         if: matrix.os == 'windows-latest'
+        run: |-
+          mkdir -p build/
+          g++ recomp.cpp -o build/recomp.exe -g `pkg-config --cflags --libs capstone` -static
 
-      - name: Run the build script (Non-Windows)
+      - name: Run the build script (Ubuntu)
         shell: bash
+        if: matrix.os == 'ubuntu-latest'
         run: |
           python3 build.py ido/${{ matrix.ido }} -O2
-        if: matrix.os != 'windows-latest'
+      - name: Run the build script (MacOS)
+        shell: bash
+        if: matrix.os == 'macos-latest'
+        run: |
+          python3 build.py ido/${{ matrix.ido }} -O2 -universal
       - name: Run the build script (Windows)
         shell: cmd
+        if: matrix.os == 'windows-latest'
         run: |-
           set MSYSTEM=MSYS
           msys2 -c 'python3 build.py ido/${{ matrix.ido }} -O2 -norecomp'
-        if: matrix.os == 'windows-latest'
 
       - name: Create release archive
         shell: bash
         run: |
-          cd build${{ matrix.ido }}/out
-          tar -czvf ../../ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz *
+          cd build/${{ matrix.ido }}/out
+          tar -czvf ../../../ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz *
       - name: Upload archive
         uses: actions/upload-artifact@v2
         with:
