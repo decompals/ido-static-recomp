@@ -2350,15 +2350,17 @@ uint32_t wrapper_tempnam(uint8_t *mem, uint32_t dir_addr, uint32_t pfx_addr) {
     int fd;
     size_t len;
     uint32_t ret_addr;
+    const char *tmpdir;
 
+    #if 0
     STRING(dir)
     STRING(pfx)
 
-    #if 1
     char *ret = tempnam(dir, pfx);
     char *ret_saved = ret;
     if (ret == NULL) {
         MEM_U32(ERRNO_ADDR) = errno;
+        // fprintf(stderr, "\n%s: Warning: Could not create temp filename\n\n", __func__);
         return 0;
     }
 
@@ -2374,16 +2376,35 @@ uint32_t wrapper_tempnam(uint8_t *mem, uint32_t dir_addr, uint32_t pfx_addr) {
     free(ret_saved);
     return ret_addr;
     #else
+    tmpdir = getenv("TMPDIR");
+    if (tmpdir == NULL) {
+        if (dir_addr != 0) {
+            STRING(dir)
+            tmpdir = dir;
+        }
 
-    strcpy(template, dir);
+        if ((tmpdir == NULL) || tmpdir[0] == '\0') {
+            tmpdir = "/tmp";
+        }
+    }
+
+    strcpy(template, tmpdir);
     strcat(template, "/");
-    strcat(template, pfx);
-    strcat(template, "XXXXXX");
+
+    if (pfx_addr != 0) {
+        STRING(pfx)
+
+        if (strlen(pfx) <= 5) {
+            strcat(template, pfx);
+        }
+    }
+
+    strcat(template, "_ido_tempnam_XXXXXX");
 
     fd = mkstemp(template);
     if (fd == -1) {
         MEM_U32(ERRNO_ADDR) = errno;
-        fprintf(stderr, "\n%s: Warning: Could not create temp filename\n\n", __func__);
+        // fprintf(stderr, "\n%s: Warning: Could not create temp filename\n\n", __func__);
         return 0;
     } else {
         // close the file descriptor to mimic tmpnam's behaviour
@@ -2418,7 +2439,7 @@ uint32_t wrapper_tmpnam(uint8_t *mem, uint32_t str_addr) {
     strcpy(template, "/tmp/ido_tmpnam_XXXXXX");
     fd = mkstemp(template);
     if (fd == -1) {
-        fprintf(stderr, "\n%s: Warning: Could not create temp filename\n\n", __func__);
+        //fprintf(stderr, "\n%s: Warning: Could not create temp filename\n\n", __func__);
         return 0;
     } else {
         // close the file descriptor to mimic tmpnam's behaviour
@@ -2440,8 +2461,14 @@ uint32_t wrapper_mktemp(uint8_t *mem, uint32_t template_addr) {
     //fprintf(stderr, "\n");
 
     //mktemp(template);
+    // if (strcmp(template, "/tmp/ctmelfXXXXX") == 0) {
+    //     strcpy(template, "/tmp/ctmelfXXXXXX");
+    // }
+
     fd = mkstemp(template);
     if (fd == -1) {
+        // fprintf(stderr, "\n%s: Warning: Could not create temp filename\n", __func__);
+        // fprintf(stderr, "\n%s: template = %s\n", __func__, template);
         MEM_U32(ERRNO_ADDR) = errno;
         template[0] = '\0';
     } else {
