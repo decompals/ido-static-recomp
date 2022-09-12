@@ -1812,6 +1812,13 @@ int wrapper_setvbuf(uint8_t *mem, uint32_t fp_addr, uint32_t buf_addr, int mode,
     }
     size &= ~0xf;
     f->_flag &= ~IOMYBUF;
+
+    if (buf_addr == 0) {
+        assert(size > 0);
+        buf_addr = wrapper_malloc(mem, size);
+        f->_flag |= IOMYBUF;
+    }
+
     f->_base_addr = buf_addr;
     f->_ptr_addr = buf_addr;
     f->_cnt = 0;
