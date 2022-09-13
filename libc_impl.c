@@ -288,7 +288,8 @@ static void find_bin_dir(void) {
 #else
     ssize_t size = readlink("/proc/self/exe", path, PATH_MAX);
     if (size < 0 || size == PATH_MAX) {
-        if (!getenv("IDO_CC") || (snprintf(path, PATH_MAX, "%s", getenv("IDO_CC")) >= PATH_MAX)) {
+        char *ido_cc = NULL;
+        if ((!(ido_cc = getenv("IDO_CC"))) || (snprintf(path, PATH_MAX, "%s", ido_cc) >= PATH_MAX)) {
             return;
         }
     }
