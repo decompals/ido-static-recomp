@@ -2424,7 +2424,6 @@ uint32_t wrapper_mktemp(uint8_t *mem, uint32_t template_addr) {
 
     fd = mkstemp(template);
     if (fd == -1) {
-        // fprintf(stderr, "\n%s: Warning: Could not create temp filename\n", __func__);
         MEM_U32(ERRNO_ADDR) = errno;
         template[0] = '\0';
     } else {
