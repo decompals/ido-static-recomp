@@ -2407,7 +2407,6 @@ uint32_t wrapper_tmpnam(uint8_t *mem, uint32_t str_addr) {
 
     fd = mkstemp(template);
     if (fd == -1) {
-        // fprintf(stderr, "\n%s: Warning: Could not create temp filename\n\n", __func__);
         return 0;
     } else {
         // close the file descriptor to mimic tmpnam's behaviour
