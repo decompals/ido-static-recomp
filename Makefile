@@ -62,17 +62,17 @@ ERR_STRS_DST := $(BUILT_BIN)/err.english.cc
 # -- Settings for the static recompilation tool `recomp`
 RECOMP       := $(BUILD_BASE)/recomp
 RECOMP_OPT   ?= -O2
-RECOMP_FLAGS ?= -std=c++11 -Wno-switch `pkg-config --cflags --libs capstone`
+RECOMP_FLAGS ?= -g -std=c++11 -Wno-switch `pkg-config --cflags --libs capstone`
 
 # -- Settings for libc shim
 LIBC_IMPL := libc_impl.c
 LIBC_OBJ  := $(LIBC_IMPL:.c=.o)
 LIBC_OPT   ?= -O2
-LIBC_FLAGS ?= -fno-strict-aliasing 
+LIBC_FLAGS ?= -g -fno-strict-aliasing 
 
 # -- Settings for recompiling the translated irix binaries
 COMPILE_OPT   ?= -O2
-COMPILE_FLAGS ?= -Wno-tautological-compare -fno-strict-aliasing -lm
+COMPILE_FLAGS ?= -g -Wno-tautological-compare -fno-strict-aliasing -lm
 COMPILE_DEPS  := header.h helpers.h $(ERR_STRS_DST)
 
 # -- Host specific configuration
