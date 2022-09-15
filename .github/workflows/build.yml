@@ -1,10 +1,6 @@
 name: Recompile ido and publish releases
 
-on: 
-  push:
-  pull-request:
-    branches:
-      - master
+on: [push, pull_request]
 
 jobs:
   build:
