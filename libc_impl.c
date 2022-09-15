@@ -2356,41 +2356,89 @@ void wrapper_longjmp(uint8_t *mem, uint32_t addr, int status) {
 }
 
 uint32_t wrapper_tempnam(uint8_t *mem, uint32_t dir_addr, uint32_t pfx_addr) {
-    STRING(dir)
-    STRING(pfx)
-    char *ret = tempnam(dir, pfx);
-    char *ret_saved = ret;
-    if (ret == NULL) {
+    char template[1024];
+    int fd;
+    size_t len;
+    uint32_t ret_addr;
+    const char *tmpdir;
+
+    tmpdir = getenv("TMPDIR");
+
+    if (tmpdir != NULL) {
+        strcpy(template, tmpdir);
+    } else if (dir_addr != 0) {
+        STRING(dir)
+
+        if (dir[0] != '\0') {
+            strcpy(template, dir);
+        } else {
+            strcpy(template, "/tmp");
+        }
+    } else {
+        strcpy(template, "/tmp");
+    }
+
+    strcat(template, "/");
+
+    if (pfx_addr != 0) {
+        STRING(pfx)
+
+        if (strlen(pfx) <= 5) {
+            strcat(template, pfx);
+        }
+    }
+
+    strcat(template, "_ido_tempnam_XXXXXX");
+
+    fd = mkstemp(template);
+    if (fd == -1) {
         MEM_U32(ERRNO_ADDR) = errno;
         return 0;
+    } else {
+        // close the file descriptor to mimic tempnam's behaviour
+        close(fd);
     }
-    size_t len = strlen(ret) + 1;
-    uint32_t ret_addr = wrapper_malloc(mem, len);
-    uint32_t pos = ret_addr;
-    while (len--) {
-        MEM_S8(pos) = *ret;
-        ++pos;
-        ++ret;
-    }
-    free(ret_saved);
+
+    len = strlen(template) + 1;
+    ret_addr = wrapper_malloc(mem, len);
+
+    strcpy1(mem, ret_addr, template);
     return ret_addr;
 }
 
 uint32_t wrapper_tmpnam(uint8_t *mem, uint32_t str_addr) {
-    char buf[1024];
+    char template[1024];
+    int fd;
+
     assert(str_addr != 0 && "s NULL not implemented for tmpnam");
-    char *ret = tmpnam(buf);
-    if (ret == NULL) {
+
+    strcpy(template, "/tmp/ido_tmpnam_XXXXXX");
+
+    fd = mkstemp(template);
+    if (fd == -1) {
         return 0;
     } else {
-        strcpy1(mem, str_addr, ret);
-        return str_addr;
+        // close the file descriptor to mimic tmpnam's behaviour
+        close(fd);
     }
+
+    strcpy1(mem, str_addr, template);
+    return str_addr;
 }
 
 uint32_t wrapper_mktemp(uint8_t *mem, uint32_t template_addr) {
+    int fd;
     STRING(template)
-    mktemp(template);
+
+    fd = mkstemp(template);
+    if (fd == -1) {
+        MEM_U32(ERRNO_ADDR) = errno;
+        template[0] = '\0';
+    } else {
+        // close the file descriptor to mimic mktemp's behaviour
+        close(fd);
+    }
+
     strcpy1(mem, template_addr, template);
     return template_addr;
 }
