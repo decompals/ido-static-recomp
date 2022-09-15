@@ -1,6 +1,6 @@
 name: Recompile ido and publish releases
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   build:
@@ -65,6 +65,7 @@ jobs:
         shell: bash
         run: |
           cd build/${{ matrix.ido }}/out
+          strip $(find . -type f ! -name '*.cc')
           tar -czvf ../../../ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz *
       - name: Upload archive
         uses: actions/upload-artifact@v2
