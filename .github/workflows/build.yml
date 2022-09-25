@@ -20,7 +20,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bison file gperf libcapstone-dev python3
+          sudo apt-get install -y build-essential bison file gperf libcapstone-dev
       - name: Install dependencies (MacOS)
         shell: bash
         if: matrix.os == 'macos-latest'
@@ -33,39 +33,30 @@ jobs:
             gcc
             mingw-w64-x86_64-capstone
             mingw-w64-x86_64-gcc
-            python3
             pkg-config
         if: matrix.os == 'windows-latest'
-
-      - name: Build recomp binary (Windows-only)
-        shell: msys2 {0}
-        if: matrix.os == 'windows-latest'
-        run: |-
-          mkdir -p build/
-          g++ recomp.cpp -o build/recomp.exe -g `pkg-config --cflags --libs capstone` -static
 
       - name: Run the build script (Ubuntu)
         shell: bash
         if: matrix.os == 'ubuntu-latest'
         run: |
-          python3 build.py ido/${{ matrix.ido }} -O2
+          make RELEASE=1 DEBUG=0
       - name: Run the build script (MacOS)
         shell: bash
         if: matrix.os == 'macos-latest'
         run: |
-          python3 build.py ido/${{ matrix.ido }} -O2 -universal
+          make RELEASE=1 DEBUG=0 TARGET=universal
       - name: Run the build script (Windows)
         shell: cmd
         if: matrix.os == 'windows-latest'
         run: |-
           set MSYSTEM=MSYS
-          msys2 -c 'python3 build.py ido/${{ matrix.ido }} -O2 -norecomp'
+          make RELEASE=1 DEBUG=0 TARGET=universal
 
       - name: Create release archive
         shell: bash
         run: |
           cd build/${{ matrix.ido }}/out
-          strip $(find . -type f ! -name '*.cc')
           tar -czvf ../../../ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz *
       - name: Upload archive
         uses: actions/upload-artifact@v2
