@@ -11,6 +11,8 @@ WERROR ?= 0
 RELEASE ?= 0
 # 
 DEBUG ?= 1
+# 
+TARGET ?= native
 
 # --- Configuration
 # -- select the version and binaries of IDO toolchain to recompile
@@ -43,11 +45,9 @@ UNAME_P := $(shell uname -p)
 #   HOST_OS := linux
 #   TARGET  := native
 # else
-#   $(error Unsupported host OS for Makefile)
 # endif
 
 MAKE   := make
-TARGET ?= native
 ifeq ($(OS),Windows_NT)
 	DETECTED_OS := windows
 else ifeq ($(UNAME_S),Linux)
@@ -56,6 +56,8 @@ else ifeq ($(UNAME_S),Darwin)
 	DETECTED_OS := macos
 	MAKE := gmake
 	CPPFLAGS += -xc++
+else
+	$(error Unsupported host OS for Makefile)
 endif
 
 CC    := gcc
@@ -103,7 +105,7 @@ IRIX_USR_DIR ?= $(IRIX_BASE)/$(VERSION)/usr
 ERR_STRS        := $(BUILT_BIN)/err.english.cc
 
 RECOMP_ELF      := $(BUILD_BASE)/recomp.elf
-LIBC_IMPL_O     := $(BUILD_DIR)/libc_impl.o
+LIBC_IMPL_O     := libc_impl.o
 
 TARGET_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/$(binary))
 O_FILES         := $(foreach binary,$(IDO_TC),$(BUILD_DIR)/$(binary).o)
@@ -123,9 +125,9 @@ $(RECOMP_ELF): LDFLAGS   += $(shell pkg-config --libs capstone)
 # Too many warnings, disable everything for now...
 $(RECOMP_ELF): WARNINGS  :=
 # Do we really need no-strict-aliasing?
-$(LIBC_IMPL_O): CFLAGS   += -fno-strict-aliasing -D$(IDO_VERSION)
+%/$(LIBC_IMPL_O): CFLAGS   += -fno-strict-aliasing -D$(IDO_VERSION)
 # TODO: fix warnings
-$(LIBC_IMPL_O): WARNINGS += -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-sign-compare -Wno-deprecated-declarations
+%/$(LIBC_IMPL_O): WARNINGS += -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-sign-compare -Wno-deprecated-declarations
 
 #### Main Targets ###
 
@@ -151,17 +153,6 @@ distclean: clean
 $(BUILD_BASE)/%.elf: %.cpp
 	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) -o $@ $^ $(LDFLAGS)
 
-$(LIBC_IMPL_O): libc_impl.c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -o $@ $<
-
-
-$(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(LIBC_IMPL_O) | $(ERR_STRS)
-	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-	$(STRIP) $@
-
-$(BUILD_DIR)/%.o: $(BUILD_DIR)/%.c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $<
-
 
 $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/% | $(RECOMP_ELF)
 	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@
@@ -173,6 +164,50 @@ $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/% | $(RECOMP_ELF)
 
 $(BUILT_BIN)/%.cc: $(IRIX_USR_DIR)/lib/%.cc
 	cp $^ $@
+
+
+ifeq ($(TARGET),universal)
+MACOS_FAT_TARGETS ?= arm64-apple-macos11 x86_64-apple-macos10.14
+
+FAT_FOLDERS  := $(foreach target,$(MACOS_FAT_TARGETS),$(BUILT_BIN)/$(target))
+
+# create build directories
+$(shell mkdir -p $(FAT_FOLDERS))
+
+# TODO: simplify
+FAT_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/arm64-apple-macos11/$(binary)) \
+                $(foreach binary,$(IDO_TC),$(BUILT_BIN)/x86_64-apple-macos10.14/$(binary))
+
+$(BUILT_BIN)/%: $(foreach path,$(FAT_FOLDERS),$(path)/%) | $(ERR_STRS)
+	lipo -create -output $@ $^
+
+
+$(BUILD_DIR)/arm64-apple-macos11/%: $(BUILD_DIR)/arm64-apple-macos11/%.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL_O) | $(ERR_STRS)
+$(BUILD_DIR)/x86_64-apple-macos10.14/%: $(BUILD_DIR)/x86_64-apple-macos10.14/%.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL_O) | $(ERR_STRS)
+	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(STRIP) $@
+
+$(BUILD_DIR)/arm64-apple-macos11/%.o: $(BUILD_DIR)/%.c
+$(BUILD_DIR)/x86_64-apple-macos10.14/%.o: $(BUILD_DIR)/%.c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $<
+
+
+$(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL_O): libc_impl.c
+$(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL_O): libc_impl.c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target $(dir $@) -o $@ $<
+
+else
+$(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL_O) | $(ERR_STRS)
+	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(STRIP) $@
+
+$(BUILD_DIR)/%.o: $(BUILD_DIR)/%.c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $<
+
+
+$(BUILD_DIR)/$(LIBC_IMPL_O): libc_impl.c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -o $@ $<
+endif
 
 # Remove built-in rules, to improve performance
 MAKEFLAGS += --no-builtin-rules
