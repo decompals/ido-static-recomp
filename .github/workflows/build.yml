@@ -35,6 +35,7 @@ jobs:
             mingw-w64-x86_64-capstone
             mingw-w64-x86_64-gcc
             pkg-config
+            make
 
       - name: Run the build script (Ubuntu)
         shell: bash
