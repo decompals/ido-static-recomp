@@ -50,7 +50,8 @@ jobs:
       - name: Run the build script (Windows)
         shell: msys2 {0}
         if: matrix.os == 'windows-latest'
-        run: |
+        run: |-
+          set MSYSTEM=MSYS
           make RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }}
 
       - name: Create release archive
