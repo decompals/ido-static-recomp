@@ -169,7 +169,7 @@ $(BUILT_BIN)/%.cc: $(IRIX_USR_DIR)/lib/%.cc
 ifeq ($(TARGET),universal)
 MACOS_FAT_TARGETS ?= arm64-apple-macos11 x86_64-apple-macos10.14
 
-FAT_FOLDERS  := $(foreach target,$(MACOS_FAT_TARGETS),$(BUILT_BIN)/$(target))
+FAT_FOLDERS  := $(foreach target,$(MACOS_FAT_TARGETS),$(BUILD_DIR)/$(target))
 
 # create build directories
 $(shell mkdir -p $(FAT_FOLDERS))
