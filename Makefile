@@ -9,9 +9,9 @@
 WERROR ?= 0
 # if RELEASE is 1 symbols are stripped from the recomped binaries
 RELEASE ?= 0
-# 
+# Disables/Enables optimizations to make debugging easier
 DEBUG ?= 1
-# 
+# Can be set to `universal` to build universal binaries on Mac
 TARGET ?= native
 
 # --- Configuration
