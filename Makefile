@@ -7,8 +7,10 @@
 
 # if WERROR is 1, pass -Werror to CC, so warnings would be treated as errors
 WERROR ?= 0
-#
+# if RELEASE is 1 symbols are stripped from the recomped binaries
 RELEASE ?= 0
+# 
+DEBUG ?= 1
 
 # --- Configuration
 # -- select the version and binaries of IDO toolchain to recompile
@@ -60,17 +62,31 @@ CC    := gcc
 CXX   := g++
 STRIP := strip
 
+CSTD         ?= -std=c11
+CFLAGS       ?= -I.
+CXXSTD       ?= -std=c++17
+CXXFLAGS     ?=
+WARNINGS     ?= -Wall -Wextra
+LDFLAGS      ?= -lm
+RECOMP_FLAGS ?=
+
+ifneq ($(WERROR),0)
+	WARNINGS += -Werror
+endif
+
 ifeq ($(RELEASE),0)
 	STRIP := @:
 endif
 
-CFLAGS       ?= -I.
-CSTD         ?= -std=c11
-CXXFLAGS     ?=
-CXXSTD       ?= -std=c++17
-LDFLAGS      ?= -lm
-RECOMP_FLAGS ?=
+ifeq ($(DEBUG),0)
+	OPTFLAGS     ?= -Os
+else
+	OPTFLAGS     ?= -O0 -g3
+endif
 
+ifeq ($(DETECTED_OS),windows)
+	CXXFLAGS     += -static
+endif
 
 # -- Build Directories
 # designed to work with Make 3.81 (macOS/last GPL-2 version)
@@ -82,6 +98,9 @@ BUILT_BIN  := $(BUILD_DIR)/out
 # -- Location of original IDO binaries
 IRIX_BASE    ?= ido
 IRIX_USR_DIR ?= $(IRIX_BASE)/$(VERSION)/usr
+
+# -- Location of the irix tool chain error messages
+ERR_STRS        := $(BUILT_BIN)/err.english.cc
 
 RECOMP_ELF      := $(BUILD_BASE)/recomp.elf
 LIBC_IMPL_O     := $(BUILD_DIR)/libc_impl.o
@@ -99,13 +118,18 @@ $(shell mkdir -p $(BUILT_BIN))
 # to emulate, pass the conservative flag to `recomp`
 $(BUILD_BASE)/5.3/ugen.c: RECOMP_FLAGS := --conservative
 
-$(RECOMP_ELF): CXXFLAGS += $(shell pkg-config --cflags capstone)
-$(RECOMP_ELF): LDFLAGS  += $(shell pkg-config --libs capstone)
-
+$(RECOMP_ELF): CXXFLAGS  += $(shell pkg-config --cflags capstone)
+$(RECOMP_ELF): LDFLAGS   += $(shell pkg-config --libs capstone)
+# Too many warnings, disable everything for now...
+$(RECOMP_ELF): WARNINGS  :=
+# Do we really need this?
+$(LIBC_IMPL_O): CFLAGS   += -fno-strict-aliasing
+# TODO: fix warnings
+$(LIBC_IMPL_O): WARNINGS += -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-sign-compare -Wno-deprecated-declarations
 
 #### Main Targets ###
 
-all: $(TARGET_BINARIES)
+all: $(TARGET_BINARIES) $(ERR_STRS)
 
 setup: $(RECOMP_ELF)
 
@@ -125,17 +149,18 @@ distclean: clean
 #### Various Recipes ####
 
 $(BUILD_BASE)/%.elf: %.cpp
-	$(CXX) $(CXXSTD) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) -o $@ $^ $(LDFLAGS)
 
 $(LIBC_IMPL_O): libc_impl.c
-	$(CC) -c $(CSTD) $(CFLAGS) -o $@ $<
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -o $@ $<
 
-$(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(LIBC_IMPL_O)
-	$(CC) $(CSTD) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+$(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(LIBC_IMPL_O) | $(ERR_STRS)
+	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(STRIP) $@
 
 $(BUILD_DIR)/%.o: $(BUILD_DIR)/%.c
-	$(CC) -c $(CSTD) $(CFLAGS) -o $@ $<
-	$(STRIP) $@
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $<
 
 
 $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/% | $(RECOMP_ELF)
@@ -145,6 +170,9 @@ $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/% | $(RECOMP_ELF)
 $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/% | $(RECOMP_ELF)
 	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@
 
+
+$(BUILT_BIN)/%.cc: $(IRIX_USR_DIR)/lib/%.cc
+	cp $^ $@
 
 # Remove built-in rules, to improve performance
 MAKEFLAGS += --no-builtin-rules
