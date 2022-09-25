@@ -37,6 +37,12 @@ jobs:
             pkg-config
             make
 
+      - name: Build recomp binary (Windows-only)
+        shell: msys2 {0}
+        if: matrix.os == 'windows-latest'
+        run: |-
+          make RELEASE=1 DEBUG=0 setup
+
       - name: Run the build script (Ubuntu)
         shell: bash
         if: matrix.os == 'ubuntu-latest'
