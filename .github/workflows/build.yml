@@ -48,11 +48,11 @@ jobs:
         run: |
           make -j $(nproc) RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }} TARGET=universal
       - name: Run the build script (Windows)
-        shell: msys2 {0}
+        shell: cmd
         if: matrix.os == 'windows-latest'
         run: |-
           set MSYSTEM=MSYS
-          make RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }}
+          msys2 -c 'make RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }}'
 
       - name: Create release archive
         shell: bash
