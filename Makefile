@@ -65,9 +65,9 @@ CXX   := g++
 STRIP := strip
 
 CSTD         ?= -std=c11
-CFLAGS       ?= -I.
+CFLAGS       ?= -MMD -I.
 CXXSTD       ?= -std=c++17
-CXXFLAGS     ?=
+CXXFLAGS     ?= -MMD
 WARNINGS     ?= -Wall -Wextra
 LDFLAGS      ?= -lm
 RECOMP_FLAGS ?=
@@ -111,6 +111,8 @@ TARGET_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/$(binary))
 O_FILES         := $(foreach binary,$(IDO_TC),$(BUILD_DIR)/$(binary).o)
 C_FILES         := $(O_FILES:.o=.c)
 
+# Automatic dependency files
+DEP_FILES := $(O_FILES:.o=.d)
 
 # create build directories
 $(shell mkdir -p $(BUILT_BIN))
@@ -218,6 +220,8 @@ endif
 
 # Remove built-in rules, to improve performance
 MAKEFLAGS += --no-builtin-rules
+
+-include $(DEP_FILES)
 
 # --- Debugging
 # run `make print-VARIABLE` to debug that variable
