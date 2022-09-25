@@ -122,8 +122,8 @@ $(RECOMP_ELF): CXXFLAGS  += $(shell pkg-config --cflags capstone)
 $(RECOMP_ELF): LDFLAGS   += $(shell pkg-config --libs capstone)
 # Too many warnings, disable everything for now...
 $(RECOMP_ELF): WARNINGS  :=
-# Do we really need this?
-$(LIBC_IMPL_O): CFLAGS   += -fno-strict-aliasing
+# Do we really need no-strict-aliasing?
+$(LIBC_IMPL_O): CFLAGS   += -fno-strict-aliasing -D$(IDO_VERSION)
 # TODO: fix warnings
 $(LIBC_IMPL_O): WARNINGS += -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-sign-compare -Wno-deprecated-declarations
 
