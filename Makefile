@@ -178,7 +178,7 @@ $(shell mkdir -p $(FAT_FOLDERS))
 FAT_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/arm64-apple-macos11/$(binary)) \
                 $(foreach binary,$(IDO_TC),$(BUILT_BIN)/x86_64-apple-macos10.14/$(binary))
 
-$(BUILT_BIN)/%: $(foreach path,$(FAT_FOLDERS),$(path)/%) | $(ERR_STRS)
+$(BUILT_BIN)/%: $(BUILD_DIR)/arm64-apple-macos11/% $(BUILD_DIR)/x86_64-apple-macos10.14/% | $(ERR_STRS)
 	lipo -create -output $@ $^
 
 
