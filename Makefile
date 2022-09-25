@@ -38,14 +38,6 @@ endif
 
 UNAME_S := $(shell uname -s)
 UNAME_P := $(shell uname -p)
-# ifeq ($(UNAME_S),Darwin)
-#   HOST_OS := macOS
-#   TARGET  ?= native
-# else ifeq ($(UNAME_S),Linux)
-#   HOST_OS := linux
-#   TARGET  := native
-# else
-# endif
 
 MAKE   := make
 ifeq ($(OS),Windows_NT)
