@@ -51,7 +51,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |-
           set MSYSTEM=MSYS
-          make -j $(nproc) RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }}
+          make RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }}
 
       - name: Create release archive
         shell: bash
