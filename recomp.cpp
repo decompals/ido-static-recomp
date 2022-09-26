@@ -19,7 +19,8 @@
 #include <windows.h>
 #endif /* _WIN32 && !__CYGWIN__ */
 
-#define INSPECT_FUNCTION_POINTERS 0 // set this to 1 when testing a new program, to verify that no false function pointers are found
+#define INSPECT_FUNCTION_POINTERS \
+    0 // set this to 1 when testing a new program, to verify that no false function pointers are found
 
 #ifndef TRACE
 #define TRACE 0
@@ -35,10 +36,10 @@ using namespace std;
 
 struct Edge {
     uint32_t i;
-    uint8_t function_entry: 1;
-    uint8_t function_exit: 1;
-    uint8_t extern_function: 1;
-    uint8_t function_pointer: 1;
+    uint8_t function_entry : 1;
+    uint8_t function_exit : 1;
+    uint8_t extern_function : 1;
+    uint8_t function_pointer : 1;
 };
 
 struct Insn {
@@ -48,9 +49,9 @@ struct Insn {
     string op_str;
     cs_mips_op operands[8];
 
-    uint8_t is_jump: 1;
-    uint8_t is_global_got_memop: 1;
-    uint8_t no_following_successor: 1;
+    uint8_t is_jump : 1;
+    uint8_t is_global_got_memop : 1;
+    uint8_t no_following_successor : 1;
     int linked_insn;
     union {
         uint32_t linked_value;
@@ -69,7 +70,7 @@ struct Insn {
 
 struct Function {
     vector<uint32_t> returns; // points to delay slots
-    uint32_t end_addr; //address after end
+    uint32_t end_addr;        // address after end
     uint32_t nargs;
     uint32_t nret;
     bool v0_in;
@@ -80,15 +81,15 @@ static bool conservative;
 
 static csh handle;
 
-static const uint8_t *text_section;
+static const uint8_t* text_section;
 static uint32_t text_section_len;
 static uint32_t text_vaddr;
 
-static const uint8_t *rodata_section;
+static const uint8_t* rodata_section;
 static uint32_t rodata_section_len;
 static uint32_t rodata_vaddr;
 
-static const uint8_t *data_section;
+static const uint8_t* data_section;
 static uint32_t data_section_len;
 static uint32_t data_vaddr;
 
@@ -116,175 +117,175 @@ static uint32_t procedure_table_len;
 #define FLAG_VARARG 2
 
 static const struct {
-    const char *name;
-    const char *params;
+    const char* name;
+    const char* params;
     int flags;
 } extern_functions[] = {
-    {"exit", "vi", 0}, // override exit from application
-    {"abort", "v", 0},
-    {"sbrk", "pi", 0},
-    {"malloc", "pu", 0},
-    {"calloc", "puu", 0},
-    {"realloc", "ppu", 0},
-    {"free", "vp", 0},
-    {"fscanf", "ipp", FLAG_VARARG},
-    {"printf", "ip", FLAG_VARARG},
-    {"sprintf", "ipp", FLAG_VARARG},
-    {"fprintf", "ipp", FLAG_VARARG},
-    {"_doprnt", "ippp", 0},
-    {"strlen", "up", 0},
-    {"open", "ipii", 0},
-    {"creat", "ipi", 0},
-    {"access", "ipi", 0},
-    {"rename", "ipp", 0},
-    {"utime", "ipp", 0},
-    {"flock", "iii", 0},
-    {"chmod", "ipu", 0},
-    {"umask", "ii", FLAG_NO_MEM},
-    {"ecvt", "pdipp", 0},
-    {"fcvt", "pdipp", 0},
-    {"sqrt", "dd", FLAG_NO_MEM},
-    {"sqrtf", "ff", FLAG_NO_MEM},
-    {"atoi", "ip", 0},
-    {"atol", "ip", 0},
-    {"atof", "dp", 0},
-    {"strtol", "ippi", 0},
-    {"strtoul", "uppi", 0},
-    {"strtoll", "lppi", 0},
-    {"strtoull", "jppi", 0},
-    {"strtod", "dpp", 0},
-    {"strchr", "ppi", 0},
-    {"strrchr", "ppi", 0},
-    {"strcspn", "upp", 0},
-    {"strpbrk", "ppp", 0},
-    {"fstat", "iip", 0},
-    {"stat", "ipp", 0},
-    {"ftruncate", "iii", 0},
-    {"bcopy", "vppu", 0},
-    {"memcpy", "pppu", 0},
-    {"memccpy", "pppiu", 0},
-    {"read", "iipu", 0},
-    {"write", "iipu", 0},
-    {"fopen", "ppp", 0},
-    {"freopen", "pppp", 0},
-    {"fclose", "ip", 0},
-    {"ftell", "ip", 0},
-    {"rewind", "vp", 0},
-    {"fseek", "ipii", 0},
-    {"lseek", "iiii", 0},
-    {"fflush", "ip", 0},
-    {"dup", "ii", 0},
-    {"dup2", "iii", 0},
-    {"pipe", "ip", 0},
-    {"perror", "vp", 0},
-    {"fdopen", "iip", 0},
-    {"memset", "ppiu", 0},
-    {"bcmp", "ippu", 0},
-    {"memcmp", "ippu", 0},
-    {"getpid", "i", FLAG_NO_MEM},
-    {"getpgrp", "i", 0},
-    {"remove", "ip", 0},
-    {"unlink", "ip", 0},
-    {"close", "ii", 0},
-    {"strcmp", "ipp", 0},
-    {"strncmp", "ippu", 0},
-    {"strcpy", "ppp", 0},
-    {"strncpy", "pppu", 0},
-    {"strcat", "ppp", 0},
-    {"strncat", "pppu", 0},
-    {"strtok", "ppp", 0},
-    {"strstr", "ppp", 0},
-    {"strdup", "pp", 0},
-    {"toupper", "ii", FLAG_NO_MEM},
-    {"tolower", "ii", FLAG_NO_MEM},
-    {"gethostname", "ipu", 0},
-    {"isatty", "ii", 0},
-    {"strftime", "upupp", 0},
-    {"times", "ip", 0},
-    {"clock", "i", FLAG_NO_MEM},
-    {"ctime", "pp", 0},
-    {"localtime", "pp", 0},
-    {"setvbuf", "ippiu", 0},
-    {"__semgetc", "ip", 0},
-    {"__semputc", "iip", 0},
-    {"fgetc", "ip", 0},
-    {"fgets", "ipip", 0},
-    {"__filbuf", "ip", 0},
-    {"__flsbuf", "iip", 0},
-    {"ungetc", "iip", 0},
-    {"gets", "pp", 0},
-    {"fread", "upuup", 0},
-    {"fwrite", "upuup", 0},
-    {"fputs", "ipp", 0},
-    {"puts", "ip", 0},
-    {"getcwd", "ppu", 0},
-    {"time", "ip", 0},
-    {"bzero", "vpu", 0},
-    {"fp_class_d", "id", FLAG_NO_MEM},
-    {"ldexp", "ddi", FLAG_NO_MEM},
-    {"__ll_mul", "lll", FLAG_NO_MEM},
-    {"__ll_div", "lll", FLAG_NO_MEM},
-    {"__ll_rem", "ljl", FLAG_NO_MEM},
-    {"__ll_lshift", "llj", FLAG_NO_MEM},
-    {"__ll_rshift", "llj", FLAG_NO_MEM},
-    {"__ull_div", "jjj", FLAG_NO_MEM},
-    {"__ull_rem", "jjj", FLAG_NO_MEM},
-    {"__ull_rshift", "jjj", FLAG_NO_MEM},
-    {"__d_to_ull", "jd", FLAG_NO_MEM},
-    {"__d_to_ll", "ld", FLAG_NO_MEM},
-    {"__f_to_ull", "jf", FLAG_NO_MEM},
-    {"__f_to_ll", "lf", FLAG_NO_MEM},
-    {"__ull_to_f", "fj", FLAG_NO_MEM},
-    {"__ll_to_f", "fl", FLAG_NO_MEM},
-    {"__ull_to_d", "dj", FLAG_NO_MEM},
-    {"__ll_to_d", "dl", FLAG_NO_MEM},
-    {"_exit", "vi", 0},
-    {"_cleanup", "v", 0},
-    {"_rld_new_interface", "pu", FLAG_VARARG},
-    {"_exithandle", "v", 0},
-    {"_prctl", "ii", FLAG_VARARG},
-    {"_atod", "dpii", 0},
-    {"pathconf", "ipi", 0},
-    {"getenv", "pp", 0},
-    {"gettxt", "ppp", 0},
-    {"setlocale", "pip", 0},
-    {"mmap", "ppuiiii", 0},
-    {"munmap", "ipu", 0},
-    {"mprotect", "ipui", 0},
-    {"sysconf", "ii", 0},
-    {"getpagesize", "i", 0},
-    {"strerror", "pi", 0},
-    {"ioctl", "iiu", FLAG_VARARG},
-    {"fcntl", "iii", FLAG_VARARG},
-    {"signal", "pit", 0},
-    {"sigset", "pit", 0},
-    {"get_fpc_csr", "i", 0},
-    {"set_fpc_csr", "ii", 0},
-    {"setjmp", "ip", 0},
-    {"longjmp", "vpi", 0},
-    {"tempnam", "ppp", 0},
-    {"tmpnam", "pp", 0},
-    {"mktemp", "pp", 0},
-    {"mkstemp", "ip", 0},
-    {"tmpfile", "p", 0},
-    {"wait", "ip", 0},
-    {"kill", "iii", 0},
-    {"execlp", "ip", FLAG_VARARG},
-    {"execv", "ipp", 0},
-    {"execvp", "ipp", 0},
-    {"fork", "i", 0},
-    {"system", "ip", 0},
-    {"tsearch", "pppp", 0},
-    {"tfind", "pppp", 0},
-    {"qsort", "vpuut", 0},
-    {"regcmp", "pp", FLAG_VARARG},
-    {"regex", "ppp", FLAG_VARARG},
-    {"__assert", "vppi", 0},
+    { "exit", "vi", 0 }, // override exit from application
+    { "abort", "v", 0 },
+    { "sbrk", "pi", 0 },
+    { "malloc", "pu", 0 },
+    { "calloc", "puu", 0 },
+    { "realloc", "ppu", 0 },
+    { "free", "vp", 0 },
+    { "fscanf", "ipp", FLAG_VARARG },
+    { "printf", "ip", FLAG_VARARG },
+    { "sprintf", "ipp", FLAG_VARARG },
+    { "fprintf", "ipp", FLAG_VARARG },
+    { "_doprnt", "ippp", 0 },
+    { "strlen", "up", 0 },
+    { "open", "ipii", 0 },
+    { "creat", "ipi", 0 },
+    { "access", "ipi", 0 },
+    { "rename", "ipp", 0 },
+    { "utime", "ipp", 0 },
+    { "flock", "iii", 0 },
+    { "chmod", "ipu", 0 },
+    { "umask", "ii", FLAG_NO_MEM },
+    { "ecvt", "pdipp", 0 },
+    { "fcvt", "pdipp", 0 },
+    { "sqrt", "dd", FLAG_NO_MEM },
+    { "sqrtf", "ff", FLAG_NO_MEM },
+    { "atoi", "ip", 0 },
+    { "atol", "ip", 0 },
+    { "atof", "dp", 0 },
+    { "strtol", "ippi", 0 },
+    { "strtoul", "uppi", 0 },
+    { "strtoll", "lppi", 0 },
+    { "strtoull", "jppi", 0 },
+    { "strtod", "dpp", 0 },
+    { "strchr", "ppi", 0 },
+    { "strrchr", "ppi", 0 },
+    { "strcspn", "upp", 0 },
+    { "strpbrk", "ppp", 0 },
+    { "fstat", "iip", 0 },
+    { "stat", "ipp", 0 },
+    { "ftruncate", "iii", 0 },
+    { "bcopy", "vppu", 0 },
+    { "memcpy", "pppu", 0 },
+    { "memccpy", "pppiu", 0 },
+    { "read", "iipu", 0 },
+    { "write", "iipu", 0 },
+    { "fopen", "ppp", 0 },
+    { "freopen", "pppp", 0 },
+    { "fclose", "ip", 0 },
+    { "ftell", "ip", 0 },
+    { "rewind", "vp", 0 },
+    { "fseek", "ipii", 0 },
+    { "lseek", "iiii", 0 },
+    { "fflush", "ip", 0 },
+    { "dup", "ii", 0 },
+    { "dup2", "iii", 0 },
+    { "pipe", "ip", 0 },
+    { "perror", "vp", 0 },
+    { "fdopen", "iip", 0 },
+    { "memset", "ppiu", 0 },
+    { "bcmp", "ippu", 0 },
+    { "memcmp", "ippu", 0 },
+    { "getpid", "i", FLAG_NO_MEM },
+    { "getpgrp", "i", 0 },
+    { "remove", "ip", 0 },
+    { "unlink", "ip", 0 },
+    { "close", "ii", 0 },
+    { "strcmp", "ipp", 0 },
+    { "strncmp", "ippu", 0 },
+    { "strcpy", "ppp", 0 },
+    { "strncpy", "pppu", 0 },
+    { "strcat", "ppp", 0 },
+    { "strncat", "pppu", 0 },
+    { "strtok", "ppp", 0 },
+    { "strstr", "ppp", 0 },
+    { "strdup", "pp", 0 },
+    { "toupper", "ii", FLAG_NO_MEM },
+    { "tolower", "ii", FLAG_NO_MEM },
+    { "gethostname", "ipu", 0 },
+    { "isatty", "ii", 0 },
+    { "strftime", "upupp", 0 },
+    { "times", "ip", 0 },
+    { "clock", "i", FLAG_NO_MEM },
+    { "ctime", "pp", 0 },
+    { "localtime", "pp", 0 },
+    { "setvbuf", "ippiu", 0 },
+    { "__semgetc", "ip", 0 },
+    { "__semputc", "iip", 0 },
+    { "fgetc", "ip", 0 },
+    { "fgets", "ipip", 0 },
+    { "__filbuf", "ip", 0 },
+    { "__flsbuf", "iip", 0 },
+    { "ungetc", "iip", 0 },
+    { "gets", "pp", 0 },
+    { "fread", "upuup", 0 },
+    { "fwrite", "upuup", 0 },
+    { "fputs", "ipp", 0 },
+    { "puts", "ip", 0 },
+    { "getcwd", "ppu", 0 },
+    { "time", "ip", 0 },
+    { "bzero", "vpu", 0 },
+    { "fp_class_d", "id", FLAG_NO_MEM },
+    { "ldexp", "ddi", FLAG_NO_MEM },
+    { "__ll_mul", "lll", FLAG_NO_MEM },
+    { "__ll_div", "lll", FLAG_NO_MEM },
+    { "__ll_rem", "ljl", FLAG_NO_MEM },
+    { "__ll_lshift", "llj", FLAG_NO_MEM },
+    { "__ll_rshift", "llj", FLAG_NO_MEM },
+    { "__ull_div", "jjj", FLAG_NO_MEM },
+    { "__ull_rem", "jjj", FLAG_NO_MEM },
+    { "__ull_rshift", "jjj", FLAG_NO_MEM },
+    { "__d_to_ull", "jd", FLAG_NO_MEM },
+    { "__d_to_ll", "ld", FLAG_NO_MEM },
+    { "__f_to_ull", "jf", FLAG_NO_MEM },
+    { "__f_to_ll", "lf", FLAG_NO_MEM },
+    { "__ull_to_f", "fj", FLAG_NO_MEM },
+    { "__ll_to_f", "fl", FLAG_NO_MEM },
+    { "__ull_to_d", "dj", FLAG_NO_MEM },
+    { "__ll_to_d", "dl", FLAG_NO_MEM },
+    { "_exit", "vi", 0 },
+    { "_cleanup", "v", 0 },
+    { "_rld_new_interface", "pu", FLAG_VARARG },
+    { "_exithandle", "v", 0 },
+    { "_prctl", "ii", FLAG_VARARG },
+    { "_atod", "dpii", 0 },
+    { "pathconf", "ipi", 0 },
+    { "getenv", "pp", 0 },
+    { "gettxt", "ppp", 0 },
+    { "setlocale", "pip", 0 },
+    { "mmap", "ppuiiii", 0 },
+    { "munmap", "ipu", 0 },
+    { "mprotect", "ipui", 0 },
+    { "sysconf", "ii", 0 },
+    { "getpagesize", "i", 0 },
+    { "strerror", "pi", 0 },
+    { "ioctl", "iiu", FLAG_VARARG },
+    { "fcntl", "iii", FLAG_VARARG },
+    { "signal", "pit", 0 },
+    { "sigset", "pit", 0 },
+    { "get_fpc_csr", "i", 0 },
+    { "set_fpc_csr", "ii", 0 },
+    { "setjmp", "ip", 0 },
+    { "longjmp", "vpi", 0 },
+    { "tempnam", "ppp", 0 },
+    { "tmpnam", "pp", 0 },
+    { "mktemp", "pp", 0 },
+    { "mkstemp", "ip", 0 },
+    { "tmpfile", "p", 0 },
+    { "wait", "ip", 0 },
+    { "kill", "iii", 0 },
+    { "execlp", "ip", FLAG_VARARG },
+    { "execv", "ipp", 0 },
+    { "execvp", "ipp", 0 },
+    { "fork", "i", 0 },
+    { "system", "ip", 0 },
+    { "tsearch", "pppp", 0 },
+    { "tfind", "pppp", 0 },
+    { "qsort", "vpuut", 0 },
+    { "regcmp", "pp", FLAG_VARARG },
+    { "regex", "ppp", FLAG_VARARG },
+    { "__assert", "vppi", 0 },
 };
 
 static void disassemble(void) {
     csh handle;
-    cs_insn *disasm;
+    cs_insn* disasm;
     size_t disasm_size = 0;
 
     assert(cs_open(CS_ARCH_MIPS, (cs_mode)(CS_MODE_MIPS64 | CS_MODE_BIG_ENDIAN), &handle) == CS_ERR_OK);
@@ -296,7 +297,8 @@ static void disassemble(void) {
         size_t disasm_len = disasm_size * sizeof(uint32_t);
         size_t remaining = text_section_len - disasm_len;
         size_t current_len = std::min<size_t>(remaining, 1024);
-        size_t cur_disasm_size = cs_disasm(handle, &text_section[disasm_len], current_len, text_vaddr + disasm_len, 0, &disasm);
+        size_t cur_disasm_size =
+            cs_disasm(handle, &text_section[disasm_len], current_len, text_vaddr + disasm_len, 0, &disasm);
 
         disasm_size += cur_disasm_size;
         for (size_t i = 0; i < cur_disasm_size; i++) {
@@ -313,7 +315,8 @@ static void disassemble(void) {
                 memcpy(insn.operands, disasm[i].detail->mips.operands, sizeof(insn.operands));
             }
 
-            insn.is_jump = cs_insn_group(handle, &disasm[i], MIPS_GRP_JUMP) || insn.id == MIPS_INS_JAL || insn.id == MIPS_INS_BAL || insn.id == MIPS_INS_JALR;
+            insn.is_jump = cs_insn_group(handle, &disasm[i], MIPS_GRP_JUMP) || insn.id == MIPS_INS_JAL ||
+                           insn.id == MIPS_INS_BAL || insn.id == MIPS_INS_JALR;
             insn.linked_insn = -1;
         }
 
@@ -356,8 +359,7 @@ static map<uint32_t, Function>::iterator find_function(uint32_t addr) {
 }
 
 // try to find a matching LUI for a given register
-static void link_with_lui(int offset, uint32_t reg, int mem_imm)
-{
+static void link_with_lui(int offset, uint32_t reg, int mem_imm) {
 #define MAX_LOOKBACK 128
     // don't attempt to compute addresses for zero offset
     // end search after some sane max number of instructions
@@ -372,15 +374,11 @@ static void link_with_lui(int offset, uint32_t reg, int mem_imm)
             if (reg == rd) {
                 break;
             }
-        } else if (
-            insns[search].id == MIPS_INS_LW || 
-            insns[search].id == MIPS_INS_LD ||
-            insns[search].id == MIPS_INS_ADDIU ||
-            // insns[search].id == MIPS_INS_ADDU || // used in jump tables for offset
-            insns[search].id == MIPS_INS_ADD ||
-            insns[search].id == MIPS_INS_SUB ||
-            insns[search].id == MIPS_INS_SUBU
-            ) {
+        } else if (insns[search].id == MIPS_INS_LW || insns[search].id == MIPS_INS_LD ||
+                   insns[search].id == MIPS_INS_ADDIU ||
+                   // insns[search].id == MIPS_INS_ADDU || // used in jump tables for offset
+                   insns[search].id == MIPS_INS_ADD || insns[search].id == MIPS_INS_SUB ||
+                   insns[search].id == MIPS_INS_SUBU) {
             uint32_t rd = insns[search].operands[0].reg;
 
             if (reg == rd) {
@@ -396,7 +394,7 @@ static void link_with_lui(int offset, uint32_t reg, int mem_imm)
                         insns[offset].linked_insn = search;
                         insns[offset].linked_value = addr;
 
-                        //vaddr_references[addr].insert(text_vaddr + offset * 4);
+                        // vaddr_references[addr].insert(text_vaddr + offset * 4);
 
                         insns[search].id = MIPS_INS_LI;
                         insns[search].mnemonic = "li";
@@ -410,7 +408,8 @@ static void link_with_lui(int offset, uint32_t reg, int mem_imm)
                                 insns[offset].id = MIPS_INS_MOVE;
                                 insns[offset].operands[1].type = MIPS_OP_REG;
                                 insns[offset].mnemonic = "move";
-                                sprintf(buf, "$%s, $%s", cs_reg_name(handle, insns[offset].operands[0].reg), cs_reg_name(handle, rd));
+                                sprintf(buf, "$%s, $%s", cs_reg_name(handle, insns[offset].operands[0].reg),
+                                        cs_reg_name(handle, rd));
                                 insns[offset].op_str = buf;
 
                                 if (addr >= text_vaddr && addr < text_vaddr + text_section_len) {
@@ -430,7 +429,8 @@ static void link_with_lui(int offset, uint32_t reg, int mem_imm)
                             case MIPS_INS_LWC1:
                             case MIPS_INS_SWC1:
                                 insns[offset].operands[1].mem.disp = 0;
-                                sprintf(buf, "$%s, ($%s)", cs_reg_name(handle, insns[offset].operands[0].reg), cs_reg_name(handle, rd));
+                                sprintf(buf, "$%s, ($%s)", cs_reg_name(handle, insns[offset].operands[0].reg),
+                                        cs_reg_name(handle, rd));
                                 insns[offset].op_str = buf;
                                 break;
 
@@ -444,8 +444,8 @@ static void link_with_lui(int offset, uint32_t reg, int mem_imm)
                     break;
                 }
             }
-        } else if (insns[search].id == MIPS_INS_JR &&
-                insns[search].operands[0].reg == MIPS_REG_RA && offset - search >= 2) {
+        } else if (insns[search].id == MIPS_INS_JR && insns[search].operands[0].reg == MIPS_REG_RA &&
+                   offset - search >= 2) {
             // stop looking when previous `jr ra` is hit,
             // but ignore if `offset` is branch delay slot for this `jr ra`
             break;
@@ -454,8 +454,7 @@ static void link_with_lui(int offset, uint32_t reg, int mem_imm)
 }
 
 // for a given `jalr t9`, find the matching t9 load
-static void link_with_jalr(int offset)
-{
+static void link_with_jalr(int offset) {
     // end search after some sane max number of instructions
     int end_search = std::max(0, offset - MAX_LOOKBACK);
 
@@ -470,8 +469,8 @@ static void link_with_jalr(int offset)
                     insns[search].linked_insn = offset;
                     insns[offset].linked_insn = search;
                     insns[offset].linked_value = insns[search].linked_value;
-                    //insns[offset].label = insns[search].label;
-                    //function_entry_points.insert(insns[search].linked_value);
+                    // insns[offset].label = insns[search].label;
+                    // function_entry_points.insert(insns[search].linked_value);
                     insns[offset].id = MIPS_INS_JAL;
                     insns[offset].mnemonic = "jal";
                     insns[offset].op_str = buf;
@@ -486,7 +485,7 @@ static void link_with_jalr(int offset)
                 break;
             } else if (insns[search].id == MIPS_INS_ADDIU) {
                 if (insns[search].linked_insn != -1) {
-                    //function_entry_points.insert(insns[search].linked_value);
+                    // function_entry_points.insert(insns[search].linked_value);
                     uint32_t first = insns[search].linked_insn;
 
                     insns[search].linked_insn = offset;
@@ -496,7 +495,7 @@ static void link_with_jalr(int offset)
                 break;
             } else if (insns[search].id == MIPS_INS_LI) {
                 if (insns[search].linked_insn != -1) {
-                    //function_entry_points.insert(insns[search].linked_value);
+                    // function_entry_points.insert(insns[search].linked_value);
                     uint32_t first = insns[search].linked_insn;
 
                     insns[search].linked_insn = offset;
@@ -507,16 +506,12 @@ static void link_with_jalr(int offset)
                     insns[search].op_str = "";
                 }
                 break;
-            } else if (insns[search].id == MIPS_INS_LD ||
-                       insns[search].id == MIPS_INS_ADDU ||
-                       insns[search].id == MIPS_INS_ADD ||
-                       insns[search].id == MIPS_INS_SUB ||
+            } else if (insns[search].id == MIPS_INS_LD || insns[search].id == MIPS_INS_ADDU ||
+                       insns[search].id == MIPS_INS_ADD || insns[search].id == MIPS_INS_SUB ||
                        insns[search].id == MIPS_INS_SUBU) {
                 break;
             }
-        } else if (insns[search].id == MIPS_INS_JR &&
-                   insns[search].operands[0].reg == MIPS_REG_RA)
-        {
+        } else if (insns[search].id == MIPS_INS_JR && insns[search].operands[0].reg == MIPS_REG_RA) {
             // stop looking when previous `jr ra` is hit
             break;
         }
@@ -534,7 +529,7 @@ static void pass1(void) {
 
         if (insn.is_jump) {
             if (insn.id == MIPS_INS_JAL || insn.id == MIPS_INS_J) {
-                uint32_t target  = (uint32_t)insn.operands[0].imm;
+                uint32_t target = (uint32_t)insn.operands[0].imm;
 
                 label_addresses.insert(target);
                 add_function(target);
@@ -553,24 +548,24 @@ static void pass1(void) {
                 // jr    $tx
 
                 // IDO 7.1:
-                //lw      at,offset(gp)
-                //andi    t9,t8,0x3f
-                //sll     t9,t9,0x2
-                //addu    at,at,t9
-                //lw      t9,offset(at)
-                //addu    t9,t9,gp
-                //jr      t9
+                // lw      at,offset(gp)
+                // andi    t9,t8,0x3f
+                // sll     t9,t9,0x2
+                // addu    at,at,t9
+                // lw      t9,offset(at)
+                // addu    t9,t9,gp
+                // jr      t9
 
                 // IDO 5.3:
-                //lw      at,offset(gp)
-                //andi    t3,t2,0x3f
-                //sll     t3,t3,0x2
-                //addu    at,at,t3
-                //something
-                //lw      t3,offset(at)
-                //something
-                //addu    t3,t3,gp
-                //jr      t3
+                // lw      at,offset(gp)
+                // andi    t3,t2,0x3f
+                // sll     t3,t3,0x2
+                // addu    at,at,t3
+                // something
+                // lw      t3,offset(at)
+                // something
+                // addu    t3,t3,gp
+                // jr      t3
                 if (i >= 7 && rodata_section != NULL) {
                     bool is_pic = insns[i - 1].id == MIPS_INS_ADDU && insns[i - 1].operands[2].reg == MIPS_REG_GP;
                     bool has_nop = insns[i - is_pic - 1].id == MIPS_INS_NOP;
@@ -622,8 +617,7 @@ static void pass1(void) {
 
                         for (int j = 5; j <= end; j++) {
                             if (insns[lw - has_extra - j].id == MIPS_INS_SLTIU &&
-                                insns[lw - has_extra - j].operands[0].reg == MIPS_REG_AT)
-                            {
+                                insns[lw - has_extra - j].operands[0].reg == MIPS_REG_AT) {
                                 sltiu_index = j;
                                 break;
                             }
@@ -662,7 +656,7 @@ static void pass1(void) {
                                 insns[i - 1].id = MIPS_INS_NOP;
                             }
 
-                            //printf("jump table at %08x, size %u\n", jtbl_addr, num_cases);
+                            // printf("jump table at %08x, size %u\n", jtbl_addr, num_cases);
                             insn.jtbl_addr = jtbl_addr;
                             insn.num_cases = num_cases;
                             insn.index_reg = index_reg;
@@ -674,26 +668,28 @@ static void pass1(void) {
                                 insns[addu_index - 2].id = MIPS_INS_NOP;
                             }
 
-                            if (jtbl_addr < rodata_vaddr || jtbl_addr + num_cases * sizeof(uint32_t) > rodata_vaddr + rodata_section_len) {
+                            if (jtbl_addr < rodata_vaddr ||
+                                jtbl_addr + num_cases * sizeof(uint32_t) > rodata_vaddr + rodata_section_len) {
                                 fprintf(stderr, "jump table outside rodata\n");
                                 exit(EXIT_FAILURE);
                             }
 
                             for (uint32_t i = 0; i < num_cases; i++) {
-                                uint32_t target_addr = read_u32_be(rodata_section + (jtbl_addr - rodata_vaddr) + i * sizeof(uint32_t));
+                                uint32_t target_addr =
+                                    read_u32_be(rodata_section + (jtbl_addr - rodata_vaddr) + i * sizeof(uint32_t));
 
                                 target_addr += gp_value;
-                                //printf("%08X\n", target_addr);
+                                // printf("%08X\n", target_addr);
                                 label_addresses.insert(target_addr);
                             }
                         }
-                        skip:;
+                    skip:;
                     }
                 }
             } else {
                 for (int j = 0; j < insn.op_count; j++) {
                     if (insn.operands[j].type == MIPS_OP_IMM) {
-                        uint32_t target  = (uint32_t)insn.operands[j].imm;
+                        uint32_t target = (uint32_t)insn.operands[j].imm;
 
                         label_addresses.insert(target);
                     }
@@ -703,8 +699,7 @@ static void pass1(void) {
 
         switch (insns[i].id) {
             // find floating point LI
-            case MIPS_INS_MTC1:
-            {
+            case MIPS_INS_MTC1: {
                 unsigned int rt = insns[i].operands[0].reg;
 
                 for (int s = i - 1; s >= 0; s--) {
@@ -721,28 +716,21 @@ static void pass1(void) {
                         insns[s].id = MIPS_INS_LI;
                         insns[s].mnemonic = "li";
                         break;
-                    } else if (insns[s].id == MIPS_INS_LW ||
-                                    insns[s].id == MIPS_INS_LD ||
-                                    insns[s].id == MIPS_INS_LH ||
-                                    insns[s].id == MIPS_INS_LHU ||
-                                    insns[s].id == MIPS_INS_LB ||
-                                    insns[s].id == MIPS_INS_LBU ||
-                                    insns[s].id == MIPS_INS_ADDIU ||
-                                    insns[s].id == MIPS_INS_ADD ||
-                                    insns[s].id == MIPS_INS_SUB ||
-                                    insns[s].id == MIPS_INS_SUBU) {
+                    } else if (insns[s].id == MIPS_INS_LW || insns[s].id == MIPS_INS_LD || insns[s].id == MIPS_INS_LH ||
+                               insns[s].id == MIPS_INS_LHU || insns[s].id == MIPS_INS_LB ||
+                               insns[s].id == MIPS_INS_LBU || insns[s].id == MIPS_INS_ADDIU ||
+                               insns[s].id == MIPS_INS_ADD || insns[s].id == MIPS_INS_SUB ||
+                               insns[s].id == MIPS_INS_SUBU) {
                         unsigned int rd = insns[s].operands[0].reg;
                         if (rt == rd) {
                             break;
                         }
-                    } else if (insns[s].id == MIPS_INS_JR &&
-                                    insns[s].operands[0].reg == MIPS_REG_RA) {
+                    } else if (insns[s].id == MIPS_INS_JR && insns[s].operands[0].reg == MIPS_REG_RA) {
                         // stop looking when previous `jr ra` is hit
                         break;
                     }
                 }
-            }
-                break;
+            } break;
 
             case MIPS_INS_SD:
             case MIPS_INS_SW:
@@ -763,8 +751,7 @@ static void pass1(void) {
             case MIPS_INS_LWC3:
             case MIPS_INS_SWC1:
             case MIPS_INS_SWC2:
-            case MIPS_INS_SWC3:
-            {
+            case MIPS_INS_SWC3: {
                 unsigned int mem_rs = insns[i].operands[1].mem.base;
                 int mem_imm = (int)insns[i].operands[1].mem.disp;
 
@@ -775,16 +762,16 @@ static void pass1(void) {
                         got_entry -= got_locals.size();
                         if (got_entry < got_globals.size()) {
                             assert(insn.id == MIPS_INS_LW);
-                            //printf("gp 0x%08x %s\n", mem_imm, got_globals[got_entry].name);
+                            // printf("gp 0x%08x %s\n", mem_imm, got_globals[got_entry].name);
 
                             unsigned int dest_vaddr = got_globals[got_entry];
 
                             insns[i].is_global_got_memop = true;
                             insns[i].linked_value = dest_vaddr;
-                            //insns[i].label = got_globals[got_entry].name;
+                            // insns[i].label = got_globals[got_entry].name;
 
-                            //vaddr_references[dest_vaddr].insert(vaddr + i * 4);
-                            //disasm_add_data_addr(state, dest_vaddr);
+                            // vaddr_references[dest_vaddr].insert(vaddr + i * 4);
+                            // disasm_add_data_addr(state, dest_vaddr);
                             insns[i].id = MIPS_INS_LI;
                             insns[i].operands[1].imm = dest_vaddr;
 
@@ -797,12 +784,10 @@ static void pass1(void) {
                 } else {
                     link_with_lui(i, mem_rs, mem_imm);
                 }
-            }
-                break;
+            } break;
 
             case MIPS_INS_ADDIU:
-            case MIPS_INS_ORI:
-            {
+            case MIPS_INS_ORI: {
                 unsigned int rd = insns[i].operands[0].reg;
                 unsigned int rs = insns[i].operands[1].reg;
                 int64_t imm = insns[i].operands[2].imm;
@@ -818,11 +803,9 @@ static void pass1(void) {
                 } else if (/*rd == rs &&*/ rd != MIPS_REG_GP) { // only look for LUI if rd and rs are the same
                     link_with_lui(i, rs, (int)imm);
                 }
-            }
-                break;
+            } break;
 
-            case MIPS_INS_JALR:
-            {
+            case MIPS_INS_JALR: {
                 unsigned int r = insn.operands[0].reg;
 
                 if (r == MIPS_REG_T9) {
@@ -840,12 +823,12 @@ static void pass1(void) {
                         add_function(insn.linked_value);
                     }
                 }
-            }
-                break;
+            } break;
         }
 
-        if (insn.id == MIPS_INS_ADDU && insn.operands[0].reg == MIPS_REG_GP && insn.operands[1].reg == MIPS_REG_GP && insn.operands[2].reg == MIPS_REG_T9 && i >= 2) {
-            //state->function_entry_points.insert(vaddr + (i - 2) * 4);
+        if (insn.id == MIPS_INS_ADDU && insn.operands[0].reg == MIPS_REG_GP && insn.operands[1].reg == MIPS_REG_GP &&
+            insn.operands[2].reg == MIPS_REG_T9 && i >= 2) {
+            // state->function_entry_points.insert(vaddr + (i - 2) * 4);
             for (int j = i - 2; j <= i; j++) {
                 insns[j].id = MIPS_INS_NOP;
                 insns[j].mnemonic = "nop";
@@ -871,7 +854,8 @@ static void pass2(void) {
 
             it->second.returns.push_back(addr + 4);
         }
-        if (insn.is_global_got_memop && text_vaddr <= insn.operands[1].imm && insn.operands[1].imm < text_vaddr + text_section_len) {
+        if (insn.is_global_got_memop && text_vaddr <= insn.operands[1].imm &&
+            insn.operands[1].imm < text_vaddr + text_section_len) {
             uint32_t faddr = insn.operands[1].imm;
 
             li_function_pointers.insert(faddr);
@@ -945,7 +929,8 @@ static void pass2(void) {
                 //  nop
                 uint32_t alloc_dispose_addr = text_vaddr + (i + 4) * 4;
 
-                if (symbol_names.count(alloc_dispose_addr + 4) && symbol_names[alloc_dispose_addr + 4] == "alloc_dispose") {
+                if (symbol_names.count(alloc_dispose_addr + 4) &&
+                    symbol_names[alloc_dispose_addr + 4] == "alloc_dispose") {
                     alloc_dispose_addr += 4;
                 }
 
@@ -972,7 +957,8 @@ static void pass2(void) {
                 insns[i].id = MIPS_INS_NOP;
                 insns[i].op_count = 0;
                 insns[i].mnemonic = "nop";
-            } else if (insns[i].id == MIPS_INS_LW && insns[i + 1].id == MIPS_INS_MOVE && insns[i + 2].id == MIPS_INS_JALR) {
+            } else if (insns[i].id == MIPS_INS_LW && insns[i + 1].id == MIPS_INS_MOVE &&
+                       insns[i + 2].id == MIPS_INS_JALR) {
                 /*
                 408f50:       8f998010        lw      t9,-32752(gp)
                 408f54:       03e07821        move    t7,ra
@@ -995,7 +981,8 @@ static void pass2(void) {
     }
 }
 
-static void add_edge(uint32_t from, uint32_t to, bool function_entry = false, bool function_exit = false, bool extern_function = false, bool function_pointer = false) {
+static void add_edge(uint32_t from, uint32_t to, bool function_entry = false, bool function_exit = false,
+                     bool extern_function = false, bool function_pointer = false) {
     Edge fe = Edge(), be = Edge();
 
     fe.i = to;
@@ -1130,7 +1117,7 @@ static uint64_t map_reg(int32_t reg) {
 }
 
 static uint64_t temporary_regs(void) {
-// clang-format off
+    // clang-format off
     return
         map_reg(MIPS_REG_T0) |
         map_reg(MIPS_REG_T1) |
@@ -1142,19 +1129,10 @@ static uint64_t temporary_regs(void) {
         map_reg(MIPS_REG_T7) |
         map_reg(MIPS_REG_T8) |
         map_reg(MIPS_REG_T9);
-// clang-format on
+    // clang-format on
 }
 
-typedef enum {
-    TYPE_NOP,
-    TYPE_1S,
-    TYPE_2S,
-    TYPE_1D,
-    TYPE_1D_1S,
-    TYPE_1D_2S,
-    TYPE_D_LO_HI_2S,
-    TYPE_1S_POS1
-} TYPE;
+typedef enum { TYPE_NOP, TYPE_1S, TYPE_2S, TYPE_1D, TYPE_1D_1S, TYPE_1D_2S, TYPE_D_LO_HI_2S, TYPE_1S_POS1 } TYPE;
 
 static TYPE insn_to_type(Insn& i) {
     switch (i.id) {
@@ -1176,7 +1154,7 @@ static TYPE insn_to_type(Insn& i) {
         case MIPS_INS_LHU:
         case MIPS_INS_LW:
         case MIPS_INS_LWL:
-        //case MIPS_INS_LWR:
+        // case MIPS_INS_LWR:
         case MIPS_INS_MOVE:
         case MIPS_INS_NEGU:
         case MIPS_INS_NOT:
@@ -1236,7 +1214,7 @@ static TYPE insn_to_type(Insn& i) {
         case MIPS_INS_SH:
         case MIPS_INS_SW:
         case MIPS_INS_SWL:
-        //case MIPS_INS_SWR:
+        // case MIPS_INS_SWR:
         case MIPS_INS_TNE:
         case MIPS_INS_TEQ:
         case MIPS_INS_TGE:
@@ -1288,7 +1266,8 @@ static TYPE insn_to_type(Insn& i) {
 
 static void pass4(void) {
     vector<uint32_t> q;
-    uint64_t livein_func_start = 1U | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) | map_reg(MIPS_REG_SP) | map_reg(MIPS_REG_ZERO);
+    uint64_t livein_func_start =
+        1U | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) | map_reg(MIPS_REG_SP) | map_reg(MIPS_REG_ZERO);
 
     q.push_back(main_addr);
     insns[addr_to_i(main_addr)].f_livein = livein_func_start;
@@ -1419,8 +1398,8 @@ static void pass4(void) {
 
         if (function_entry) {
             // add one edge that skips the function call, for callee-saved register liveness propagation
-            live &= ~(map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) |
-                      map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3) | map_reg(MIPS_REG_V1) | temporary_regs());
+            live &= ~(map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) | map_reg(MIPS_REG_A2) |
+                      map_reg(MIPS_REG_A3) | map_reg(MIPS_REG_V1) | temporary_regs());
 
             if ((insns[idx + 1].f_livein | live) != insns[idx + 1].f_livein) {
                 insns[idx + 1].f_livein |= live;
@@ -1567,7 +1546,7 @@ static void pass5(void) {
                 int pos_float = 0;
                 bool only_floats_so_far = true;
 
-                for (const char *p = fn.params + 1; *p != '\0'; ++p) {
+                for (const char* p = fn.params + 1; *p != '\0'; ++p) {
                     switch (*p) {
                         case 'i':
                         case 'u':
@@ -1632,8 +1611,8 @@ static void pass5(void) {
 
         if (function_exit) {
             // add one edge that skips the function call, for callee-saved register liveness propagation
-            live &= ~(map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) |
-                      map_reg(MIPS_REG_A2) | map_reg(MIPS_REG_A3) | map_reg(MIPS_REG_V1) | temporary_regs());
+            live &= ~(map_reg(MIPS_REG_V0) | map_reg(MIPS_REG_A0) | map_reg(MIPS_REG_A1) | map_reg(MIPS_REG_A2) |
+                      map_reg(MIPS_REG_A3) | map_reg(MIPS_REG_V1) | temporary_regs());
 
             if ((insns[idx - 1].b_liveout | live) != insns[idx - 1].b_liveout) {
                 insns[idx - 1].b_liveout |= live;
@@ -1684,12 +1663,12 @@ static void dump(void) {
     }
 }
 
-static const char *r(uint32_t reg) {
+static const char* r(uint32_t reg) {
     return cs_reg_name(handle, reg);
 }
 
-static const char *wr(uint32_t reg) {
-// clang-format off
+static const char* wr(uint32_t reg) {
+    // clang-format off
     static const char *regs[] = {
         "f0.w[0]", "f0.w[1]",
         "f2.w[0]", "f2.w[1]",
@@ -1708,14 +1687,14 @@ static const char *wr(uint32_t reg) {
         "f28.w[0]", "f28.w[1]",
         "f30.w[0]", "f30.w[1]"
     };
-// clang-format on
+    // clang-format on
 
     assert(reg >= MIPS_REG_F0 && reg <= MIPS_REG_F31);
     return regs[reg - MIPS_REG_F0];
 }
 
-static const char *fr(uint32_t reg) {
-// clang-format off
+static const char* fr(uint32_t reg) {
+    // clang-format off
     static const char *regs[] = {
         "f0.f[0]", "f0.f[1]",
         "f2.f[0]", "f2.f[1]",
@@ -1734,14 +1713,14 @@ static const char *fr(uint32_t reg) {
         "f28.f[0]", "f28.f[1]",
         "f30.f[0]", "f30.f[1]",
     };
-// clang-format on
+    // clang-format on
 
     assert(reg >= MIPS_REG_F0 && reg <= MIPS_REG_F31);
     return regs[reg - MIPS_REG_F0];
 }
 
-static const char *dr(uint32_t reg) {
-// clang-format off
+static const char* dr(uint32_t reg) {
+    // clang-format off
     static const char *regs[] = {
         "f0",
         "f2",
@@ -1760,7 +1739,7 @@ static const char *dr(uint32_t reg) {
         "f28",
         "f30"
     };
-// clang-format on
+    // clang-format on
 
     assert(reg >= MIPS_REG_F0 && reg <= MIPS_REG_F31 && (reg - MIPS_REG_F0) % 2 == 0);
     return regs[(reg - MIPS_REG_F0) / 2];
@@ -1768,10 +1747,10 @@ static const char *dr(uint32_t reg) {
 
 static void dump_instr(int i);
 
-static void dump_cond_branch(int i, const char *lhs, const char *op, const char *rhs) {
+static void dump_cond_branch(int i, const char* lhs, const char* op, const char* rhs) {
     Insn& insn = insns[i];
-    const char *cast1 = "";
-    const char *cast2 = "";
+    const char* cast1 = "";
+    const char* cast2 = "";
     if (strcmp(op, "==") && strcmp(op, "!=")) {
         cast1 = "(int)";
         if (strcmp(rhs, "0")) {
@@ -1783,7 +1762,7 @@ static void dump_cond_branch(int i, const char *lhs, const char *op, const char 
     printf("goto L%x;}\n", (uint32_t)insn.operands[insn.op_count - 1].imm);
 }
 
-static void dump_cond_branch_likely(int i, const char *lhs, const char *op, const char *rhs) {
+static void dump_cond_branch_likely(int i, const char* lhs, const char* op, const char* rhs) {
     uint32_t target = text_vaddr + (i + 2) * 4;
     dump_cond_branch(i, lhs, op, rhs);
     if (!TRACE) {
@@ -1795,13 +1774,14 @@ static void dump_cond_branch_likely(int i, const char *lhs, const char *op, cons
 }
 
 static void dump_instr(int i) {
-    const char *symbol_name = NULL;
+    const char* symbol_name = NULL;
     if (symbol_names.count(text_vaddr + i * 4) != 0) {
         symbol_name = symbol_names[text_vaddr + i * 4].c_str();
         printf("//%s:\n", symbol_name);
     }
     if (TRACE) {
-        printf("++cnt; printf(\"pc=0x%08x%s%s\\n\"); ", text_vaddr + i * 4, symbol_name ? " " : "", symbol_name ? symbol_name : "");
+        printf("++cnt; printf(\"pc=0x%08x%s%s\\n\"); ", text_vaddr + i * 4, symbol_name ? " " : "",
+               symbol_name ? symbol_name : "");
     }
     Insn& insn = insns[i];
     if (!insn.is_jump && !conservative) {
@@ -1819,7 +1799,8 @@ static void dump_instr(int i) {
                 break;
 
             case TYPE_2S:
-                if (!(insn.f_livein & map_reg(insn.operands[0].reg)) || !(insn.f_livein & map_reg(insn.operands[1].reg))) {
+                if (!(insn.f_livein & map_reg(insn.operands[0].reg)) ||
+                    !(insn.f_livein & map_reg(insn.operands[1].reg))) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                 }
                 break;
@@ -1843,7 +1824,8 @@ static void dump_instr(int i) {
                 break;
 
             case TYPE_D_LO_HI_2S:
-                if (!(insn.f_livein & map_reg(insn.operands[0].reg)) || !(insn.f_livein & map_reg(insn.operands[1].reg))) {
+                if (!(insn.f_livein & map_reg(insn.operands[0].reg)) ||
+                    !(insn.f_livein & map_reg(insn.operands[1].reg))) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                     break;
                 }
@@ -1860,7 +1842,8 @@ static void dump_instr(int i) {
             if (insn.mnemonic == "add.s") {
                 printf("%s = %s + %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg), fr(insn.operands[2].reg));
             } else if (insn.mnemonic == "add.d") {
-                printf("%s = FloatReg_from_double(double_from_FloatReg(%s) + double_from_FloatReg(%s));\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
+                printf("%s = FloatReg_from_double(double_from_FloatReg(%s) + double_from_FloatReg(%s));\n",
+                       dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
             } else {
                 printf("%s = %s + %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), r(insn.operands[2].reg));
             }
@@ -1868,7 +1851,8 @@ static void dump_instr(int i) {
 
         case MIPS_INS_ADDI:
         case MIPS_INS_ADDIU:
-            printf("%s = %s + 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (uint32_t)insn.operands[2].imm);
+            printf("%s = %s + 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_AND:
@@ -1876,7 +1860,8 @@ static void dump_instr(int i) {
             break;
 
         case MIPS_INS_ANDI:
-            printf("%s = %s & 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (uint32_t)insn.operands[2].imm);
+            printf("%s = %s & 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_BEQ:
@@ -1924,7 +1909,8 @@ static void dump_instr(int i) {
             break;
 
         case MIPS_INS_BNEL:
-            dump_cond_branch_likely(i, r(insn.operands[0].reg), "!=", insn.mnemonic == "bnezl" ? "0" : r(insn.operands[1].reg));
+            dump_cond_branch_likely(i, r(insn.operands[0].reg),
+                                    "!=", insn.mnemonic == "bnezl" ? "0" : r(insn.operands[1].reg));
             break;
 
         case MIPS_INS_BREAK:
@@ -1935,9 +1921,9 @@ static void dump_instr(int i) {
             dump_cond_branch(i, r(insn.operands[0].reg), "==", "0");
             break;
 
-        /* case MIPS_INS_BEQZL:
-            dump_cond_branch_likely(i, r(insn.operands[0].reg), "==", "0");
-            break; */
+            /* case MIPS_INS_BEQZL:
+                dump_cond_branch_likely(i, r(insn.operands[0].reg), "==", "0");
+                break; */
 
         case MIPS_INS_B:
             dump_instr(i + 1);
@@ -1952,8 +1938,7 @@ static void dump_instr(int i) {
             break;
 
         case MIPS_INS_BC1FL:
-        case MIPS_INS_BC1TL:
-        {
+        case MIPS_INS_BC1TL: {
             uint32_t target = text_vaddr + (i + 2) * 4;
             printf("if (%scf) {", insn.id == MIPS_INS_BC1FL ? "!" : "");
             dump_instr(i + 1);
@@ -1964,16 +1949,15 @@ static void dump_instr(int i) {
                 printf("else {printf(\"pc=0x%08x (ignored)\\n\"); goto L%x;}\n", text_vaddr + (i + 1) * 4, target);
             }
             label_addresses.insert(target);
-        }
-            break;
+        } break;
 
         case MIPS_INS_BNEZ:
             dump_cond_branch(i, r(insn.operands[0].reg), "!=", "0");
             break;
 
-        /* case MIPS_INS_BNEZL:
-            dump_cond_branch_likely(i, r(insn.operands[0].reg), "!=", "0");
-            break; */
+            /* case MIPS_INS_BNEZL:
+                dump_cond_branch_likely(i, r(insn.operands[0].reg), "!=", "0");
+                break; */
 
         case MIPS_INS_C:
             if (insn.mnemonic == "c.lt.s") {
@@ -1983,11 +1967,14 @@ static void dump_instr(int i) {
             } else if (insn.mnemonic == "c.eq.s") {
                 printf("cf = %s == %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg));
             } else if (insn.mnemonic == "c.lt.d") {
-                printf("cf = double_from_FloatReg(%s) < double_from_FloatReg(%s);\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
+                printf("cf = double_from_FloatReg(%s) < double_from_FloatReg(%s);\n", dr(insn.operands[0].reg),
+                       dr(insn.operands[1].reg));
             } else if (insn.mnemonic == "c.le.d") {
-                printf("cf = double_from_FloatReg(%s) <= double_from_FloatReg(%s);\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
+                printf("cf = double_from_FloatReg(%s) <= double_from_FloatReg(%s);\n", dr(insn.operands[0].reg),
+                       dr(insn.operands[1].reg));
             } else if (insn.mnemonic == "c.eq.d") {
-                printf("cf = double_from_FloatReg(%s) == double_from_FloatReg(%s);\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
+                printf("cf = double_from_FloatReg(%s) == double_from_FloatReg(%s);\n", dr(insn.operands[0].reg),
+                       dr(insn.operands[1].reg));
             }
             break;
 
@@ -2025,7 +2012,8 @@ static void dump_instr(int i) {
                 printf("%s = %s / %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg), fr(insn.operands[2].reg));
             } else if (insn.mnemonic == "div.d") {
                 assert(insn.op_count == 3);
-                printf("%s = FloatReg_from_double(double_from_FloatReg(%s) / double_from_FloatReg(%s));\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
+                printf("%s = FloatReg_from_double(double_from_FloatReg(%s) / double_from_FloatReg(%s));\n",
+                       dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
             } else {
                 assert(insn.op_count == 2);
                 printf("lo = (int)%s / (int)%s; ", r(insn.operands[0].reg), r(insn.operands[1].reg));
@@ -2053,7 +2041,8 @@ static void dump_instr(int i) {
             if (insn.mnemonic == "mul.s") {
                 printf("%s = %s * %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg), fr(insn.operands[2].reg));
             } else if (insn.mnemonic == "mul.d") {
-                printf("%s = FloatReg_from_double(double_from_FloatReg(%s) * double_from_FloatReg(%s));\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
+                printf("%s = FloatReg_from_double(double_from_FloatReg(%s) * double_from_FloatReg(%s));\n",
+                       dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
             } else {
                 goto unimplemented;
             }
@@ -2063,7 +2052,8 @@ static void dump_instr(int i) {
             if (insn.mnemonic == "neg.s") {
                 printf("%s = -%s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg));
             } else if (insn.mnemonic == "neg.d") {
-                printf("%s = FloatReg_from_double(-double_from_FloatReg(%s));\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
+                printf("%s = FloatReg_from_double(-double_from_FloatReg(%s));\n", dr(insn.operands[0].reg),
+                       dr(insn.operands[1].reg));
             } else {
                 printf("%s = -%s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
             }
@@ -2073,7 +2063,8 @@ static void dump_instr(int i) {
             if (insn.mnemonic == "sub.s") {
                 printf("%s = %s - %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg), fr(insn.operands[2].reg));
             } else if (insn.mnemonic == "sub.d") {
-                printf("%s = FloatReg_from_double(double_from_FloatReg(%s) - double_from_FloatReg(%s));\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
+                printf("%s = FloatReg_from_double(double_from_FloatReg(%s) - double_from_FloatReg(%s));\n",
+                       dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
             } else {
                 goto unimplemented;
             }
@@ -2084,8 +2075,7 @@ static void dump_instr(int i) {
             printf("goto L%x;\n", (uint32_t)insn.operands[0].imm);
             break;
 
-        case MIPS_INS_JAL:
-        {
+        case MIPS_INS_JAL: {
             string name;
             bool is_extern_function = false;
             size_t extern_function_id;
@@ -2153,7 +2143,7 @@ static void dump_instr(int i) {
                 bool only_floats_so_far = true;
                 bool needs_sp = false;
 
-                for (const char *p = fn.params + 1; *p != '\0'; ++p) {
+                for (const char* p = fn.params + 1; *p != '\0'; ++p) {
                     if (!first) {
                         printf(", ");
                     }
@@ -2197,9 +2187,12 @@ static void dump_instr(int i) {
                                 printf("double_from_FloatReg(%s)", dr(MIPS_REG_F12 + pos_float));
                                 pos_float += 2;
                             } else if (pos < 4) {
-                                printf("BITCAST_U64_TO_F64(((uint64_t)%s << 32) | (uint64_t)%s)", r(MIPS_REG_A0 + pos), r(MIPS_REG_A0 + pos + 1));
+                                printf("BITCAST_U64_TO_F64(((uint64_t)%s << 32) | (uint64_t)%s)", r(MIPS_REG_A0 + pos),
+                                       r(MIPS_REG_A0 + pos + 1));
                             } else {
-                                printf("BITCAST_U64_TO_F64(((uint64_t)MEM_U32(sp + %d) << 32) | (uint64_t)MEM_U32(sp + %d))", pos * 4, (pos + 1) * 4);
+                                printf("BITCAST_U64_TO_F64(((uint64_t)MEM_U32(sp + %d) << 32) | (uint64_t)MEM_U32(sp + "
+                                       "%d))",
+                                       pos * 4, (pos + 1) * 4);
                             }
                             pos += 2;
                             break;
@@ -2214,9 +2207,11 @@ static void dump_instr(int i) {
                                 printf("(int64_t)");
                             }
                             if (pos < 4) {
-                                printf("(((uint64_t)%s << 32) | (uint64_t)%s)", r(MIPS_REG_A0 + pos), r(MIPS_REG_A0 + pos + 1));
+                                printf("(((uint64_t)%s << 32) | (uint64_t)%s)", r(MIPS_REG_A0 + pos),
+                                       r(MIPS_REG_A0 + pos + 1));
                             } else {
-                                printf("(((uint64_t)MEM_U32(sp + %d) << 32) | (uint64_t)MEM_U32(sp + %d))", pos * 4, (pos + 1) * 4);
+                                printf("(((uint64_t)MEM_U32(sp + %d) << 32) | (uint64_t)MEM_U32(sp + %d))", pos * 4,
+                                       (pos + 1) * 4);
                             }
                             pos += 2;
                             break;
@@ -2237,7 +2232,7 @@ static void dump_instr(int i) {
                 }
 
                 if (!name.empty()) {
-                    //printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(), r(MIPS_REG_A0));
+                    // printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(), r(MIPS_REG_A0));
                 }
             } else {
                 Function& f = functions.find((uint32_t)insn.operands[0].imm)->second;
@@ -2249,7 +2244,7 @@ static void dump_instr(int i) {
                 }
 
                 if (!name.empty()) {
-                    //printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(), r(MIPS_REG_A0));
+                    // printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(), r(MIPS_REG_A0));
                     printf("f_%s", name.c_str());
                 } else {
                     printf("func_%x", (uint32_t)insn.operands[0].imm);
@@ -2275,14 +2270,13 @@ static void dump_instr(int i) {
 
             printf("goto L%x;\n", text_vaddr + (i + 2) * 4);
             label_addresses.insert(text_vaddr + (i + 2) * 4);
-        }
-            break;
+        } break;
 
         case MIPS_INS_JALR:
             printf("fp_dest = %s;\n", r(insn.operands[0].reg));
             dump_instr(i + 1);
-            printf("temp64 = trampoline(mem, sp, %s, %s, %s, %s, fp_dest);\n",
-                r(MIPS_REG_A0), r(MIPS_REG_A1), r(MIPS_REG_A2), r(MIPS_REG_A3));
+            printf("temp64 = trampoline(mem, sp, %s, %s, %s, %s, fp_dest);\n", r(MIPS_REG_A0), r(MIPS_REG_A1),
+                   r(MIPS_REG_A2), r(MIPS_REG_A3));
             printf("%s = (uint32_t)(temp64 >> 32);\n", r(MIPS_REG_V0));
             printf("%s = (uint32_t)temp64;\n", r(MIPS_REG_V1));
             printf("goto L%x;\n", text_vaddr + (i + 2) * 4);
@@ -2342,19 +2336,23 @@ static void dump_instr(int i) {
             break;
 
         case MIPS_INS_LB:
-            printf("%s = MEM_S8(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
+            printf("%s = MEM_S8(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base),
+                   (int)insn.operands[1].mem.disp);
             break;
 
         case MIPS_INS_LBU:
-            printf("%s = MEM_U8(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
+            printf("%s = MEM_U8(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base),
+                   (int)insn.operands[1].mem.disp);
             break;
 
         case MIPS_INS_LH:
-            printf("%s = MEM_S16(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
+            printf("%s = MEM_S16(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base),
+                   (int)insn.operands[1].mem.disp);
             break;
 
         case MIPS_INS_LHU:
-            printf("%s = MEM_U16(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
+            printf("%s = MEM_U16(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base),
+                   (int)insn.operands[1].mem.disp);
             break;
 
         case MIPS_INS_LUI:
@@ -2362,34 +2360,38 @@ static void dump_instr(int i) {
             break;
 
         case MIPS_INS_LW:
-            printf("%s = MEM_U32(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
+            printf("%s = MEM_U32(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base),
+                   (int)insn.operands[1].mem.disp);
             break;
 
         case MIPS_INS_LWC1:
-            printf("%s = MEM_U32(%s + %d);\n", wr(insn.operands[0].reg), r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
+            printf("%s = MEM_U32(%s + %d);\n", wr(insn.operands[0].reg), r(insn.operands[1].mem.base),
+                   (int)insn.operands[1].mem.disp);
             break;
 
         case MIPS_INS_LDC1:
             assert((insn.operands[0].reg - MIPS_REG_F0) % 2 == 0);
-            printf("%s = MEM_U32(%s + %d);\n", wr(insn.operands[0].reg + 1), r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
-            printf("%s = MEM_U32(%s + %d + 4);\n", wr(insn.operands[0].reg), r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
+            printf("%s = MEM_U32(%s + %d);\n", wr(insn.operands[0].reg + 1), r(insn.operands[1].mem.base),
+                   (int)insn.operands[1].mem.disp);
+            printf("%s = MEM_U32(%s + %d + 4);\n", wr(insn.operands[0].reg), r(insn.operands[1].mem.base),
+                   (int)insn.operands[1].mem.disp);
             break;
 
-        case MIPS_INS_LWL:
-        {
-            const char *reg = r(insn.operands[0].reg);
+        case MIPS_INS_LWL: {
+            const char* reg = r(insn.operands[0].reg);
 
             printf("%s = %s + %d; ", reg, r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
-            printf("%s = (MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + 3);\n", reg, reg, reg, reg, reg);
-        }
-            break;
+            printf("%s = (MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + 3);\n", reg,
+                   reg, reg, reg, reg);
+        } break;
 
         case MIPS_INS_LWR:
             printf("//lwr %s\n", insn.op_str.c_str());
             break;
 
         case MIPS_INS_LI:
-            if (insn.is_global_got_memop && text_vaddr <= insn.operands[1].imm && insn.operands[1].imm < text_vaddr + text_section_len) {
+            if (insn.is_global_got_memop && text_vaddr <= insn.operands[1].imm &&
+                insn.operands[1].imm < text_vaddr + text_section_len) {
                 printf("%s = 0x%x; // function pointer\n", r(insn.operands[0].reg), (uint32_t)insn.operands[1].imm);
                 label_addresses.insert((uint32_t)insn.operands[1].imm);
             } else {
@@ -2419,21 +2421,23 @@ static void dump_instr(int i) {
 
         case MIPS_INS_MULT:
             printf("lo = %s * %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
-            printf("hi = (uint32_t)((int64_t)(int)%s * (int64_t)(int)%s >> 32);\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
+            printf("hi = (uint32_t)((int64_t)(int)%s * (int64_t)(int)%s >> 32);\n", r(insn.operands[0].reg),
+                   r(insn.operands[1].reg));
             break;
 
         case MIPS_INS_MULTU:
             printf("lo = %s * %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
-            printf("hi = (uint32_t)((uint64_t)%s * (uint64_t)%s >> 32);\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
+            printf("hi = (uint32_t)((uint64_t)%s * (uint64_t)%s >> 32);\n", r(insn.operands[0].reg),
+                   r(insn.operands[1].reg));
             break;
 
         case MIPS_INS_SQRT:
             printf("%s = sqrtf(%s);\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg));
             break;
 
-        //case MIPS_INS_FSQRT:
-        //    printf("%s = sqrtf(%s);\n", wr(insn.operands[0].reg), wr(insn.operands[1].reg));
-        //    break;
+            // case MIPS_INS_FSQRT:
+            //     printf("%s = sqrtf(%s);\n", wr(insn.operands[0].reg), wr(insn.operands[1].reg));
+            //     break;
 
         case MIPS_INS_NEGU:
             printf("%s = -%s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
@@ -2452,35 +2456,43 @@ static void dump_instr(int i) {
             break;
 
         case MIPS_INS_ORI:
-            printf("%s = %s | 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (uint32_t)insn.operands[2].imm);
+            printf("%s = %s | 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_SB:
-            printf("MEM_U8(%s + %d) = (uint8_t)%s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp, r(insn.operands[0].reg));
+            printf("MEM_U8(%s + %d) = (uint8_t)%s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
+                   r(insn.operands[0].reg));
             break;
 
         case MIPS_INS_SH:
-            printf("MEM_U16(%s + %d) = (uint16_t)%s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp, r(insn.operands[0].reg));
+            printf("MEM_U16(%s + %d) = (uint16_t)%s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
+                   r(insn.operands[0].reg));
             break;
 
         case MIPS_INS_SLL:
-            printf("%s = %s << %d;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (uint32_t)insn.operands[2].imm);
+            printf("%s = %s << %d;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_SLLV:
-            printf("%s = %s << (%s & 0x1f);\n", r(insn.operands[0].reg), r(insn.operands[1].reg), r(insn.operands[2].reg));
+            printf("%s = %s << (%s & 0x1f);\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   r(insn.operands[2].reg));
             break;
 
         case MIPS_INS_SLT:
-            printf("%s = (int)%s < (int)%s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), r(insn.operands[2].reg));
+            printf("%s = (int)%s < (int)%s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   r(insn.operands[2].reg));
             break;
 
         case MIPS_INS_SLTI:
-            printf("%s = (int)%s < (int)0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (uint32_t)insn.operands[2].imm);
+            printf("%s = (int)%s < (int)0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_SLTIU:
-            printf("%s = %s < 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (uint32_t)insn.operands[2].imm);
+            printf("%s = %s < 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_SLTU:
@@ -2488,19 +2500,23 @@ static void dump_instr(int i) {
             break;
 
         case MIPS_INS_SRA:
-            printf("%s = (int)%s >> %d;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (uint32_t)insn.operands[2].imm);
+            printf("%s = (int)%s >> %d;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_SRAV:
-            printf("%s = (int)%s >> (%s & 0x1f);\n", r(insn.operands[0].reg), r(insn.operands[1].reg), r(insn.operands[2].reg));
+            printf("%s = (int)%s >> (%s & 0x1f);\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   r(insn.operands[2].reg));
             break;
 
         case MIPS_INS_SRL:
-            printf("%s = %s >> %d;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (uint32_t)insn.operands[2].imm);
+            printf("%s = %s >> %d;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_SRLV:
-            printf("%s = %s >> (%s & 0x1f);\n", r(insn.operands[0].reg), r(insn.operands[1].reg), r(insn.operands[2].reg));
+            printf("%s = %s >> (%s & 0x1f);\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   r(insn.operands[2].reg));
             break;
 
         case MIPS_INS_SUBU:
@@ -2508,22 +2524,27 @@ static void dump_instr(int i) {
             break;
 
         case MIPS_INS_SW:
-            printf("MEM_U32(%s + %d) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp, r(insn.operands[0].reg));
+            printf("MEM_U32(%s + %d) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
+                   r(insn.operands[0].reg));
             break;
 
         case MIPS_INS_SWC1:
-            printf("MEM_U32(%s + %d) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp, wr(insn.operands[0].reg));
+            printf("MEM_U32(%s + %d) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
+                   wr(insn.operands[0].reg));
             break;
 
         case MIPS_INS_SDC1:
             assert((insn.operands[0].reg - MIPS_REG_F0) % 2 == 0);
-            printf("MEM_U32(%s + %d) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp, wr(insn.operands[0].reg + 1));
-            printf("MEM_U32(%s + %d + 4) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp, wr(insn.operands[0].reg));
+            printf("MEM_U32(%s + %d) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
+                   wr(insn.operands[0].reg + 1));
+            printf("MEM_U32(%s + %d + 4) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
+                   wr(insn.operands[0].reg));
             break;
 
         case MIPS_INS_SWL:
             for (int i = 0; i < 4; i++) {
-                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp, i, r(insn.operands[0].reg), (3 - i) * 8);
+                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r(insn.operands[1].mem.base),
+                       (int)insn.operands[1].mem.disp, i, r(insn.operands[0].reg), (3 - i) * 8);
             }
             break;
 
@@ -2546,27 +2567,33 @@ static void dump_instr(int i) {
             break;
 
         case MIPS_INS_XORI:
-            printf("%s = %s ^ 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (uint32_t)insn.operands[2].imm);
+            printf("%s = %s ^ 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_TNE:
-            printf("assert(%s == %s && \"tne %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (int)insn.operands[2].imm);
+            printf("assert(%s == %s && \"tne %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (int)insn.operands[2].imm);
             break;
 
         case MIPS_INS_TEQ:
-            printf("assert(%s != %s && \"teq %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (int)insn.operands[2].imm);
+            printf("assert(%s != %s && \"teq %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (int)insn.operands[2].imm);
             break;
 
         case MIPS_INS_TGE:
-            printf("assert((int)%s < (int)%s && \"tge %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (int)insn.operands[2].imm);
+            printf("assert((int)%s < (int)%s && \"tge %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (int)insn.operands[2].imm);
             break;
 
         case MIPS_INS_TGEU:
-            printf("assert(%s < %s && \"tgeu %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (int)insn.operands[2].imm);
+            printf("assert(%s < %s && \"tgeu %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (int)insn.operands[2].imm);
             break;
 
         case MIPS_INS_TLT:
-            printf("assert((int)%s >= (int)%s && \"tlt %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg), (int)insn.operands[2].imm);
+            printf("assert((int)%s >= (int)%s && \"tlt %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+                   (int)insn.operands[2].imm);
             break;
 
         case MIPS_INS_NOP:
@@ -2574,13 +2601,14 @@ static void dump_instr(int i) {
             break;
 
         default:
-            unimplemented:
+        unimplemented:
             printf("UNIMPLEMENTED %s %s\n", insn.mnemonic.c_str(), insn.op_str.c_str());
             break;
     }
 }
 
-static void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const uint8_t *section, uint32_t section_vaddr, uint32_t len) {
+static void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const uint8_t* section,
+                                           uint32_t section_vaddr, uint32_t len) {
     for (uint32_t i = 0; i < len; i += 4) {
         uint32_t addr = read_u32_be(section + i);
 
@@ -2594,7 +2622,8 @@ static void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret
             continue;
         }
 
-        if (section_vaddr + i >= procedure_table_start && section_vaddr + i < procedure_table_start + procedure_table_len) {
+        if (section_vaddr + i >= procedure_table_start &&
+            section_vaddr + i < procedure_table_start + procedure_table_len) {
             // some linking table with a "all" functions, in as1 5.3
             continue;
         }
@@ -2683,7 +2712,7 @@ static void dump_c(void) {
 
     uint32_t stack_bottom = min_addr;
     min_addr -= 1 * 1024 * 1024; // 1 MB stack
-    stack_bottom -= 16; // for main's stack frame
+    stack_bottom -= 16;          // for main's stack frame
 
     printf("#include \"header.h\"\n");
 
@@ -2727,7 +2756,8 @@ static void dump_c(void) {
     }
 
     if (!data_function_pointers.empty() || !li_function_pointers.empty()) {
-        printf("uint64_t trampoline(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t fp_dest) {\n");
+        printf("uint64_t trampoline(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, "
+               "uint32_t fp_dest) {\n");
         printf("switch (fp_dest) {\n");
 
         for (auto& it : functions) {
@@ -2785,9 +2815,11 @@ static void dump_c(void) {
 
     /* if (!data_function_pointers.empty()) {
         if (!LABELS_64_BIT) {
-            printf("for (int i = 0; i < %d; i++) MEM_U32(data_function_pointers[i].orig_addr) = (uint32_t)(uintptr_t)data_function_pointers[i].recompiled_addr;\n", (int)data_function_pointers.size());
-        } else {
-            printf("for (int i = 0; i < %d; i++) MEM_U32(data_function_pointers[i].orig_addr) = (uint32_t)((uintptr_t)data_function_pointers[i].recompiled_addr - (uintptr_t)&&Loffset);\n", (int)data_function_pointers.size());
+            printf("for (int i = 0; i < %d; i++) MEM_U32(data_function_pointers[i].orig_addr) =
+    (uint32_t)(uintptr_t)data_function_pointers[i].recompiled_addr;\n", (int)data_function_pointers.size()); } else {
+            printf("for (int i = 0; i < %d; i++) MEM_U32(data_function_pointers[i].orig_addr) =
+    (uint32_t)((uintptr_t)data_function_pointers[i].recompiled_addr - (uintptr_t)&&Loffset);\n",
+    (int)data_function_pointers.size());
         }
     } */
 
@@ -2798,7 +2830,8 @@ static void dump_c(void) {
     printf("MEM_U32(0x%x) = arg_addr;\n", symbol_names_inv.at("__Argv"));
     printf("MEM_U32(0x%x) = arg_addr;\n", stack_bottom + 4);
     printf("uint32_t arg_strpos = arg_addr + argc * 4;\n");
-    printf("for (int i = 0; i < argc; i++) {MEM_U32(arg_addr + i * 4) = arg_strpos; uint32_t p = 0; do { MEM_S8(arg_strpos) = argv[i][p]; ++arg_strpos; } while (argv[i][p++] != '\\0');}\n");
+    printf("for (int i = 0; i < argc; i++) {MEM_U32(arg_addr + i * 4) = arg_strpos; uint32_t p = 0; do { "
+           "MEM_S8(arg_strpos) = argv[i][p]; ++arg_strpos; } while (argv[i][p++] != '\\0');}\n");
 
     printf("setup_libc_data(mem);\n");
 
@@ -2942,9 +2975,10 @@ static void dump_c(void) {
     } */
 }
 
-static void parse_elf(const uint8_t *data, size_t file_len) {
-    Elf32_Ehdr *ehdr;
-    Elf32_Shdr *shdr, *str_shdr, *sym_shdr = NULL, *dynsym_shdr, *dynamic_shdr, *reginfo_shdr, *got_shdr, *sym_strtab = NULL, *sym_dynstr;
+static void parse_elf(const uint8_t* data, size_t file_len) {
+    Elf32_Ehdr* ehdr;
+    Elf32_Shdr *shdr, *str_shdr, *sym_shdr = NULL, *dynsym_shdr, *dynamic_shdr, *reginfo_shdr, *got_shdr,
+                                 *sym_strtab = NULL, *sym_dynstr;
     int text_section_index = -1;
     int symtab_section_index = -1;
     int dynsym_section_index = -1;
@@ -2962,7 +2996,7 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
         exit(EXIT_FAILURE);
     }
 
-    ehdr = (Elf32_Ehdr *) data;
+    ehdr = (Elf32_Ehdr*)data;
     if (ehdr->e_ident[EI_DATA] != 2 || u16be(ehdr->e_machine) != 8) {
         fprintf(stderr, "Not big-endian MIPS.\n");
         exit(EXIT_FAILURE);
@@ -2974,14 +3008,14 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
         exit(EXIT_FAILURE);
     }
 
-#define SECTION(index) (Elf32_Shdr *)(data + u32be(ehdr->e_shoff) + (index) * u16be(ehdr->e_shentsize))
-#define STR(strtab, offset) (const char *)(data + u32be(strtab->sh_offset) + offset)
+#define SECTION(index) (Elf32_Shdr*)(data + u32be(ehdr->e_shoff) + (index)*u16be(ehdr->e_shentsize))
+#define STR(strtab, offset) (const char*)(data + u32be(strtab->sh_offset) + offset)
 
     str_shdr = SECTION(u16be(ehdr->e_shstrndx));
     for (int i = 0; i < u16be(ehdr->e_shnum); i++) {
         shdr = SECTION(i);
 
-        const char *name = STR(str_shdr, u32be(shdr->sh_name));
+        const char* name = STR(str_shdr, u32be(shdr->sh_name));
 
         if (strcmp(name, ".text") == 0) {
             text_offset = u32be(shdr->sh_offset);
@@ -3075,7 +3109,6 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
         bss_vaddr = u32be(shdr->sh_addr);
     }
 
-
     // add symbols
     if (symtab_section_index != -1) {
         sym_shdr = SECTION(symtab_section_index);
@@ -3084,8 +3117,8 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
 
         assert(u32be(sym_shdr->sh_entsize) == sizeof(Elf32_Sym));
         for (uint32_t i = 0; i < u32be(sym_shdr->sh_size); i += sizeof(Elf32_Sym)) {
-            Elf32_Sym *sym = (Elf32_Sym *)(data + u32be(sym_shdr->sh_offset) + i);
-            const char *name = STR(sym_strtab, u32be(sym->st_name));
+            Elf32_Sym* sym = (Elf32_Sym*)(data + u32be(sym_shdr->sh_offset) + i);
+            const char* name = STR(sym_strtab, u32be(sym->st_name));
             uint32_t addr = u32be(sym->st_value);
 
             if (u16be(sym->st_shndx) != text_section_index || name[0] == '.') {
@@ -3104,7 +3137,7 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
         dynamic_shdr = SECTION(dynamic_section_index);
         got_shdr = SECTION(got_section_index);
 
-        Elf32_RegInfo *reg_info = (Elf32_RegInfo *)(data + u32be(reginfo_shdr->sh_offset));
+        Elf32_RegInfo* reg_info = (Elf32_RegInfo*)(data + u32be(reginfo_shdr->sh_offset));
         uint32_t gp_base = u32be(reg_info->ri_gp_value); // gp should have this value through the program run
         uint32_t got_start = 0;
         uint32_t local_got_no = 0;
@@ -3113,7 +3146,7 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
 
         assert(u32be(dynamic_shdr->sh_entsize) == sizeof(Elf32_Dyn));
         for (uint32_t i = 0; i < u32be(dynamic_shdr->sh_size); i += sizeof(Elf32_Dyn)) {
-            Elf32_Dyn *dyn = (Elf32_Dyn *)(data + u32be(dynamic_shdr->sh_offset) + i);
+            Elf32_Dyn* dyn = (Elf32_Dyn*)(data + u32be(dynamic_shdr->sh_offset) + i);
 
             if (u32be(dyn->d_tag) == DT_PLTGOT) {
                 got_start = u32be(dyn->d_un.d_ptr);
@@ -3150,8 +3183,8 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
         vector<string> common_order;
 
         for (uint32_t i = 0; i < dynsym_no; i++) {
-            Elf32_Sym *sym = (Elf32_Sym *)(data + u32be(dynsym_shdr->sh_offset) + i * sizeof(Elf32_Sym));
-            const char *name = STR(sym_dynstr, u32be(sym->st_name));
+            Elf32_Sym* sym = (Elf32_Sym*)(data + u32be(dynsym_shdr->sh_offset) + i * sizeof(Elf32_Sym));
+            const char* name = STR(sym_dynstr, u32be(sym->st_name));
             uint32_t addr = u32be(sym->st_value);
 
             addr += vaddr_adj;
@@ -3165,11 +3198,10 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
             }
 
             if ((u16be(sym->st_shndx) == SHN_MIPS_TEXT && type == STT_FUNC) ||
-                 (type == STT_OBJECT && (u16be(sym->st_shndx) == SHN_MIPS_ACOMMON || u16be(sym->st_shndx) == SHN_MIPS_DATA)))
-            {
+                (type == STT_OBJECT &&
+                 (u16be(sym->st_shndx) == SHN_MIPS_ACOMMON || u16be(sym->st_shndx) == SHN_MIPS_DATA))) {
                 // disasm_label_add(state, name, addr, u32be(sym->st_size), true);
-                if (type == STT_OBJECT) {
-                }
+                if (type == STT_OBJECT) {}
 
                 if (u16be(sym->st_shndx) == SHN_MIPS_ACOMMON) {
                     if (addr < common_start) {
@@ -3195,14 +3227,16 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
             }
 
             if (i >= first_got_sym) {
-                uint32_t got_value = u32be(*(uint32_t *)(data + u32be(got_shdr->sh_offset) + (local_got_no + (i - first_got_sym)) * sizeof(uint32_t)));
+                uint32_t got_value = u32be(*(uint32_t*)(data + u32be(got_shdr->sh_offset) +
+                                                        (local_got_no + (i - first_got_sym)) * sizeof(uint32_t)));
 
                 if (u16be(sym->st_shndx) == SHN_MIPS_TEXT && type == STT_FUNC) {
                     // got_globals[i - first_got_sym] = got_value;
                     // label_addresses.insert(got_value);
                     got_globals[i - first_got_sym] = addr; // to include the 3 instr gp header thing
                     label_addresses.insert(addr);
-                } else if (type == STT_OBJECT && (u16be(sym->st_shndx) == SHN_UNDEF || u16be(sym->st_shndx) == SHN_COMMON)) {
+                } else if (type == STT_OBJECT &&
+                           (u16be(sym->st_shndx) == SHN_UNDEF || u16be(sym->st_shndx) == SHN_COMMON)) {
                     // symbol defined externally (for example in libc)
                     got_globals[i - first_got_sym] = got_value;
                 } else {
@@ -3213,10 +3247,10 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
             }
         }
 
-        uint32_t *local_entries = (uint32_t *)calloc(local_got_no, sizeof(uint32_t));
+        uint32_t* local_entries = (uint32_t*)calloc(local_got_no, sizeof(uint32_t));
         got_locals.resize(local_got_no);
         for (uint32_t i = 0; i < local_got_no; i++) {
-            uint32_t *entry = (uint32_t *)(data + u32be(got_shdr->sh_offset) + i * sizeof(uint32_t));
+            uint32_t* entry = (uint32_t*)(data + u32be(got_shdr->sh_offset) + i * sizeof(uint32_t));
             got_locals[i] = u32be(*entry);
         }
 
@@ -3230,10 +3264,10 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
 
     // add relocations
     for (int i = 0; i < u16be(ehdr->e_shnum); i++) {
-        Elf32_Rel *prevHi = NULL;
+        Elf32_Rel* prevHi = NULL;
 
         shdr = SECTION(i);
-        if (u32be(shdr->sh_type) != SHT_REL || u32be(shdr->sh_info) != (uint32_t) text_section_index)
+        if (u32be(shdr->sh_type) != SHT_REL || u32be(shdr->sh_info) != (uint32_t)text_section_index)
             continue;
 
         if (sym_shdr == NULL) {
@@ -3241,18 +3275,18 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
             exit(EXIT_FAILURE);
         }
 
-        assert(u32be(shdr->sh_link) == (uint32_t) symtab_section_index);
+        assert(u32be(shdr->sh_link) == (uint32_t)symtab_section_index);
         assert(u32be(shdr->sh_entsize) == sizeof(Elf32_Rel));
 
         for (uint32_t i = 0; i < u32be(shdr->sh_size); i += sizeof(Elf32_Rel)) {
-            Elf32_Rel *rel = (Elf32_Rel *)(data + u32be(shdr->sh_offset) + i);
+            Elf32_Rel* rel = (Elf32_Rel*)(data + u32be(shdr->sh_offset) + i);
             uint32_t offset = text_offset + u32be(rel->r_offset);
             uint32_t symIndex = ELF32_R_SYM(u32be(rel->r_info));
             uint32_t rtype = ELF32_R_TYPE(u32be(rel->r_info));
-            const char *symName = "0";
+            const char* symName = "0";
 
             if (symIndex != STN_UNDEF) {
-                Elf32_Sym *sym = (Elf32_Sym *)(data + u32be(sym_shdr->sh_offset) + symIndex * sizeof(Elf32_Sym));
+                Elf32_Sym* sym = (Elf32_Sym*)(data + u32be(sym_shdr->sh_offset) + symIndex * sizeof(Elf32_Sym));
 
                 symName = STR(sym_strtab, u32be(sym->st_name));
             }
@@ -3278,8 +3312,7 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
                 }
                 prevHi = NULL;
                 // add_reloc(state, offset, symName, addend, out_range.vaddr);
-            }
-            else if (rtype == R_MIPS_26) {
+            } else if (rtype == R_MIPS_26) {
                 int32_t addend = (u32be(*(uint32_t*)(data + offset)) & ((1 << 26) - 1)) << 2;
 
                 if (addend >= (1 << 27)) {
@@ -3303,9 +3336,9 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
 #undef SECTION
 #undef STR
 
-size_t read_file(const char *file_name, uint8_t **data) {
-    FILE *in;
-    uint8_t *in_buf = NULL;
+size_t read_file(const char* file_name, uint8_t** data) {
+    FILE* in;
+    uint8_t* in_buf = NULL;
     long file_size;
     long bytes_read;
 
@@ -3317,7 +3350,7 @@ size_t read_file(const char *file_name, uint8_t **data) {
     file_size = ftell(in);
     assert(file_size != -1L);
 
-    in_buf = (uint8_t *)malloc(file_size);
+    in_buf = (uint8_t*)malloc(file_size);
     fseek(in, 0, SEEK_SET);
 
     // read bytes
@@ -3329,15 +3362,15 @@ size_t read_file(const char *file_name, uint8_t **data) {
     return bytes_read;
 }
 
-int main(int argc, char *argv[]) {
-    const char *filename = argv[1];
+int main(int argc, char* argv[]) {
+    const char* filename = argv[1];
 
     if (strcmp(filename, "--conservative") == 0) {
         conservative = true;
         filename = argv[2];
     }
 
-    uint8_t *data;
+    uint8_t* data;
     size_t len = read_file(filename, &data);
 
     parse_elf(data, len);
@@ -3358,4 +3391,3 @@ int main(int argc, char *argv[]) {
     free(data);
     cs_close(&handle);
 }
-
