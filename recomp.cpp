@@ -829,7 +829,7 @@ static void pass1(void) {
         if (insn.id == MIPS_INS_ADDU && insn.operands[0].reg == MIPS_REG_GP && insn.operands[1].reg == MIPS_REG_GP &&
             insn.operands[2].reg == MIPS_REG_T9 && i >= 2) {
             // state->function_entry_points.insert(vaddr + (i - 2) * 4);
-            for (int j = i - 2; j <= i; j++) {
+            for (size_t j = i - 2; j <= i; j++) {
                 insns[j].id = MIPS_INS_NOP;
                 insns[j].mnemonic = "nop";
                 insns[j].op_str = "";
@@ -1312,6 +1312,9 @@ static void pass4(void) {
                     live |= map_reg(MIPS_REG_HI);
                 }
                 break;
+
+            default:
+                break;
         }
 
         if ((i.f_liveout | live) == i.f_liveout) {
@@ -1490,8 +1493,10 @@ static void pass5(void) {
                     live |= map_reg(i.operands[0].reg);
                     live |= map_reg(i.operands[1].reg);
                 }
+            } break;
+
+            case TYPE_NOP:
                 break;
-            }
         }
 
         if ((i.b_livein | live) == i.b_livein) {
@@ -1833,6 +1838,9 @@ static void dump_instr(int i) {
                 if (!(insn.b_liveout & (map_reg(MIPS_REG_LO) | map_reg(MIPS_REG_HI)))) {
                     printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
                 }
+                break;
+
+            case TYPE_NOP:
                 break;
         }
     }
@@ -2782,7 +2790,7 @@ static void dump_c(void) {
 
                 printf("(mem, sp");
 
-                for (int i = 0; i < f.nargs; i++) {
+                for (unsigned int i = 0; i < f.nargs; i++) {
                     printf(", a%d", i);
                 }
 
