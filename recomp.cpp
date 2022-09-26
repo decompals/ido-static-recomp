@@ -120,106 +120,106 @@ static const struct {
     const char *params;
     int flags;
 } extern_functions[] = {
-    {"exit", "vi"}, // override exit from application
-    {"abort", "v"},
-    {"sbrk", "pi"},
-    {"malloc", "pu"},
-    {"calloc", "puu"},
-    {"realloc", "ppu"},
-    {"free", "vp"},
+    {"exit", "vi", 0}, // override exit from application
+    {"abort", "v", 0},
+    {"sbrk", "pi", 0},
+    {"malloc", "pu", 0},
+    {"calloc", "puu", 0},
+    {"realloc", "ppu", 0},
+    {"free", "vp", 0},
     {"fscanf", "ipp", FLAG_VARARG},
     {"printf", "ip", FLAG_VARARG},
     {"sprintf", "ipp", FLAG_VARARG},
     {"fprintf", "ipp", FLAG_VARARG},
-    {"_doprnt", "ippp"},
-    {"strlen", "up"},
-    {"open", "ipii"},
-    {"creat", "ipi"},
-    {"access", "ipi"},
-    {"rename", "ipp"},
-    {"utime", "ipp"},
-    {"flock", "iii"},
-    {"chmod", "ipu"},
+    {"_doprnt", "ippp", 0},
+    {"strlen", "up", 0},
+    {"open", "ipii", 0},
+    {"creat", "ipi", 0},
+    {"access", "ipi", 0},
+    {"rename", "ipp", 0},
+    {"utime", "ipp", 0},
+    {"flock", "iii", 0},
+    {"chmod", "ipu", 0},
     {"umask", "ii", FLAG_NO_MEM},
-    {"ecvt", "pdipp"},
-    {"fcvt", "pdipp"},
+    {"ecvt", "pdipp", 0},
+    {"fcvt", "pdipp", 0},
     {"sqrt", "dd", FLAG_NO_MEM},
     {"sqrtf", "ff", FLAG_NO_MEM},
-    {"atoi", "ip"},
-    {"atol", "ip"},
-    {"atof", "dp"},
-    {"strtol", "ippi"},
-    {"strtoul", "uppi"},
-    {"strtoll", "lppi"},
-    {"strtoull", "jppi"},
-    {"strtod", "dpp"},
-    {"strchr", "ppi"},
-    {"strrchr", "ppi"},
-    {"strcspn", "upp"},
-    {"strpbrk", "ppp"},
-    {"fstat", "iip"},
-    {"stat", "ipp"},
-    {"ftruncate", "iii"},
-    {"bcopy", "vppu"},
-    {"memcpy", "pppu"},
-    {"memccpy", "pppiu"},
-    {"read", "iipu"},
-    {"write", "iipu"},
-    {"fopen", "ppp"},
-    {"freopen", "pppp"},
-    {"fclose", "ip"},
-    {"ftell", "ip"},
-    {"rewind", "vp"},
-    {"fseek", "ipii"},
-    {"lseek", "iiii"},
-    {"fflush", "ip"},
-    {"dup", "ii"},
-    {"dup2", "iii"},
-    {"pipe", "ip"},
-    {"perror", "vp"},
-    {"fdopen", "iip"},
-    {"memset", "ppiu"},
-    {"bcmp", "ippu"},
-    {"memcmp", "ippu"},
+    {"atoi", "ip", 0},
+    {"atol", "ip", 0},
+    {"atof", "dp", 0},
+    {"strtol", "ippi", 0},
+    {"strtoul", "uppi", 0},
+    {"strtoll", "lppi", 0},
+    {"strtoull", "jppi", 0},
+    {"strtod", "dpp", 0},
+    {"strchr", "ppi", 0},
+    {"strrchr", "ppi", 0},
+    {"strcspn", "upp", 0},
+    {"strpbrk", "ppp", 0},
+    {"fstat", "iip", 0},
+    {"stat", "ipp", 0},
+    {"ftruncate", "iii", 0},
+    {"bcopy", "vppu", 0},
+    {"memcpy", "pppu", 0},
+    {"memccpy", "pppiu", 0},
+    {"read", "iipu", 0},
+    {"write", "iipu", 0},
+    {"fopen", "ppp", 0},
+    {"freopen", "pppp", 0},
+    {"fclose", "ip", 0},
+    {"ftell", "ip", 0},
+    {"rewind", "vp", 0},
+    {"fseek", "ipii", 0},
+    {"lseek", "iiii", 0},
+    {"fflush", "ip", 0},
+    {"dup", "ii", 0},
+    {"dup2", "iii", 0},
+    {"pipe", "ip", 0},
+    {"perror", "vp", 0},
+    {"fdopen", "iip", 0},
+    {"memset", "ppiu", 0},
+    {"bcmp", "ippu", 0},
+    {"memcmp", "ippu", 0},
     {"getpid", "i", FLAG_NO_MEM},
-    {"getpgrp", "i"},
-    {"remove", "ip"},
-    {"unlink", "ip"},
-    {"close", "ii"},
-    {"strcmp", "ipp"},
-    {"strncmp", "ippu"},
-    {"strcpy", "ppp"},
-    {"strncpy", "pppu"},
-    {"strcat", "ppp"},
-    {"strncat", "pppu"},
-    {"strtok", "ppp"},
-    {"strstr", "ppp"},
-    {"strdup", "pp"},
+    {"getpgrp", "i", 0},
+    {"remove", "ip", 0},
+    {"unlink", "ip", 0},
+    {"close", "ii", 0},
+    {"strcmp", "ipp", 0},
+    {"strncmp", "ippu", 0},
+    {"strcpy", "ppp", 0},
+    {"strncpy", "pppu", 0},
+    {"strcat", "ppp", 0},
+    {"strncat", "pppu", 0},
+    {"strtok", "ppp", 0},
+    {"strstr", "ppp", 0},
+    {"strdup", "pp", 0},
     {"toupper", "ii", FLAG_NO_MEM},
     {"tolower", "ii", FLAG_NO_MEM},
-    {"gethostname", "ipu"},
-    {"isatty", "ii"},
-    {"strftime", "upupp"},
-    {"times", "ip"},
+    {"gethostname", "ipu", 0},
+    {"isatty", "ii", 0},
+    {"strftime", "upupp", 0},
+    {"times", "ip", 0},
     {"clock", "i", FLAG_NO_MEM},
-    {"ctime", "pp"},
-    {"localtime", "pp"},
-    {"setvbuf", "ippiu"},
-    {"__semgetc", "ip"},
-    {"__semputc", "iip"},
-    {"fgetc", "ip"},
-    {"fgets", "ipip"},
-    {"__filbuf", "ip"},
-    {"__flsbuf", "iip"},
-    {"ungetc", "iip"},
-    {"gets", "pp"},
-    {"fread", "upuup"},
-    {"fwrite", "upuup"},
-    {"fputs", "ipp"},
-    {"puts", "ip"},
-    {"getcwd", "ppu"},
-    {"time", "ip"},
-    {"bzero", "vpu"},
+    {"ctime", "pp", 0},
+    {"localtime", "pp", 0},
+    {"setvbuf", "ippiu", 0},
+    {"__semgetc", "ip", 0},
+    {"__semputc", "iip", 0},
+    {"fgetc", "ip", 0},
+    {"fgets", "ipip", 0},
+    {"__filbuf", "ip", 0},
+    {"__flsbuf", "iip", 0},
+    {"ungetc", "iip", 0},
+    {"gets", "pp", 0},
+    {"fread", "upuup", 0},
+    {"fwrite", "upuup", 0},
+    {"fputs", "ipp", 0},
+    {"puts", "ip", 0},
+    {"getcwd", "ppu", 0},
+    {"time", "ip", 0},
+    {"bzero", "vpu", 0},
     {"fp_class_d", "id", FLAG_NO_MEM},
     {"ldexp", "ddi", FLAG_NO_MEM},
     {"__ll_mul", "lll", FLAG_NO_MEM},
@@ -238,48 +238,48 @@ static const struct {
     {"__ll_to_f", "fl", FLAG_NO_MEM},
     {"__ull_to_d", "dj", FLAG_NO_MEM},
     {"__ll_to_d", "dl", FLAG_NO_MEM},
-    {"_exit", "vi"},
-    {"_cleanup", "v"},
+    {"_exit", "vi", 0},
+    {"_cleanup", "v", 0},
     {"_rld_new_interface", "pu", FLAG_VARARG},
-    {"_exithandle", "v"},
+    {"_exithandle", "v", 0},
     {"_prctl", "ii", FLAG_VARARG},
-    {"_atod", "dpii"},
-    {"pathconf", "ipi"},
-    {"getenv", "pp"},
-    {"gettxt", "ppp"},
-    {"setlocale", "pip"},
-    {"mmap", "ppuiiii"},
-    {"munmap", "ipu"},
-    {"mprotect", "ipui"},
-    {"sysconf", "ii"},
-    {"getpagesize", "i"},
-    {"strerror", "pi"},
+    {"_atod", "dpii", 0},
+    {"pathconf", "ipi", 0},
+    {"getenv", "pp", 0},
+    {"gettxt", "ppp", 0},
+    {"setlocale", "pip", 0},
+    {"mmap", "ppuiiii", 0},
+    {"munmap", "ipu", 0},
+    {"mprotect", "ipui", 0},
+    {"sysconf", "ii", 0},
+    {"getpagesize", "i", 0},
+    {"strerror", "pi", 0},
     {"ioctl", "iiu", FLAG_VARARG},
     {"fcntl", "iii", FLAG_VARARG},
-    {"signal", "pit"},
-    {"sigset", "pit"},
-    {"get_fpc_csr", "i"},
-    {"set_fpc_csr", "ii"},
-    {"setjmp", "ip"},
-    {"longjmp", "vpi"},
-    {"tempnam", "ppp"},
-    {"tmpnam", "pp"},
-    {"mktemp", "pp"},
-    {"mkstemp", "ip"},
-    {"tmpfile", "p"},
-    {"wait", "ip"},
-    {"kill", "iii"},
+    {"signal", "pit", 0},
+    {"sigset", "pit", 0},
+    {"get_fpc_csr", "i", 0},
+    {"set_fpc_csr", "ii", 0},
+    {"setjmp", "ip", 0},
+    {"longjmp", "vpi", 0},
+    {"tempnam", "ppp", 0},
+    {"tmpnam", "pp", 0},
+    {"mktemp", "pp", 0},
+    {"mkstemp", "ip", 0},
+    {"tmpfile", "p", 0},
+    {"wait", "ip", 0},
+    {"kill", "iii", 0},
     {"execlp", "ip", FLAG_VARARG},
-    {"execv", "ipp"},
-    {"execvp", "ipp"},
-    {"fork", "i"},
-    {"system", "ip"},
-    {"tsearch", "pppp"},
-    {"tfind", "pppp"},
-    {"qsort", "vpuut"},
+    {"execv", "ipp", 0},
+    {"execvp", "ipp", 0},
+    {"fork", "i", 0},
+    {"system", "ip", 0},
+    {"tsearch", "pppp", 0},
+    {"tfind", "pppp", 0},
+    {"qsort", "vpuut", 0},
     {"regcmp", "pp", FLAG_VARARG},
     {"regex", "ppp", FLAG_VARARG},
-    {"__assert", "vppi"},
+    {"__assert", "vppi", 0},
 };
 
 static void disassemble(void) {
@@ -777,7 +777,7 @@ static void pass1(void) {
         }
         if (insn.id == MIPS_INS_ADDU && insn.operands[0].reg == MIPS_REG_GP && insn.operands[1].reg == MIPS_REG_GP && insn.operands[2].reg == MIPS_REG_T9 && i >= 2) {
             //state->function_entry_points.insert(vaddr + (i - 2) * 4);
-            for (int j = i - 2; j <= i; j++) {
+            for (size_t j = i - 2; j <= i; j++) {
                 insns[j].id = MIPS_INS_NOP;
                 insns[j].mnemonic = "nop";
                 insns[j].op_str = "";
@@ -1228,6 +1228,9 @@ static void pass4(void) {
                     live |= map_reg(MIPS_REG_HI);
                 }
                 break;
+
+            default:
+                break;
         }
         if ((i.f_liveout | live) == i.f_liveout) {
             // No new bits
@@ -1384,6 +1387,9 @@ static void pass5(void) {
                 }
                 break;
             }
+
+            default:
+                break;
         }
         if ((i.b_livein | live) == i.b_livein) {
             // No new bits
@@ -1680,6 +1686,7 @@ static void dump_instr(int i) {
                     printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
                 }
                 break;
+
             case TYPE_D_LO_HI_2S:
                 if (!(insn.f_livein & map_reg(insn.operands[0].reg)) || !(insn.f_livein & map_reg(insn.operands[1].reg))) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
@@ -1688,6 +1695,9 @@ static void dump_instr(int i) {
                 if (!(insn.b_liveout & (map_reg(MIPS_REG_LO) | map_reg(MIPS_REG_HI)))) {
                     printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
                 }
+                break;
+
+            case TYPE_NOP:
                 break;
         }
     }
@@ -2433,7 +2443,7 @@ static void dump_c(void) {
                     printf("func_%x", it.first);
                 }
                 printf("(mem, sp");
-                for (int i = 0; i < f.nargs; i++) {
+                for (unsigned int i = 0; i < f.nargs; i++) {
                     printf(", a%d", i);
                 }
                 printf(")");
@@ -2594,7 +2604,15 @@ static void dump_c(void) {
 
 static void parse_elf(const uint8_t *data, size_t file_len) {
     Elf32_Ehdr *ehdr;
-    Elf32_Shdr *shdr, *str_shdr, *sym_shdr = NULL, *dynsym_shdr, *dynamic_shdr, *reginfo_shdr, *got_shdr, *sym_strtab, *sym_dynstr;
+    Elf32_Shdr *shdr;
+    Elf32_Shdr *str_shdr;
+    Elf32_Shdr *sym_shdr = NULL;
+    Elf32_Shdr *dynsym_shdr;
+    Elf32_Shdr *dynamic_shdr;
+    Elf32_Shdr *reginfo_shdr;
+    Elf32_Shdr *got_shdr;
+    Elf32_Shdr *sym_strtab = NULL;
+    Elf32_Shdr *sym_dynstr;
     int text_section_index = -1;
     int symtab_section_index = -1;
     int dynsym_section_index = -1;
@@ -2853,6 +2871,11 @@ static void parse_elf(const uint8_t *data, size_t file_len) {
 
         if (sym_shdr == NULL) {
             fprintf(stderr, "Relocations without .symtab section\n");
+            exit(EXIT_FAILURE);
+        }
+
+        if (sym_strtab == NULL) {
+            fprintf(stderr, "Relocations without .strtab section\n");
             exit(EXIT_FAILURE);
         }
 

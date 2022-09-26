@@ -62,7 +62,7 @@ ERR_STRS_DST := $(BUILT_BIN)/err.english.cc
 # -- Settings for the static recompilation tool `recomp`
 RECOMP       := $(BUILD_BASE)/recomp
 RECOMP_OPT   ?= -O2
-RECOMP_FLAGS ?= -g -std=c++11 -Wno-switch `pkg-config --cflags --libs capstone`
+RECOMP_FLAGS ?= -g -std=c++11 -Wall -Wextra -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-function `pkg-config --cflags --libs capstone`
 
 # -- Settings for libc shim
 LIBC_IMPL := libc_impl.c
