@@ -5,6 +5,8 @@
 
 #### Defaults ####
 
+# select the version and binaries of IDO toolchain to recompile
+VERSION ?= 7.1
 # if WERROR is 1, pass -Werror to CC, so warnings would be treated as errors
 WERROR ?= 0
 # if RELEASE is 1 symbols are stripped from the recomped binaries
@@ -14,9 +16,6 @@ DEBUG ?= 1
 # Can be set to `universal` to build universal binaries on Mac
 TARGET ?= native
 
-# --- Configuration
-# -- select the version and binaries of IDO toolchain to recompile
-VERSION ?= 7.1
 ifeq ($(VERSION),7.1)
 	IDO_VERSION := IDO71
 	IDO_TC      := cc as1 cfe ugen umerge uopt
@@ -26,7 +25,6 @@ else ifeq ($(VERSION),5.3)
 else
 	$(error Unknown or unsupported IDO version - $(VERSION))
 endif
-
 
 
 # -- determine the host environment and target
