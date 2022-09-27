@@ -1,40 +1,84 @@
-# --- Configuration
-# -- select the version and binaries of IDO toolchain to recompile
+# Build options can be changed by modifying the makefile or by building with 'make SETTING=value'.
+# It is also possible to override the settings in Defaults in a file called .make_options as 'SETTING=value'.
+
+-include .make_options
+
+#### Defaults ####
+
+# select the version and binaries of IDO toolchain to recompile
 VERSION ?= 7.1
+# if WERROR is 1, pass -Werror to CC, so warnings would be treated as errors
+WERROR ?= 0
+# if RELEASE is 1 symbols are stripped from the recomped binaries
+RELEASE ?= 0
+# Disables/Enables optimizations to make debugging easier
+DEBUG ?= 1
+# Can be set to `universal` to build universal binaries on Mac
+TARGET ?= native
+
 ifeq ($(VERSION),7.1)
-  IDO_VERSION := IDO71
-  IDO_TC      := cc as1 cfe ugen umerge uopt
+	IDO_VERSION := IDO71
+	IDO_TC      := cc as1 cfe ugen umerge uopt
 else ifeq ($(VERSION),5.3)
-  IDO_VERSION := IDO53
-  IDO_TC      := cc acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit
-  # 5.3 ugen relies on UB stack reads
-  # to emulate, pass the conservative flag to `recomp`
-  CONSERVATIVE_ugen := --conservative
+	IDO_VERSION := IDO53
+	IDO_TC      := cc acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit
 else
-  $(error Unknown or unsupported IDO version - $(VERSION))
+	$(error Unknown or unsupported IDO version - $(VERSION))
 endif
+
 
 # -- determine the host environment and target
 # | Host  | Targets           |
 # |-------|-------------------|
 # | macOS | native, universal |
 # | linux | native            |
-#
+# | win   | native            |
+
 UNAME_S := $(shell uname -s)
 UNAME_P := $(shell uname -p)
-ifeq ($(UNAME_S),Darwin)
-  HOST_OS := macOS
-  TARGET  ?= native
+
+MAKE   := make
+ifeq ($(OS),Windows_NT)
+	DETECTED_OS := windows
 else ifeq ($(UNAME_S),Linux)
-  HOST_OS := linux
-  TARGET  := native
+	DETECTED_OS := linux
+else ifeq ($(UNAME_S),Darwin)
+	DETECTED_OS := macos
+	MAKE := gmake
+	CPPFLAGS += -xc++
 else
-  $(error Unsupported host OS for Makefile)
+	$(error Unsupported host OS for Makefile)
 endif
 
-HOST_TARGET := $(HOST_OS)-$(TARGET)
-# clang build targets for ARM and x64 macOS
-MACOS_FAT_TARGETS ?= arm64-apple-macos11 x86_64-apple-macos10.14
+CC    := gcc
+CXX   := g++
+STRIP := strip
+
+CSTD         ?= -std=c11
+CFLAGS       ?= -MMD -I.
+CXXSTD       ?= -std=c++17
+CXXFLAGS     ?= -MMD
+WARNINGS     ?= -Wall -Wextra
+LDFLAGS      ?= -lm
+RECOMP_FLAGS ?=
+
+ifneq ($(WERROR),0)
+	WARNINGS += -Werror
+endif
+
+ifeq ($(RELEASE),0)
+	STRIP := @:
+endif
+
+ifeq ($(DEBUG),0)
+	OPTFLAGS     ?= -Os
+else
+	OPTFLAGS     ?= -O0 -g3
+endif
+
+ifeq ($(DETECTED_OS),windows)
+	CXXFLAGS     += -static
+endif
 
 # -- Build Directories
 # designed to work with Make 3.81 (macOS/last GPL-2 version)
@@ -43,134 +87,131 @@ BUILD_BASE ?= build
 BUILD_DIR  := $(BUILD_BASE)/$(VERSION)
 BUILT_BIN  := $(BUILD_DIR)/out
 
-.PRECIOUS: $(BUILD_BASE)/. $(BUILD_BASE)%/.
-
-$(BUILD_BASE)/.:
-	mkdir -p $@
-
-$(BUILD_BASE)%/.:
-	mkdir -p $@
-
 # -- Location of original IDO binaries
 IRIX_BASE    ?= ido
 IRIX_USR_DIR ?= $(IRIX_BASE)/$(VERSION)/usr
 
 # -- Location of the irix tool chain error messages
-ERR_STRS_SRC := $(IRIX_USR_DIR)/lib/err.english.cc
-ERR_STRS_DST := $(BUILT_BIN)/err.english.cc
+ERR_STRS        := $(BUILT_BIN)/err.english.cc
 
-# -- Settings for the static recompilation tool `recomp`
-RECOMP       := $(BUILD_BASE)/recomp
-RECOMP_OPT   ?= -O2
-RECOMP_FLAGS ?= -g -std=c++11 -Wall -Wextra -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-function `pkg-config --cflags --libs capstone`
+RECOMP_ELF      := $(BUILD_BASE)/recomp.elf
+LIBC_IMPL_O     := libc_impl.o
 
-# -- Settings for libc shim
-LIBC_IMPL := libc_impl.c
-LIBC_OBJ  := $(LIBC_IMPL:.c=.o)
-LIBC_OPT   ?= -O2
-LIBC_FLAGS ?= -g -fno-strict-aliasing 
+TARGET_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/$(binary))
+O_FILES         := $(foreach binary,$(IDO_TC),$(BUILD_DIR)/$(binary).o)
+C_FILES         := $(O_FILES:.o=.c)
 
-# -- Settings for recompiling the translated irix binaries
-COMPILE_OPT   ?= -O2
-COMPILE_FLAGS ?= -g -Wno-tautological-compare -fno-strict-aliasing -lm
-COMPILE_DEPS  := header.h helpers.h $(ERR_STRS_DST)
+# Automatic dependency files
+DEP_FILES := $(O_FILES:.o=.d)
 
-# -- Host specific configuration
-ifeq ($(HOST_OS),macOS)
-  # macOS clang wants `-fno-pie` on intel, but that flag is ignored on ARM
-  ifeq (,$(findstring arm,$(UNAME_P)))
-  ifneq (TARGET,universal)
-    COMPILE_FLAGS += -fno-pie
-  endif
-  endif
-  # macOS has deprecated some libc functions that the 1992 irix binaries use
-  LIBC_FLAGS += -Wno-deprecated-declarations
-else
-  COMPILE_FLAGS += -no-pie
-endif
+# create build directories
+$(shell mkdir -p $(BUILT_BIN))
 
-# --- Functions
-# fn irix_binary(ToolName) -> PathToOriginalTool
-#     all binaries are in usr/lib except for cc which is in usr/bin 
-irix_binary = $(IRIX_USR_DIR)/$(if $(filter cc,$(1)),bin,lib)/$(1)
+# per-file flags
+# 5.3 ugen relies on UB stack reads
+# to emulate, pass the conservative flag to `recomp`
+$(BUILD_BASE)/5.3/ugen.c: RECOMP_FLAGS := --conservative
 
-# fn translated_src(ToolName) -> PathToOutputCFile
-translated_src = $(BUILD_DIR)/$(1).c
+$(RECOMP_ELF): CXXFLAGS  += $(shell pkg-config --cflags capstone)
+$(RECOMP_ELF): LDFLAGS   += $(shell pkg-config --libs capstone)
+# Too many warnings, disable everything for now...
+$(RECOMP_ELF): WARNINGS  += -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-function
+# Do we really need no-strict-aliasing?
+%/$(LIBC_IMPL_O): CFLAGS   += -fno-strict-aliasing -D$(IDO_VERSION)
+# TODO: fix warnings
+%/$(LIBC_IMPL_O): WARNINGS += -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-sign-compare -Wno-deprecated-declarations
 
-# fn recompiled_binary(ToolName) -> PathToOutputBin
-recompiled_binary = $(BUILT_BIN)/$(1)
+#### Main Targets ###
 
-# fn recomple(ToolName, LibcObj) -> MakeRules
-define recompile
-$(call translated_src,$1): $(call irix_binary,$1) $(RECOMP) | $$$$(@D)/.
-	$(RECOMP) $(CONSERVATIVE_$1) $$< > $$@
+all: $(TARGET_BINARIES) $(ERR_STRS)
 
-$(call recompiled_binary,$1): $(call translated_src,$1) $(COMPILE_DEPS) $2 | $$$$(@D)/.
-	$$(CC) $2 $$< -o $$@ -I. $(COMPILE_OPT) $(COMPILE_FLAGS)
-endef
-
-# fn target_specific(ClangTarget, Artifact) -> Path
-target_specific = $(BUILD_DIR)/$1/$2
-
-# fn target_libc(ClangTarget) -> MakeRules
-define target_libc
-$(call target_specific,$1,$(LIBC_OBJ)): $(LIBC_IMPL) $(LIBC_IMPL:.c=.h) | $$$$(@D)/.
-	$$(CC) $$< -c $(LIBC_OPT) $(LIBC_FLAGS) -target $1 -D$(IDO_VERSION) -o $$@
-endef
-# fn target_tool(ClangTarget, ToolName) -> MakeRules
-define target_tool
-$(call target_specific,$1,$2): $(call translated_src,$2) $(COMPILE_DEPS) $(call target_specific,$1,$(LIBC_OBJ)) | $$$$(@D)/.
-	$$(CC) $(call target_specific,$1,$(LIBC_OBJ)) $$< -o $$@ -I. $(COMPILE_OPT) $(COMPILE_FLAGS) $(if $(findstring x86,$1),-fno-pie) -target $1
-endef
-
-# fn recompile_universal(ToolName) -> MakeRules
-define recompile_universal
-$(call translated_src,$1): $(call irix_binary,$1) $(RECOMP) | $$$$(@D)/.
-	$(RECOMP) $(CONSERVATIVE_$1) $$< > $$@
-
-$(foreach target,$(MACOS_FAT_TARGETS),$(eval $(call target_tool,$(target),$1)))
-
-$(call recompiled_binary,$1): $(foreach target,$(MACOS_FAT_TARGETS),$(BUILD_DIR)/$(target)/$1) | $$$$(@D)/.
-	lipo -create -output $$@ $$^
-endef
-
-
-# --- Recipes
-.DEFAULT_GOAL := all
-.PHONY: all clean
-
-.SECONDEXPANSION:
-
-ALL_TOOLS := $(foreach tool,$(IDO_TC),$(call recompiled_binary,$(tool)))
-
-all: $(ALL_TOOLS)
+setup: $(RECOMP_ELF)
 
 clean:
-	$(RM) -rf $(BUILD_BASE)
+	$(RM) -r $(BUILD_DIR)
 
-$(RECOMP): recomp.cpp elf.h | $$(@D)/.
-	$(CXX) $< -o $@ $(RECOMP_OPT) $(RECOMP_FLAGS)
+distclean: clean
+	$(RM) -r $(BUILD_BASE)
 
-$(ERR_STRS_DST): $(ERR_STRS_SRC) | $$(@D)/.
+
+.PHONY: all clean distclean setup
+.DEFAULT_GOAL := all
+# Prevent removing intermediate files
+.SECONDARY:
+
+
+#### Various Recipes ####
+
+$(BUILD_BASE)/%.elf: %.cpp
+	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) -o $@ $^ $(LDFLAGS)
+
+
+$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/% | $(RECOMP_ELF)
+	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@
+
+# cc is special and is stored on the `bin` folder instead of the `lib` one
+$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/% | $(RECOMP_ELF)
+	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@
+
+
+$(BUILT_BIN)/%.cc: $(IRIX_USR_DIR)/lib/%.cc
 	cp $^ $@
 
-ifeq ($(HOST_TARGET),macOS-universal)
 
-$(foreach target,$(MACOS_FAT_TARGETS),$(eval $(call target_libc,$(target))))
-$(foreach tool,$(IDO_TC),$(eval $(call recompile_universal,$(tool))))
+ifeq ($(TARGET),universal)
+MACOS_FAT_TARGETS ?= arm64-apple-macos11 x86_64-apple-macos10.14
 
-else 
+FAT_FOLDERS  := $(foreach target,$(MACOS_FAT_TARGETS),$(BUILD_DIR)/$(target))
 
-LIBC_SHIM := $(BUILD_DIR)/$(LIBC_OBJ)
-$(LIBC_SHIM): $(LIBC_IMPL) $(LIBC_IMPL:.c=.h) | $$(@D)/.
-	$(CC) $< -c $(LIBC_FLAGS) $(LIBC_OPT) -D$(IDO_VERSION) -o $@
+# create build directories
+$(shell mkdir -p $(FAT_FOLDERS))
 
-$(foreach tool,$(IDO_TC),$(eval $(call recompile,$(tool),$(LIBC_SHIM))))
+# TODO: simplify
+FAT_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/arm64-apple-macos11/$(binary)) \
+                $(foreach binary,$(IDO_TC),$(BUILT_BIN)/x86_64-apple-macos10.14/$(binary))
 
+$(BUILT_BIN)/%: $(BUILD_DIR)/arm64-apple-macos11/% $(BUILD_DIR)/x86_64-apple-macos10.14/% | $(ERR_STRS)
+	lipo -create -output $@ $^
+
+
+$(BUILD_DIR)/arm64-apple-macos11/%: $(BUILD_DIR)/arm64-apple-macos11/%.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL_O) | $(ERR_STRS)
+	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $^ $(LDFLAGS)
+	$(STRIP) $@
+
+$(BUILD_DIR)/x86_64-apple-macos10.14/%: $(BUILD_DIR)/x86_64-apple-macos10.14/%.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL_O) | $(ERR_STRS)
+	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $^ $(LDFLAGS)
+	$(STRIP) $@
+
+$(BUILD_DIR)/arm64-apple-macos11/%.o: $(BUILD_DIR)/%.c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $<
+
+$(BUILD_DIR)/x86_64-apple-macos10.14/%.o: $(BUILD_DIR)/%.c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $<
+
+
+$(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL_O): libc_impl.c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
+
+$(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL_O): libc_impl.c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
+
+else
+$(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL_O) | $(ERR_STRS)
+	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(STRIP) $@
+
+$(BUILD_DIR)/%.o: $(BUILD_DIR)/%.c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $<
+
+
+$(BUILD_DIR)/$(LIBC_IMPL_O): libc_impl.c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -o $@ $<
 endif
 
 # Remove built-in rules, to improve performance
 MAKEFLAGS += --no-builtin-rules
+
+-include $(DEP_FILES)
 
 # --- Debugging
 # run `make print-VARIABLE` to debug that variable

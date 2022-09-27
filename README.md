@@ -1,51 +1,49 @@
 # Static Recompilation of IRIX Programs
+
 Convert selected IRIX C toolchain programs into modern Linux or macOS programs
 
 ## Supported Programs
+
 * IDO 5.3
   * cc, acpp, as0, as1, cfe, copt, ugen, ujoin, uld, umerge, uopt, usplit
 * IDO 7.1
   * cc, as1, cfe, ugen, umerge, uopt
 
-# Dependencies
-Note that the `python3` dependency is only necessary if building with the `build.py` script. 
-Likewise, the `make` dependency is only needed if building with `make`.
+## Dependencies
 
-## Linux (Debian / Ubuntu)
+### Linux (Debian / Ubuntu)
+
 ```bash
-sudo apt-get install build-essential libcapstone3 pkg-config python3
+sudo apt-get install build-essential libcapstone3 pkg-config
 ```
 
-## macOS
+### macOS
+
 [Install homebrew](https://brew.sh/) and then:
+
 ```bash
-brew install python3 pkg-config capstone
+brew install pkg-config capstone
 ```
 
-# Build using Make
+## Building
+
 ```bash
 make VERSION=5.3
 make VERSION=7.1
 ```
+
 The build artifacts are located in `build/{7.1|5.3}/out`. Add `-j{thread num}` for multithreaded building.
 
-# Build using Python3
-Using `build.py`
-```bash
-./build.py -O2 ido/5.3
-./build.py -O2 ido/7.1
-```
-The build artifacts are located in `build/{7.1|5.3}/out`. For more options, run `./build.py --help`.
+### Creating Universal ARM/x86_64 macOS Builds
 
-## Creating Universal ARM/x86_64 macOS Builds
-By default, the python and make build script create native binaries on macOS. This was done to minimize the time to build the recompiled suite.
+By default, make build script create native binaries on macOS. This was done to minimize the time to build the recompiled suite.
 In order to create "fat," universal ARM and x86_64, pass the `-universal` flag to `build.py`, or `TARGET=universal` to `gmake`.
 
-# Manual Building
+### Manual Building
 
 Example for compiling `as1` in a Linux environment:
 
-```
+```bash
 g++ recomp.cpp -o recomp -g -lcapstone
 ./recomp ~/ido7.1_compiler/usr/lib/as1 > as1_c.c
 gcc libc_impl.c as1_c.c -o as1 -g -fno-strict-aliasing -lm -no-pie -DIDO71
