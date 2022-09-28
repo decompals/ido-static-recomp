@@ -50,6 +50,9 @@ else
 	$(error Unsupported host OS for Makefile)
 endif
 
+RABBITIZER := tools/rabbitizer
+RABBITIZER_LIB := $(RABBITIZER)/build/librabbitizer.a
+
 CC    := gcc
 CXX   := g++
 STRIP := strip
@@ -57,9 +60,9 @@ STRIP := strip
 CSTD         ?= -std=c11
 CFLAGS       ?= -MMD -I.
 CXXSTD       ?= -std=c++17
-CXXFLAGS     ?= -MMD
+CXXFLAGS     ?= -MMD -I$(RABBITIZER)/include
 WARNINGS     ?= -Wall -Wextra
-LDFLAGS      ?= -lm
+LDFLAGS      ?= -lm -Ltools/rabbitizer/build -lrabbitizer
 RECOMP_FLAGS ?=
 
 ifneq ($(WERROR),0)
@@ -86,6 +89,7 @@ endif
 BUILD_BASE ?= build
 BUILD_DIR  := $(BUILD_BASE)/$(VERSION)
 BUILT_BIN  := $(BUILD_DIR)/out
+
 
 # -- Location of original IDO binaries
 IRIX_BASE    ?= ido
@@ -125,7 +129,7 @@ $(RECOMP_ELF): WARNINGS  += -Wno-unused-variable -Wno-unused-but-set-variable -W
 
 all: $(TARGET_BINARIES) $(ERR_STRS)
 
-setup: $(RECOMP_ELF)
+setup: $(RECOMP_ELF) $(RABBITIZER_LIB)
 
 clean:
 	$(RM) -r $(BUILD_DIR)
@@ -141,6 +145,9 @@ distclean: clean
 
 
 #### Various Recipes ####
+
+$(RABBITIZER_LIB):
+	make -C $(RABBITIZER) static
 
 $(BUILD_BASE)/%.elf: %.cpp
 	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) -o $@ $^ $(LDFLAGS)
