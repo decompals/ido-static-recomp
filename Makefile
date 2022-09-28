@@ -147,7 +147,7 @@ distclean: clean
 #### Various Recipes ####
 
 $(RABBITIZER_LIB):
-	make -C $(RABBITIZER) static
+	make -C $(RABBITIZER) static CC=$(CC)
 
 $(RECOMP_ELF): $(RABBITIZER_LIB)
 
