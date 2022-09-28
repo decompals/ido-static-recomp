@@ -785,7 +785,8 @@ static void r_pass1(void) {
         if (insn.instruction.descriptor->isJump) {
             if (insn.instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_jal ||
                 insn.instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_j) {
-                uint32_t target = insn.patched ? insn.patched_addr : RAB_INSTR_GET_instr_index(&insn.instruction);
+                uint32_t target =
+                    insn.patched ? insn.patched_addr : RabbitizerInstruction_getInstrIndexAsVram(&insn.instruction);
 
                 label_addresses.insert(target);
                 add_function(target);
@@ -1765,6 +1766,116 @@ static void add_edge(uint32_t from, uint32_t to, bool function_entry = false, bo
     be.function_pointer = function_pointer;
     insns[from].successors.push_back(fe);
     insns[to].predecessors.push_back(be);
+}
+
+static void r_pass3(void) {
+    // Build graph
+    for (size_t i = 0; i < rinsns.size(); i++) {
+        uint32_t addr = text_vaddr + i * 4;
+        RInsn& insn = rinsns[i];
+
+        if (insn.no_following_successor) {
+            continue;
+        }
+
+        switch (insn.instruction.uniqueId) {
+            case RABBITIZER_INSTR_ID_cpu_beq:
+            case RABBITIZER_INSTR_ID_cpu_bgez:
+            case RABBITIZER_INSTR_ID_cpu_bgtz:
+            case RABBITIZER_INSTR_ID_cpu_blez:
+            case RABBITIZER_INSTR_ID_cpu_bltz:
+            case RABBITIZER_INSTR_ID_cpu_bne:
+            case RABBITIZER_INSTR_ID_cpu_beqz:
+            case RABBITIZER_INSTR_ID_cpu_bnez:
+            case RABBITIZER_INSTR_ID_cpu_bc1f:
+            case RABBITIZER_INSTR_ID_cpu_bc1t:
+                add_edge(i, i + 1);
+                add_edge(i + 1,
+                         addr_to_i(insn.patched ? insn.patched_addr
+                                                : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction)));
+                break;
+
+            case RABBITIZER_INSTR_ID_cpu_beql:
+            case RABBITIZER_INSTR_ID_cpu_bgezl:
+            case RABBITIZER_INSTR_ID_cpu_bgtzl:
+            case RABBITIZER_INSTR_ID_cpu_blezl:
+            case RABBITIZER_INSTR_ID_cpu_bltzl:
+            case RABBITIZER_INSTR_ID_cpu_bnel:
+            case RABBITIZER_INSTR_ID_cpu_bc1fl:
+            case RABBITIZER_INSTR_ID_cpu_bc1tl:
+                add_edge(i, i + 1);
+                add_edge(i, i + 2);
+                add_edge(i + 1,
+                         addr_to_i(insn.patched ? insn.patched_addr
+                                                : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction)));
+                rinsns[i + 1].no_following_successor = true; // don't inspect delay slot
+                break;
+
+            case RABBITIZER_INSTR_ID_cpu_b:
+            case RABBITIZER_INSTR_ID_cpu_j:
+                add_edge(i, i + 1);
+                add_edge(i + 1,
+                         addr_to_i(insn.patched ? insn.patched_addr
+                                                : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction)));
+                rinsns[i + 1].no_following_successor = true; // don't inspect delay slot
+                break;
+
+            case RABBITIZER_INSTR_ID_cpu_jr: {
+                add_edge(i, i + 1);
+
+                if (insn.jtbl_addr != 0) {
+                    uint32_t jtbl_pos = insn.jtbl_addr - rodata_vaddr;
+
+                    assert(jtbl_pos < rodata_section_len && jtbl_pos + insn.num_cases * 4 <= rodata_section_len);
+
+                    for (uint32_t j = 0; j < insn.num_cases; j++) {
+                        uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + j * 4) + gp_value;
+
+                        add_edge(i + 1, addr_to_i(dest_addr));
+                    }
+                } else {
+                    assert(RAB_INSTR_GET_rt(&insn.instruction) == RABBITIZER_REG_GPR_O32_ra &&
+                           "jump to address in register not supported");
+                }
+
+                rinsns[i + 1].no_following_successor = true; // don't inspect delay slot
+                break;
+            }
+
+            case RABBITIZER_INSTR_ID_cpu_jal: {
+                add_edge(i, i + 1);
+
+                uint32_t dest = RabbitizerInstruction_getInstrIndexAsVram(&insn.instruction);
+
+                if (dest > mcount_addr && dest >= text_vaddr && dest < text_vaddr + text_section_len) {
+                    add_edge(i + 1, addr_to_i(dest), true);
+
+                    auto it = functions.find(dest);
+                    assert(it != functions.end());
+
+                    for (uint32_t ret_instr : it->second.returns) {
+                        add_edge(addr_to_i(ret_instr), i + 2, false, true);
+                    }
+                } else {
+                    add_edge(i + 1, i + 2, false, false, true);
+                }
+
+                rinsns[i + 1].no_following_successor = true; // don't inspect delay slot
+                break;
+            }
+
+            case RABBITIZER_INSTR_ID_cpu_jalr:
+                // function pointer
+                add_edge(i, i + 1);
+                add_edge(i + 1, i + 2, false, false, false, true);
+                rinsns[i + 1].no_following_successor = true; // don't inspect delay slot
+                break;
+
+            default:
+                add_edge(i, i + 1);
+                break;
+        }
+    }
 }
 
 static void pass3(void) {
