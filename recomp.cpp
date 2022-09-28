@@ -516,6 +516,9 @@ static void r_link_with_lui(int offset, RabbitizerRegister_GprO32 reg, int mem_i
                     goto end;
                 }
                 continue;
+
+            default:
+                continue;
         }
     }
 end:;
@@ -780,12 +783,13 @@ static void r_pass1(void) {
         }
 
         if (insn.instruction.descriptor->isJump) {
-            if (insn.instruction.uniqueId == MIPS_INS_JAL || insn.instruction.uniqueId == MIPS_INS_J) {
+            if (insn.instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_jal ||
+                insn.instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_j) {
                 uint32_t target = insn.patched ? insn.patched_addr : RAB_INSTR_GET_instr_index(&insn.instruction);
 
                 label_addresses.insert(target);
                 add_function(target);
-            } else if (insn.instruction.uniqueId == MIPS_INS_JR) {
+            } else if (insn.instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_jr) {
                 // sltiu $at, $ty, z
                 // sw    $reg, offset($sp)   (very seldom, one or more, usually in func entry)
                 // lw    $gp, offset($sp)    (if PIC, and very seldom)
@@ -861,7 +865,7 @@ static void r_pass1(void) {
                         }
 
                         for (int j = 3; j <= 4; j++) {
-                            if (rinsns[lw - j].instruction.uniqueId == MIPS_INS_ANDI) {
+                            if (rinsns[lw - j].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_andi) {
                                 andi_index = lw - j;
                                 break;
                             }
@@ -1046,7 +1050,7 @@ static void r_pass1(void) {
                         (RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(&rinsns[i].instruction);
                     int mem_imm = (int)RAB_INSTR_GET_immediate(&rinsns[i].instruction);
 
-                    if (mem_rs == MIPS_REG_GP) {
+                    if (mem_rs == RABBITIZER_REG_GPR_O32_gp) {
                         unsigned int got_entry = (mem_imm + gp_value_adj) / sizeof(unsigned int);
 
                         if (got_entry >= got_locals.size()) {
@@ -1085,7 +1089,7 @@ static void r_pass1(void) {
                 RabbitizerRegister_GprO32 rs = (RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(&rinsns[i].instruction);
                 int64_t imm = RAB_INSTR_GET_immediate(&rinsns[i].instruction);
 
-                if (rs == MIPS_REG_ZERO) { // becomes LI
+                if (rs == RABBITIZER_REG_GPR_O32_zero) { // becomes LI
                     // char buf[32];
 
                     // Patch to li?
@@ -1100,10 +1104,10 @@ static void r_pass1(void) {
                 }
             } break;
 
-            case MIPS_INS_JALR: {
+            case RABBITIZER_INSTR_ID_cpu_jalr: {
                 RabbitizerRegister_GprO32 rs = (RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(&insn.instruction);
 
-                if (rs == MIPS_REG_T9) {
+                if (rs == RABBITIZER_REG_GPR_O32_t9) {
                     link_with_jalr(i);
                     if (insn.linked_insn != -1) {
                         insn.patched = true;
@@ -1116,6 +1120,9 @@ static void r_pass1(void) {
                     }
                 }
             } break;
+
+            default:
+                break;
         }
 
         if ((insn.instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_addu) &&
@@ -1459,19 +1466,21 @@ static uint32_t addr_to_i(uint32_t addr) {
 
 static void r_pass2(void) {
     // Find returns in each function
-    for (size_t i = 0; i < insns.size(); i++) {
+    for (size_t i = 0; i < rinsns.size(); i++) {
         uint32_t addr = text_vaddr + i * 4;
-        Insn& insn = insns[i];
+        RInsn& insn = rinsns[i];
 
-        if (insn.id == MIPS_INS_JR && insn.operands[0].reg == MIPS_REG_RA) {
+        if ((insn.instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_jr) &&
+            (RAB_INSTR_GET_rs(&insn.instruction) == RABBITIZER_REG_GPR_O32_ra)) {
             auto it = find_function(addr);
             assert(it != functions.end());
 
             it->second.returns.push_back(addr + 4);
         }
-        if (insn.is_global_got_memop && text_vaddr <= insn.operands[1].imm &&
-            insn.operands[1].imm < text_vaddr + text_section_len) {
-            uint32_t faddr = insn.operands[1].imm;
+
+        if (insn.is_global_got_memop && (text_vaddr <= RAB_INSTR_GET_immediate(&insn.instruction)) &&
+            (RAB_INSTR_GET_immediate(&insn.instruction) < text_vaddr + text_section_len)) {
+            uint32_t faddr = RAB_INSTR_GET_immediate(&insn.instruction);
 
             li_function_pointers.insert(faddr);
             functions[faddr].referenced_by_function_pointer = true;
@@ -1506,35 +1515,39 @@ static void r_pass2(void) {
                 //  nop
                 uint32_t alloc_new_addr = text_vaddr + (i + 7) * 4;
 
-                insns[i].id = MIPS_INS_JAL;
-                insns[i].op_count = 1;
-                insns[i].mnemonic = "jal";
-                insns[i].op_str = "alloc_new";
-                insns[i].operands[0].imm = alloc_new_addr;
+                // alloc_new
+                rinsns[i].patched = true;
+                rinsns[i].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_jal;
+                rinsns[i].instruction.descriptor =
+                    &RabbitizerInstrDescriptor_Descriptors[rinsns[i].instruction.uniqueId];
+                rinsns[i].patched_addr = alloc_new_addr;
+
                 assert(symbol_names.count(alloc_new_addr) && symbol_names[alloc_new_addr] == "alloc_new");
                 i++;
 
-                if (insns[i + 5].id == MIPS_INS_LI) {
+                // LI
+                if ((rinsns[i + 5].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_ori) ||
+                    (rinsns[i + 5].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_addiu)) {
                     // 7.1
-                    insns[i] = insns[i + 5];
+                    rinsns[i] = rinsns[i + 5];
                 } else {
                     // 5.3
-                    insns[i] = insns[i + 3];
+                    rinsns[i] = rinsns[i + 3];
                 }
-
                 i++;
-                insns[i].id = MIPS_INS_JR;
-                insns[i].op_count = 1;
-                insns[i].mnemonic = "jr";
-                insns[i].op_str = "$ra";
-                insns[i].operands[0].reg = MIPS_REG_RA;
+
+                // JR $RA
+                rinsns[i].patched = true;
+                RabbitizerInstruction_init(&rinsns[i].instruction, 0x03E00008, rinsns[i].instruction.vram);
+                RabbitizerInstruction_processUniqueId(&rinsns[i].instruction);
                 it->second.returns.push_back(text_vaddr + i * 4 + 4);
-
                 i++;
+
                 for (uint32_t j = 0; j < 4; j++) {
-                    insns[i].id = MIPS_INS_NOP;
-                    insns[i].op_count = 0;
-                    insns[i].mnemonic = "nop";
+                    // NOP
+                    rinsns[i].patched = true;
+                    RabbitizerInstruction_init(&rinsns[i].instruction, 0, rinsns[i].instruction.vram);
+                    RabbitizerInstruction_processUniqueId(&rinsns[i].instruction);
                     i++;
                 }
             } else if (str_it != symbol_names.end() && str_it->second == "xfree") {
@@ -1549,31 +1562,32 @@ static void r_pass2(void) {
                     alloc_dispose_addr += 4;
                 }
 
-                insns[i].id = MIPS_INS_JAL;
-                insns[i].op_count = 1;
-                insns[i].mnemonic = "jal";
-                insns[i].op_str = "alloc_dispose";
-                insns[i].operands[0].imm = alloc_dispose_addr;
-
+                // alloc_dispose
+                rinsns[i].patched = true;
+                rinsns[i].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_jal;
+                rinsns[i].instruction.descriptor =
+                    &RabbitizerInstrDescriptor_Descriptors[rinsns[i].instruction.uniqueId];
+                rinsns[i].patched_addr = alloc_dispose_addr;
                 assert(symbol_names.count(alloc_dispose_addr) && symbol_names[alloc_dispose_addr] == "alloc_dispose");
                 i++;
 
-                insns[i] = insns[i + 2];
+                rinsns[i] = rinsns[i + 2];
                 i++;
 
-                insns[i].id = MIPS_INS_JR;
-                insns[i].op_count = 1;
-                insns[i].mnemonic = "jr";
-                insns[i].op_str = "$ra";
-                insns[i].operands[0].reg = MIPS_REG_RA;
+                // JR $RA
+                rinsns[i].patched = true;
+                RabbitizerInstruction_init(&rinsns[i].instruction, 0x03E00008, rinsns[i].instruction.vram);
+                RabbitizerInstruction_processUniqueId(&rinsns[i].instruction);
                 it->second.returns.push_back(text_vaddr + i * 4 + 4);
                 i++;
 
-                insns[i].id = MIPS_INS_NOP;
-                insns[i].op_count = 0;
-                insns[i].mnemonic = "nop";
-            } else if (insns[i].id == MIPS_INS_LW && insns[i + 1].id == MIPS_INS_MOVE &&
-                       insns[i + 2].id == MIPS_INS_JALR) {
+                // NOP
+                rinsns[i].patched = true;
+                RabbitizerInstruction_init(&rinsns[i].instruction, 0, rinsns[i].instruction.vram);
+                RabbitizerInstruction_processUniqueId(&rinsns[i].instruction);
+            } else if ((rinsns[i].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_lw) &&
+                       (rinsns[i].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_move) &&
+                       (rinsns[i].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_jalr)) {
                 /*
                 408f50:       8f998010        lw      t9,-32752(gp)
                 408f54:       03e07821        move    t7,ra
