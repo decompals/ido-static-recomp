@@ -13,6 +13,8 @@
 
 #include <capstone.h>
 
+#include "rabbitizer.h"
+
 #include "elf.h"
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
@@ -68,6 +70,38 @@ struct Insn {
     uint64_t f_liveout;
 };
 
+struct RInsn {
+    // base instruction
+    RabbitizerInstruction instruction;
+    RabbitizerInstrDescriptor descriptor;
+
+    //
+    bool is_global_got_memop;
+    bool no_following_successor;
+
+    // patching instructions
+    bool patched;
+    // lui pairs
+    uint32_t patched_addr;
+    int linked_insn;
+    union {
+        uint32_t linked_value;
+        float linked_float;
+    };
+    // jumptable instructions
+    uint32_t jtbl_addr;
+    uint32_t num_cases;
+    RabbitizerRegister_GprO32 index_reg;
+
+    // graph
+    vector<Edge> successors;
+    vector<Edge> predecessors;
+    uint64_t b_liveout;
+    uint64_t b_livein;
+    uint64_t f_livein;
+    uint64_t f_liveout;
+};
+
 struct Function {
     vector<uint32_t> returns; // points to delay slots
     uint32_t end_addr;        // address after end
@@ -96,6 +130,7 @@ static uint32_t data_vaddr;
 static uint32_t bss_section_len;
 static uint32_t bss_vaddr;
 
+static vector<RInsn> rinsns;
 static vector<Insn> insns;
 static set<uint32_t> label_addresses;
 static vector<uint32_t> got_globals;
@@ -293,7 +328,7 @@ static void disassemble(void) {
     cs_option(handle, CS_OPT_DETAIL, CS_OPT_ON);
     insns.reserve(1 + text_section_len / sizeof(uint32_t)); // +1 for dummy instruction
 
-    while (text_section_len > disasm_size * sizeof(uint32_t)) {
+    while (disasm_size * sizeof(uint32_t) < text_section_len) {
         size_t disasm_len = disasm_size * sizeof(uint32_t);
         size_t remaining = text_section_len - disasm_len;
         size_t current_len = std::min<size_t>(remaining, 1024);
@@ -337,6 +372,32 @@ static void disassemble(void) {
     }
 }
 
+static void r_disassemble(void) {
+    size_t i;
+    for (i = 0; i < text_section_len; i += 4) {
+        rinsns.push_back(RInsn());
+        RInsn& insn = rinsns.back();
+        RabbitizerInstruction instruction = insn.instruction;
+        uint32_t word = read_u32_be(&text_section[i]);
+
+        RabbitizerInstruction_init(&instruction, word, text_vaddr + i);
+        RabbitizerInstruction_processUniqueId(&instruction);
+
+        insn.linked_insn = -1;
+    }
+    {
+        // Add dummy NOP instruction to avoid out of bounds
+        rinsns.push_back(RInsn());
+        RInsn& insn = rinsns.back();
+        RabbitizerInstruction instruction = insn.instruction;
+
+        RabbitizerInstruction_init(&instruction, 0x00000000, text_vaddr + i);
+        RabbitizerInstruction_processUniqueId(&instruction);
+
+        insn.no_following_successor = true;
+    }
+}
+
 static void add_function(uint32_t addr) {
     if (addr >= text_vaddr && addr < text_vaddr + text_section_len) {
         functions[addr];
@@ -359,6 +420,108 @@ static map<uint32_t, Function>::iterator find_function(uint32_t addr) {
 }
 
 // try to find a matching LUI for a given register
+static void r_link_with_lui(int offset, RabbitizerRegister_GprO32 reg, int mem_imm) {
+#define MAX_LOOKBACK 128
+    // don't attempt to compute addresses for zero offset
+    // end search after some sane max number of instructions
+    int end_search = std::max(0, offset - MAX_LOOKBACK);
+
+    for (int search = offset - 1; search >= end_search; search--) {
+
+        switch (rinsns[search].instruction.uniqueId) {
+            case RABBITIZER_INSTR_ID_cpu_lui:
+                if (reg == RAB_INSTR_GET_rt(&rinsns[search].instruction)) {
+                    goto end;
+                }
+                continue;
+
+            case RABBITIZER_INSTR_ID_cpu_lw:
+            case RABBITIZER_INSTR_ID_cpu_ld:
+            case RABBITIZER_INSTR_ID_cpu_addiu:
+            // case RABBITIZER_INSTR_ID_cpu_addu: // used in jump tables for offset
+            case RABBITIZER_INSTR_ID_cpu_add:
+            case RABBITIZER_INSTR_ID_cpu_sub:
+            case RABBITIZER_INSTR_ID_cpu_subu:
+                if (reg == RAB_INSTR_GET_rt(&rinsns[search].instruction)) {
+
+                    if ((rinsns[search].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_lw) &&
+                        RAB_INSTR_GET_rs(&rinsns[search].instruction) == RABBITIZER_REG_GPR_O32_gp) {
+                        int mem_imm0 = (int)RAB_INSTR_GET_immediate(&rinsns[search].instruction);
+                        uint32_t got_entry = (mem_imm0 + gp_value_adj) / sizeof(uint32_t);
+
+                        if (got_entry < got_locals.size()) {
+                            // used for static functions
+                            char buf[32];
+                            uint32_t addr = got_locals[got_entry] + mem_imm;
+                            rinsns[search].linked_insn = offset;
+                            rinsns[search].linked_value = addr;
+                            rinsns[offset].linked_insn = search;
+                            rinsns[offset].linked_value = addr;
+
+                            // vaddr_references[addr].insert(text_vaddr + offset * 4);
+
+                            // Patch instruction to contain full address
+                            rinsns[search].patched = true;
+                            rinsns[search].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_ori;
+                            rinsns[search].instruction.descriptor =
+                                &RabbitizerInstrDescriptor_Descriptors[rinsns[search].instruction.uniqueId];
+                            rinsns[search].patched_addr = addr;
+                            // TODO: handle printing separately for patched instructions
+
+                            // Patch instruction to have offset 0
+                            switch (rinsns[offset].instruction.uniqueId) {
+                                case RABBITIZER_INSTR_ID_cpu_addiu:
+                                    rinsns[offset].patched = true;
+                                    rinsns[offset].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_move;
+                                    rinsns[offset].instruction.descriptor =
+                                        &RabbitizerInstrDescriptor_Descriptors[rinsns[search].instruction.uniqueId];
+
+                                    if (addr >= text_vaddr && addr < text_vaddr + text_section_len) {
+                                        add_function(addr);
+                                    }
+                                    goto end;
+
+                                case RABBITIZER_INSTR_ID_cpu_lb:
+                                case RABBITIZER_INSTR_ID_cpu_lbu:
+                                case RABBITIZER_INSTR_ID_cpu_sb:
+                                case RABBITIZER_INSTR_ID_cpu_lh:
+                                case RABBITIZER_INSTR_ID_cpu_lhu:
+                                case RABBITIZER_INSTR_ID_cpu_sh:
+                                case RABBITIZER_INSTR_ID_cpu_lw:
+                                case RABBITIZER_INSTR_ID_cpu_sw:
+                                case RABBITIZER_INSTR_ID_cpu_ldc1:
+                                case RABBITIZER_INSTR_ID_cpu_lwc1:
+                                case RABBITIZER_INSTR_ID_cpu_swc1:
+                                    rinsns[offset].patched = true;
+                                    rinsns[offset].patched_addr = 0;
+                                    goto end;
+
+                                default:
+                                    assert(0 && "Unsupported instruction type");
+                            }
+                        }
+                        goto end;
+                    } else {
+                        // ignore: reg is pointer, offset is probably struct data member
+                        goto end;
+                    }
+                }
+                continue;
+
+            case RABBITIZER_INSTR_ID_cpu_jr:
+                if ((RAB_INSTR_GET_rd(&rinsns[search].instruction) == RABBITIZER_REG_GPR_O32_ra) &&
+                    (offset - search >= 2)) {
+                    // stop looking when previous `jr ra` is hit,
+                    // but ignore if `offset` is branch delay slot for this `jr ra`
+                    goto end;
+                }
+                continue;
+        }
+    }
+end:;
+}
+
+// try to find a matching LUI for a given register
 static void link_with_lui(int offset, uint32_t reg, int mem_imm) {
 #define MAX_LOOKBACK 128
     // don't attempt to compute addresses for zero offset
@@ -368,6 +531,7 @@ static void link_with_lui(int offset, uint32_t reg, int mem_imm) {
     for (int search = offset - 1; search >= end_search; search--) {
         // use an `if` instead of `case` block to allow breaking out of the `for` loop
         // should be a switch with returns
+
         if (insns[search].id == MIPS_INS_LUI) {
             uint32_t rd = insns[search].operands[0].reg;
 
@@ -454,6 +618,89 @@ static void link_with_lui(int offset, uint32_t reg, int mem_imm) {
 }
 
 // for a given `jalr t9`, find the matching t9 load
+static void r_link_with_jalr(int offset) {
+    // end search after some sane max number of instructions
+    int end_search = std::max(0, offset - MAX_LOOKBACK);
+
+    for (int search = offset - 1; search >= end_search; search--) {
+        if (RAB_INSTR_GET_rs(&rinsns[search].instruction) == RABBITIZER_REG_GPR_O32_t9) {
+            // should be a switch with returns
+            switch (rinsns[search].instruction.uniqueId) {
+                case RABBITIZER_INSTR_ID_cpu_lw:
+                case RABBITIZER_INSTR_ID_cpu_ori: // LI
+                    if (insns[search].is_global_got_memop ||
+                        (rinsns[search].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_ori)) {
+                        rinsns[search].linked_insn = offset;
+                        rinsns[offset].linked_insn = search;
+                        rinsns[offset].linked_value = rinsns[search].linked_value;
+
+                        // rinsns[offset].label = rinsns[search].label;
+                        // function_entry_points.insert(rinsns[search].linked_value);
+                        rinsns[offset].patched = true;
+                        rinsns[offset].patched_addr = RAB_INSTR_GET_immediate(&rinsns[offset].instruction);
+                        rinsns[offset].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_jal;
+                        rinsns[offset].instruction.descriptor =
+                            &RabbitizerInstrDescriptor_Descriptors[rinsns[search].instruction.uniqueId];
+
+                        rinsns[search].patched = true;
+                        rinsns[search].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_nop;
+                        rinsns[search].instruction.descriptor =
+                            &RabbitizerInstrDescriptor_Descriptors[rinsns[search].instruction.uniqueId];
+                        rinsns[search].is_global_got_memop = false;
+
+                        add_function(insns[search].linked_value);
+                    }
+                    goto end;
+
+                case RABBITIZER_INSTR_ID_cpu_addiu:
+                    if (rinsns[search].linked_insn != -1) {
+                        // function_entry_points.insert(insns[search].linked_value);
+                        uint32_t first = rinsns[search].linked_insn;
+
+                        // not describing as patched since instruction not edited
+                        rinsns[search].linked_insn = offset;
+                        rinsns[offset].linked_insn = first;
+                        rinsns[offset].linked_value = rinsns[search].linked_value;
+                    }
+                    goto end;
+
+                    //! @bug repeated case
+                    // case RABBITIZER_INSTR_ID_cpu_ori:
+                    //     if (rinsns[search].linked_insn != -1) {
+                    //         // function_entry_points.insert(rinsns[search].linked_value);
+                    //         uint32_t first = rinsns[search].linked_insn;
+
+                    //         rinsns[search].linked_insn = offset;
+                    //         rinsns[offset].linked_insn = first;
+                    //         rinsns[offset].linked_value = insns[search].linked_value;
+
+                    //         rinsns[search].patched = true;
+                    //         rinsns[search].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_nop;
+                    //         rinsns[search].instruction.descriptor =
+                    //             &RabbitizerInstrDescriptor_Descriptors[rinsns[search].instruction.uniqueId];
+                    //     }
+                    //     goto end;
+
+                case RABBITIZER_INSTR_ID_cpu_ld:
+                case RABBITIZER_INSTR_ID_cpu_addu:
+                case RABBITIZER_INSTR_ID_cpu_add:
+                case RABBITIZER_INSTR_ID_cpu_sub:
+                case RABBITIZER_INSTR_ID_cpu_subu:
+                    goto end;
+
+                default:
+                    continue;
+            }
+        } else if ((rinsns[search].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_jr) &&
+                   (RAB_INSTR_GET_rs(&rinsns[search].instruction) == RABBITIZER_REG_GPR_O32_ra)) {
+            // stop looking when previous `jr ra` is hit
+            goto end;
+        }
+    }
+end:;
+}
+
+// for a given `jalr t9`, find the matching t9 load
 static void link_with_jalr(int offset) {
     // end search after some sane max number of instructions
     int end_search = std::max(0, offset - MAX_LOOKBACK);
@@ -514,6 +761,374 @@ static void link_with_jalr(int offset) {
         } else if (insns[search].id == MIPS_INS_JR && insns[search].operands[0].reg == MIPS_REG_RA) {
             // stop looking when previous `jr ra` is hit
             break;
+        }
+    }
+}
+
+// TODO: uniformise use of insn vs rinsns[i]
+static void r_pass1(void) {
+    for (size_t i = 0; i < rinsns.size(); i++) {
+        RInsn& insn = rinsns[i];
+
+        // TODO: replace with BAL. Or just fix properly
+        if (insn.instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_bgezal &&
+            RAB_INSTR_GET_rs(&insn.instruction) == RABBITIZER_REG_GPR_O32_zero) {
+            insn.patched = true;
+            insn.patched_addr = RAB_INSTR_GET_immediate(&insn.instruction);
+            insn.instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_jal;
+            insn.instruction.descriptor = &RabbitizerInstrDescriptor_Descriptors[insn.instruction.uniqueId];
+        }
+
+        if (insn.instruction.descriptor->isJump) {
+            if (insn.instruction.uniqueId == MIPS_INS_JAL || insn.instruction.uniqueId == MIPS_INS_J) {
+                uint32_t target = insn.patched ? insn.patched_addr : RAB_INSTR_GET_instr_index(&insn.instruction);
+
+                label_addresses.insert(target);
+                add_function(target);
+            } else if (insn.instruction.uniqueId == MIPS_INS_JR) {
+                // sltiu $at, $ty, z
+                // sw    $reg, offset($sp)   (very seldom, one or more, usually in func entry)
+                // lw    $gp, offset($sp)    (if PIC, and very seldom)
+                // beqz  $at, .L
+                // some other instruction    (not always)
+                // lui   $at, %hi(jtbl)
+                // sll   $tx, $ty, 2
+                // addu  $at, $at, $tx
+                // lw    $tx, %lo(jtbl)($at)
+                // nop                       (code compiled with 5.3)
+                // addu  $tx, $tx, $gp       (if PIC)
+                // jr    $tx
+
+                // IDO 7.1:
+                // lw      at,offset(gp)
+                // andi    t9,t8,0x3f
+                // sll     t9,t9,0x2
+                // addu    at,at,t9
+                // lw      t9,offset(at)
+                // addu    t9,t9,gp
+                // jr      t9
+
+                // IDO 5.3:
+                // lw      at,offset(gp)
+                // andi    t3,t2,0x3f
+                // sll     t3,t3,0x2
+                // addu    at,at,t3
+                // something
+                // lw      t3,offset(at)
+                // something
+                // addu    t3,t3,gp
+                // jr      t3
+                if (i >= 7 && rodata_section != NULL) {
+                    bool is_pic = (rinsns[i - 1].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_addu) &&
+                                  (RAB_INSTR_GET_rt(&rinsns[i - 1].instruction) == RABBITIZER_REG_GPR_O32_gp);
+                    bool has_nop = rinsns[i - is_pic - 1].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_nop;
+                    bool has_extra =
+                        rinsns[i - is_pic - has_nop - 5].instruction.uniqueId != RABBITIZER_INSTR_ID_cpu_beqz;
+                    int lw = i - (int)is_pic - (int)has_nop - 1;
+
+                    if (rinsns[lw].instruction.uniqueId != RABBITIZER_INSTR_ID_cpu_lw) {
+                        --lw;
+                    }
+
+                    if ((rinsns[lw].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_lw) &&
+                        (rinsns[lw].linked_insn != -1)) {
+                        int sltiu_index = -1;
+                        int andi_index = -1;
+                        uint32_t addu_index = lw - 1;
+                        uint32_t num_cases;
+                        bool found = false;
+                        bool and_variant = false;
+                        int end = 14;
+
+                        if (rinsns[addu_index].instruction.uniqueId != RABBITIZER_INSTR_ID_cpu_addu) {
+                            --addu_index;
+                        }
+
+                        RabbitizerRegister_GprO32 index_reg =
+                            (RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(&rinsns[addu_index - 1].instruction);
+
+                        if (rinsns[addu_index].instruction.uniqueId != RABBITIZER_INSTR_ID_cpu_addu) {
+                            goto skip;
+                        }
+
+                        if (rinsns[addu_index - 1].instruction.uniqueId != RABBITIZER_INSTR_ID_cpu_sll) {
+                            goto skip;
+                        }
+
+                        if (RAB_INSTR_GET_rs(&rinsns[addu_index - 1].instruction) !=
+                            RAB_INSTR_GET_rs(&insn.instruction)) {
+                            goto skip;
+                        }
+
+                        for (int j = 3; j <= 4; j++) {
+                            if (rinsns[lw - j].instruction.uniqueId == MIPS_INS_ANDI) {
+                                andi_index = lw - j;
+                                break;
+                            }
+                        }
+
+                        if (i == 368393) {
+                            // In copt
+                            end = 18;
+                        }
+
+                        for (int j = 5; j <= end; j++) {
+                            if ((rinsns[lw - has_extra - j].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_sltiu) &&
+                                (RAB_INSTR_GET_rs(&rinsns[lw - has_extra - j].instruction) ==
+                                 RABBITIZER_REG_GPR_O32_at)) {
+                                sltiu_index = j;
+                                break;
+                            }
+
+                            if (rinsns[lw - has_extra - j].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_jr) {
+                                // Prevent going into a previous switch
+                                break;
+                            }
+                        }
+
+                        if (sltiu_index != -1) {
+                            andi_index = -1;
+                        }
+
+                        if (sltiu_index != -1 && rinsns[lw - has_extra - sltiu_index].instruction.uniqueId ==
+                                                     RABBITIZER_INSTR_ID_cpu_sltiu) {
+                            num_cases = RAB_INSTR_GET_immediate(&rinsns[lw - has_extra - sltiu_index].instruction);
+                            found = true;
+                        } else if (andi_index != -1) {
+                            num_cases = RAB_INSTR_GET_immediate(&rinsns[andi_index].instruction) + 1;
+                            found = true;
+                            and_variant = true;
+                        } else if (i == 219382) {
+                            // Special hard case in copt where the initial sltiu is in another basic block
+                            found = true;
+                            num_cases = 13;
+                        } else if (i == 370995) {
+                            // Special hard case in copt where the initial sltiu is in another basic block
+                            found = true;
+                            num_cases = 12;
+                        }
+
+                        if (found) {
+                            uint32_t jtbl_addr = rinsns[lw].linked_value;
+
+                            if (is_pic) {
+                                rinsns[i - 1].patched = true;
+                                rinsns[i - 1].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_nop;
+                                rinsns[i - 1].instruction.descriptor =
+                                    &RabbitizerInstrDescriptor_Descriptors[rinsns[i - 1].instruction.uniqueId];
+                            }
+
+                            // printf("jump table at %08x, size %u\n", jtbl_addr, num_cases);
+                            insn.jtbl_addr = jtbl_addr;
+                            insn.num_cases = num_cases;
+                            insn.index_reg = index_reg;
+                            rinsns[lw].patched = true;
+                            rinsns[lw].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_nop;
+                            rinsns[lw].instruction.descriptor =
+                                &RabbitizerInstrDescriptor_Descriptors[rinsns[lw].instruction.uniqueId];
+
+                            rinsns[addu_index].patched = true;
+                            rinsns[addu_index].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_nop;
+                            rinsns[addu_index].instruction.descriptor =
+                                &RabbitizerInstrDescriptor_Descriptors[rinsns[addu_index].instruction.uniqueId];
+                            rinsns[addu_index - 1].patched = true;
+                            rinsns[addu_index - 1].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_nop;
+                            rinsns[addu_index - 1].instruction.descriptor =
+                                &RabbitizerInstrDescriptor_Descriptors[rinsns[addu_index - 1].instruction.uniqueId];
+
+                            if (!and_variant) {
+                                rinsns[addu_index - 2].patched = true;
+                                rinsns[addu_index - 2].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_nop;
+                                rinsns[addu_index - 2].instruction.descriptor =
+                                    &RabbitizerInstrDescriptor_Descriptors[rinsns[addu_index - 1].instruction.uniqueId];
+                            }
+
+                            if (jtbl_addr < rodata_vaddr ||
+                                jtbl_addr + num_cases * sizeof(uint32_t) > rodata_vaddr + rodata_section_len) {
+                                fprintf(stderr, "jump table outside rodata\n");
+                                exit(EXIT_FAILURE);
+                            }
+
+                            for (uint32_t i = 0; i < num_cases; i++) {
+                                uint32_t target_addr =
+                                    read_u32_be(rodata_section + (jtbl_addr - rodata_vaddr) + i * sizeof(uint32_t));
+
+                                target_addr += gp_value;
+                                // printf("%08X\n", target_addr);
+                                label_addresses.insert(target_addr);
+                            }
+                        }
+                    skip:;
+                    }
+                }
+            } else if (RabbitizerInstrDescriptor_isIType(insn.instruction.descriptor)) {
+                // both J-type instructions checked above
+                uint32_t target = RAB_INSTR_GET_immediate(&insn.instruction);
+                label_addresses.insert(target);
+            }
+        }
+
+        switch (rinsns[i].instruction.uniqueId) {
+            // find floating point LI
+            case RABBITIZER_INSTR_ID_cpu_mtc1: {
+                RabbitizerRegister_GprO32 rt = (RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(&rinsns[i].instruction);
+
+                for (int s = i - 1; s >= 0; s--) {
+                    switch (rinsns[s].instruction.uniqueId) {
+                        case RABBITIZER_INSTR_ID_cpu_lui:
+                            if (RAB_INSTR_GET_rt(&rinsns[s].instruction) == rt) {
+                                float f;
+                                uint32_t lui_imm = RAB_INSTR_GET_immediate(&rinsns[s].instruction) << 16;
+
+                                memcpy(&f, &lui_imm, sizeof(f));
+                                // link up the LUI with this instruction and the float
+                                rinsns[s].linked_insn = i;
+                                rinsns[s].linked_float = f;
+                                // rewrite LUI instruction to be LI
+                                rinsns[s].patched = true;
+                                rinsns[s].patched_addr = lui_imm;
+                                rinsns[s].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_ori; // LI
+                                rinsns[s].instruction.descriptor =
+                                    &RabbitizerInstrDescriptor_Descriptors[rinsns[s].instruction.uniqueId];
+                            }
+                            goto loop_end;
+
+                        case RABBITIZER_INSTR_ID_cpu_lw:
+                        case RABBITIZER_INSTR_ID_cpu_ld:
+                        case RABBITIZER_INSTR_ID_cpu_lh:
+                        case RABBITIZER_INSTR_ID_cpu_lhu:
+                        case RABBITIZER_INSTR_ID_cpu_lb:
+                        case RABBITIZER_INSTR_ID_cpu_lbu:
+                        case RABBITIZER_INSTR_ID_cpu_addiu:
+                        case RABBITIZER_INSTR_ID_cpu_add:
+                        case RABBITIZER_INSTR_ID_cpu_sub:
+                        case RABBITIZER_INSTR_ID_cpu_subu:
+                            if (rt == RAB_INSTR_GET_rd(&rinsns[s].instruction)) {
+                                goto loop_end;
+                            }
+                            continue;
+
+                        case RABBITIZER_INSTR_ID_cpu_jr:
+                            if (RAB_INSTR_GET_rs(&rinsns[s].instruction) == RABBITIZER_REG_GPR_O32_ra) {
+                                goto loop_end;
+                            }
+                            continue;
+
+                        default:
+                            continue;
+                    }
+                }
+            loop_end:;
+            } break;
+
+            case RABBITIZER_INSTR_ID_cpu_sd:
+            case RABBITIZER_INSTR_ID_cpu_sw:
+            case RABBITIZER_INSTR_ID_cpu_sh:
+            case RABBITIZER_INSTR_ID_cpu_sb:
+            case RABBITIZER_INSTR_ID_cpu_lb:
+            case RABBITIZER_INSTR_ID_cpu_lbu:
+            case RABBITIZER_INSTR_ID_cpu_ld:
+            case RABBITIZER_INSTR_ID_cpu_ldl:
+            case RABBITIZER_INSTR_ID_cpu_ldr:
+            case RABBITIZER_INSTR_ID_cpu_lh:
+            case RABBITIZER_INSTR_ID_cpu_lhu:
+            case RABBITIZER_INSTR_ID_cpu_lw:
+            case RABBITIZER_INSTR_ID_cpu_lwu:
+            case RABBITIZER_INSTR_ID_cpu_ldc1:
+            case RABBITIZER_INSTR_ID_cpu_lwc1:
+            case RABBITIZER_INSTR_ID_cpu_lwc2:
+            // case RABBITIZER_INSTR_ID_cpu_lwc3: // Seems unlikely that this is used
+            case RABBITIZER_INSTR_ID_cpu_swc1:
+            case RABBITIZER_INSTR_ID_cpu_swc2:
+                // case RABBITIZER_INSTR_ID_cpu_swc3:
+                {
+                    RabbitizerRegister_GprO32 mem_rs =
+                        (RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(&rinsns[i].instruction);
+                    int mem_imm = (int)RAB_INSTR_GET_immediate(&rinsns[i].instruction);
+
+                    if (mem_rs == MIPS_REG_GP) {
+                        unsigned int got_entry = (mem_imm + gp_value_adj) / sizeof(unsigned int);
+
+                        if (got_entry >= got_locals.size()) {
+                            got_entry -= got_locals.size();
+                            if (got_entry < got_globals.size()) {
+                                assert(insn.instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_lw);
+                                // printf("gp 0x%08x %s\n", mem_imm, got_globals[got_entry].name);
+
+                                unsigned int dest_vaddr = got_globals[got_entry];
+
+                                rinsns[i].is_global_got_memop = true;
+                                rinsns[i].linked_value = dest_vaddr;
+                                // rinsns[i].label = got_globals[got_entry].name;
+
+                                // vaddr_references[dest_vaddr].insert(vaddr + i * 4);
+                                // disasm_add_data_addr(state, dest_vaddr);
+
+                                // patch to LI
+                                rinsns[i].patched = true;
+                                rinsns[i].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_ori; // LI
+                                rinsns[i].instruction.descriptor =
+                                    &RabbitizerInstrDescriptor_Descriptors[rinsns[i].instruction.uniqueId];
+                                rinsns[i].patched_addr = dest_vaddr;
+                            }
+                        }
+                    } else {
+                        r_link_with_lui(i, mem_rs, mem_imm);
+                    }
+                }
+                break;
+
+            case RABBITIZER_INSTR_ID_cpu_addiu:
+            case RABBITIZER_INSTR_ID_cpu_ori: {
+                // could be insn?
+                RabbitizerRegister_GprO32 rd = (RabbitizerRegister_GprO32)RAB_INSTR_GET_rd(&rinsns[i].instruction);
+                RabbitizerRegister_GprO32 rs = (RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(&rinsns[i].instruction);
+                int64_t imm = RAB_INSTR_GET_immediate(&rinsns[i].instruction);
+
+                if (rs == MIPS_REG_ZERO) { // becomes LI
+                    // char buf[32];
+
+                    // Patch to li?
+                    // rinsns[i].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_ori;
+                    // rinsns[i].operands[1].imm = imm;
+                    // rinsns[i].mnemonic = "li";
+                    // sprintf(buf, "$%s, %" PRIi64, cs_reg_name(handle, rd), imm);
+                    // rinsns[i].op_str = buf;
+                } else if (/*rd == rs &&*/ rd !=
+                           RABBITIZER_REG_GPR_O32_gp) { // only look for LUI if rd and rs are the same
+                    r_link_with_lui(i, rs, (int)imm);
+                }
+            } break;
+
+            case MIPS_INS_JALR: {
+                RabbitizerRegister_GprO32 rs = (RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(&insn.instruction);
+
+                if (rs == MIPS_REG_T9) {
+                    link_with_jalr(i);
+                    if (insn.linked_insn != -1) {
+                        insn.patched = true;
+                        insn.patched_addr = insn.linked_value;
+                        insn.instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_jal;
+                        insn.instruction.descriptor = &RabbitizerInstrDescriptor_Descriptors[insn.instruction.uniqueId];
+
+                        label_addresses.insert(insn.linked_value);
+                        add_function(insn.linked_value);
+                    }
+                }
+            } break;
+        }
+
+        if ((insn.instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_addu) &&
+            (RAB_INSTR_GET_rd(&insn.instruction) == RABBITIZER_REG_GPR_O32_gp) &&
+            (RAB_INSTR_GET_rs(&insn.instruction) == RABBITIZER_REG_GPR_O32_gp) &&
+            (RAB_INSTR_GET_rt(&insn.instruction) == RABBITIZER_REG_GPR_O32_t9) && i >= 2) {
+            // state->function_entry_points.insert(vaddr + (i - 2) * 4);
+            for (size_t j = i - 2; j <= i; j++) {
+                rinsns[j].patched = true;
+                rinsns[j].instruction.uniqueId = RABBITIZER_INSTR_ID_cpu_nop;
+                rinsns[j].instruction.descriptor =
+                    &RabbitizerInstrDescriptor_Descriptors[rinsns[j].instruction.uniqueId];
+            }
         }
     }
 }
@@ -840,6 +1455,145 @@ static void pass1(void) {
 
 static uint32_t addr_to_i(uint32_t addr) {
     return (addr - text_vaddr) / 4;
+}
+
+static void r_pass2(void) {
+    // Find returns in each function
+    for (size_t i = 0; i < insns.size(); i++) {
+        uint32_t addr = text_vaddr + i * 4;
+        Insn& insn = insns[i];
+
+        if (insn.id == MIPS_INS_JR && insn.operands[0].reg == MIPS_REG_RA) {
+            auto it = find_function(addr);
+            assert(it != functions.end());
+
+            it->second.returns.push_back(addr + 4);
+        }
+        if (insn.is_global_got_memop && text_vaddr <= insn.operands[1].imm &&
+            insn.operands[1].imm < text_vaddr + text_section_len) {
+            uint32_t faddr = insn.operands[1].imm;
+
+            li_function_pointers.insert(faddr);
+            functions[faddr].referenced_by_function_pointer = true;
+#if INSPECT_FUNCTION_POINTERS
+            fprintf(stderr, "li function pointer: 0x%x at 0x%x\n", faddr, addr);
+#endif
+        }
+    }
+
+    for (auto it = functions.begin(); it != functions.end(); ++it) {
+        if (it->second.returns.size() == 0) {
+            uint32_t i = addr_to_i(it->first);
+            auto str_it = symbol_names.find(it->first);
+
+            if (str_it != symbol_names.end() && str_it->second == "__start") {
+
+            } else if (str_it != symbol_names.end() && str_it->second == "xmalloc") {
+                // orig 5.3:
+                /*
+                496bf4:       3c1c0fb9        lui     gp,0xfb9
+                496bf8:       279c366c        addiu   gp,gp,13932
+                496bfc:       0399e021        addu    gp,gp,t9
+                496c00:       27bdffd8        addiu   sp,sp,-40
+                496c04:       8f858de8        lw      a1,-29208(gp)
+                496c08:       10000006        b       496c24 <alloc_new+0x14>
+                496c0c:       afbf0020        sw      ra,32(sp)
+                */
+
+                // jal   alloc_new
+                //  lui  $a1, malloc_scb
+                // jr    $ra
+                //  nop
+                uint32_t alloc_new_addr = text_vaddr + (i + 7) * 4;
+
+                insns[i].id = MIPS_INS_JAL;
+                insns[i].op_count = 1;
+                insns[i].mnemonic = "jal";
+                insns[i].op_str = "alloc_new";
+                insns[i].operands[0].imm = alloc_new_addr;
+                assert(symbol_names.count(alloc_new_addr) && symbol_names[alloc_new_addr] == "alloc_new");
+                i++;
+
+                if (insns[i + 5].id == MIPS_INS_LI) {
+                    // 7.1
+                    insns[i] = insns[i + 5];
+                } else {
+                    // 5.3
+                    insns[i] = insns[i + 3];
+                }
+
+                i++;
+                insns[i].id = MIPS_INS_JR;
+                insns[i].op_count = 1;
+                insns[i].mnemonic = "jr";
+                insns[i].op_str = "$ra";
+                insns[i].operands[0].reg = MIPS_REG_RA;
+                it->second.returns.push_back(text_vaddr + i * 4 + 4);
+
+                i++;
+                for (uint32_t j = 0; j < 4; j++) {
+                    insns[i].id = MIPS_INS_NOP;
+                    insns[i].op_count = 0;
+                    insns[i].mnemonic = "nop";
+                    i++;
+                }
+            } else if (str_it != symbol_names.end() && str_it->second == "xfree") {
+                // jal   alloc_dispose
+                //  lui  $a1, malloc_scb
+                // jr    $ra
+                //  nop
+                uint32_t alloc_dispose_addr = text_vaddr + (i + 4) * 4;
+
+                if (symbol_names.count(alloc_dispose_addr + 4) &&
+                    symbol_names[alloc_dispose_addr + 4] == "alloc_dispose") {
+                    alloc_dispose_addr += 4;
+                }
+
+                insns[i].id = MIPS_INS_JAL;
+                insns[i].op_count = 1;
+                insns[i].mnemonic = "jal";
+                insns[i].op_str = "alloc_dispose";
+                insns[i].operands[0].imm = alloc_dispose_addr;
+
+                assert(symbol_names.count(alloc_dispose_addr) && symbol_names[alloc_dispose_addr] == "alloc_dispose");
+                i++;
+
+                insns[i] = insns[i + 2];
+                i++;
+
+                insns[i].id = MIPS_INS_JR;
+                insns[i].op_count = 1;
+                insns[i].mnemonic = "jr";
+                insns[i].op_str = "$ra";
+                insns[i].operands[0].reg = MIPS_REG_RA;
+                it->second.returns.push_back(text_vaddr + i * 4 + 4);
+                i++;
+
+                insns[i].id = MIPS_INS_NOP;
+                insns[i].op_count = 0;
+                insns[i].mnemonic = "nop";
+            } else if (insns[i].id == MIPS_INS_LW && insns[i + 1].id == MIPS_INS_MOVE &&
+                       insns[i + 2].id == MIPS_INS_JALR) {
+                /*
+                408f50:       8f998010        lw      t9,-32752(gp)
+                408f54:       03e07821        move    t7,ra
+                408f58:       0320f809        jalr    t9
+                */
+            } else if (it->first > mcount_addr) {
+                fprintf(stderr, "no ret: 0x%x\n", it->first);
+                abort();
+            }
+        }
+
+        auto next = it;
+
+        ++next;
+        if (next == functions.end()) {
+            it->second.end_addr = text_vaddr + text_section_len;
+        } else {
+            it->second.end_addr = next->first;
+        }
+    }
 }
 
 static void pass2(void) {
@@ -2691,7 +3445,7 @@ static void dump_c(void) {
         symbol_names_inv[it.second] = it.first;
     }
 
-    uint32_t min_addr = ~0;
+    uint32_t min_addr = UINT32_MAX;
     uint32_t max_addr = 0;
 
     if (data_section_len > 0) {
