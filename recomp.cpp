@@ -1981,6 +1981,13 @@ static void pass3(void) {
     }
 }
 
+#define RABBITIZER_REG_GPR_O32_hi (RabbitizerRegister_GprO32)(RABBITIZER_REG_GPR_O32_ra + 1)
+#define RABBITIZER_REG_GPR_O32_lo (RabbitizerRegister_GprO32)(RABBITIZER_REG_GPR_O32_ra + 2)
+
+static uint64_t r_map_reg(RabbitizerRegister_GprO32 reg) {
+    return (uint64_t)1 << (reg - RABBITIZER_REG_GPR_O32_zero + 1);
+}
+
 static uint64_t map_reg(int32_t reg) {
     if (reg > MIPS_REG_31) {
         if (reg == MIPS_REG_HI) {
@@ -1993,6 +2000,22 @@ static uint64_t map_reg(int32_t reg) {
     }
 
     return (uint64_t)1 << (reg - MIPS_REG_0 + 1);
+}
+
+static uint64_t r_temporary_regs(void) {
+    // clang-format off
+    return
+        map_reg(RABBITIZER_REG_GPR_O32_t0) |
+        map_reg(RABBITIZER_REG_GPR_O32_t1) |
+        map_reg(RABBITIZER_REG_GPR_O32_t2) |
+        map_reg(RABBITIZER_REG_GPR_O32_t3) |
+        map_reg(RABBITIZER_REG_GPR_O32_t4) |
+        map_reg(RABBITIZER_REG_GPR_O32_t5) |
+        map_reg(RABBITIZER_REG_GPR_O32_t6) |
+        map_reg(RABBITIZER_REG_GPR_O32_t7) |
+        map_reg(RABBITIZER_REG_GPR_O32_t8) |
+        map_reg(RABBITIZER_REG_GPR_O32_t9);
+    // clang-format on
 }
 
 static uint64_t temporary_regs(void) {
@@ -2011,7 +2034,149 @@ static uint64_t temporary_regs(void) {
     // clang-format on
 }
 
-typedef enum { TYPE_NOP, TYPE_1S, TYPE_2S, TYPE_1D, TYPE_1D_1S, TYPE_1D_2S, TYPE_D_LO_HI_2S, TYPE_1S_POS1 } TYPE;
+typedef enum {
+    TYPE_NOP,        // No arguments
+    TYPE_1S,         // 1 in
+    TYPE_2S,         // 2 in
+    TYPE_1D,         // 1 out
+    TYPE_1D_1S,      // 1 out, 1 in
+    TYPE_1D_2S,      // 1 out, 2 in
+    TYPE_D_LO_HI_2S, // HI/LO out, 2 in
+    TYPE_1S_POS1     // ?, 1 in
+} TYPE;
+
+static TYPE r_insn_to_type(RInsn& insn) {
+    switch (insn.instruction.uniqueId) {
+
+        case RABBITIZER_INSTR_ID_cpu_add_s:
+        case RABBITIZER_INSTR_ID_cpu_add_d:
+            return TYPE_NOP;
+            return TYPE_1D_2S;
+
+        case RABBITIZER_INSTR_ID_cpu_add:
+        case RABBITIZER_INSTR_ID_cpu_addu:
+        case RABBITIZER_INSTR_ID_cpu_addi:
+        case RABBITIZER_INSTR_ID_cpu_addiu:
+        case RABBITIZER_INSTR_ID_cpu_andi:
+        case RABBITIZER_INSTR_ID_cpu_ori:
+        case RABBITIZER_INSTR_ID_cpu_lb:
+        case RABBITIZER_INSTR_ID_cpu_lbu:
+        case RABBITIZER_INSTR_ID_cpu_lh:
+        case RABBITIZER_INSTR_ID_cpu_lhu:
+        case RABBITIZER_INSTR_ID_cpu_lw:
+        case RABBITIZER_INSTR_ID_cpu_lwl:
+        // case RABBITIZER_INSTR_ID_cpu_lwr:
+        case RABBITIZER_INSTR_ID_cpu_move:
+        case RABBITIZER_INSTR_ID_cpu_negu:
+        case RABBITIZER_INSTR_ID_cpu_not:
+        case RABBITIZER_INSTR_ID_cpu_sll:
+        case RABBITIZER_INSTR_ID_cpu_slti:
+        case RABBITIZER_INSTR_ID_cpu_sltiu:
+        case RABBITIZER_INSTR_ID_cpu_sra:
+        case RABBITIZER_INSTR_ID_cpu_srl:
+        case RABBITIZER_INSTR_ID_cpu_xori:
+            return TYPE_1D_1S;
+
+        case RABBITIZER_INSTR_ID_cpu_mfhi:
+            // TODO: track this properly
+            // i.operands[1].reg = MIPS_REG_HI;
+            return TYPE_1D_1S;
+
+        case RABBITIZER_INSTR_ID_cpu_mflo:
+            // TODO: track this properly
+            // i.operands[1].reg = MIPS_REG_LO;
+            return TYPE_1D_1S;
+
+        case RABBITIZER_INSTR_ID_cpu_and:
+        case RABBITIZER_INSTR_ID_cpu_or:
+        case RABBITIZER_INSTR_ID_cpu_nor:
+        case RABBITIZER_INSTR_ID_cpu_sllv:
+        case RABBITIZER_INSTR_ID_cpu_slt:
+        case RABBITIZER_INSTR_ID_cpu_sltu:
+        case RABBITIZER_INSTR_ID_cpu_srav:
+        case RABBITIZER_INSTR_ID_cpu_srlv:
+        case RABBITIZER_INSTR_ID_cpu_subu:
+        case RABBITIZER_INSTR_ID_cpu_xor:
+            return TYPE_1D_2S;
+
+        case RABBITIZER_INSTR_ID_cpu_cfc1:
+        case RABBITIZER_INSTR_ID_cpu_mfc1:
+        // case RABBITIZER_INSTR_ID_cpu_li: // LI
+        case RABBITIZER_INSTR_ID_cpu_lui:
+            return TYPE_1D;
+
+        case RABBITIZER_INSTR_ID_cpu_ctc1:
+        case RABBITIZER_INSTR_ID_cpu_bgez:
+        case RABBITIZER_INSTR_ID_cpu_bgezl:
+        case RABBITIZER_INSTR_ID_cpu_bgtz:
+        case RABBITIZER_INSTR_ID_cpu_bgtzl:
+        case RABBITIZER_INSTR_ID_cpu_blez:
+        case RABBITIZER_INSTR_ID_cpu_blezl:
+        case RABBITIZER_INSTR_ID_cpu_bltz:
+        case RABBITIZER_INSTR_ID_cpu_bltzl:
+        case RABBITIZER_INSTR_ID_cpu_beqz:
+        case RABBITIZER_INSTR_ID_cpu_bnez:
+        case RABBITIZER_INSTR_ID_cpu_mtc1:
+            return TYPE_1S;
+
+        case RABBITIZER_INSTR_ID_cpu_beq:
+        case RABBITIZER_INSTR_ID_cpu_beql:
+        case RABBITIZER_INSTR_ID_cpu_bne:
+        case RABBITIZER_INSTR_ID_cpu_bnel:
+        case RABBITIZER_INSTR_ID_cpu_sb:
+        case RABBITIZER_INSTR_ID_cpu_sh:
+        case RABBITIZER_INSTR_ID_cpu_sw:
+        case RABBITIZER_INSTR_ID_cpu_swl:
+        // case RABBITIZER_INSTR_ID_cpu_swr:
+        case RABBITIZER_INSTR_ID_cpu_tne:
+        case RABBITIZER_INSTR_ID_cpu_teq:
+        case RABBITIZER_INSTR_ID_cpu_tge:
+        case RABBITIZER_INSTR_ID_cpu_tgeu:
+        case RABBITIZER_INSTR_ID_cpu_tlt:
+            return TYPE_2S;
+
+
+        case RABBITIZER_INSTR_ID_cpu_div:
+                return TYPE_D_LO_HI_2S;
+
+        case RABBITIZER_INSTR_ID_cpu_div_s:
+        case RABBITIZER_INSTR_ID_cpu_div_d:
+                return TYPE_NOP;
+
+        case RABBITIZER_INSTR_ID_cpu_divu:
+        case RABBITIZER_INSTR_ID_cpu_mult:
+        case RABBITIZER_INSTR_ID_cpu_multu:
+            return TYPE_D_LO_HI_2S;
+
+        // case RABBITIZER_INSTR_ID_cpu_negu: // ? Capstone NEG
+                return TYPE_1D_1S;
+
+        case RABBITIZER_INSTR_ID_cpu_neg_s:
+        case RABBITIZER_INSTR_ID_cpu_neg_d:
+                return TYPE_NOP;
+
+        case RABBITIZER_INSTR_ID_cpu_jalr:
+            return TYPE_1S;
+
+        case RABBITIZER_INSTR_ID_cpu_jr:
+            if (insn.jtbl_addr != 0) {
+                insn.instruction.word = RAB_INSTR_PACK_rs(insn.instruction.word, insn.index_reg);
+            }
+            if (RAB_INSTR_GET_rt(&insn.instruction) == MIPS_REG_RA) {
+                return TYPE_NOP;
+            }
+            return TYPE_1S;
+
+        case RABBITIZER_INSTR_ID_cpu_lwc1:
+        case RABBITIZER_INSTR_ID_cpu_ldc1:
+        case RABBITIZER_INSTR_ID_cpu_swc1:
+        case RABBITIZER_INSTR_ID_cpu_sdc1:
+            return TYPE_1S_POS1;
+
+        default:
+            return TYPE_NOP;
+    }
+}
 
 static TYPE insn_to_type(Insn& i) {
     switch (i.id) {
