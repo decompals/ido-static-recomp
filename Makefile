@@ -149,8 +149,10 @@ distclean: clean
 $(RABBITIZER_LIB):
 	make -C $(RABBITIZER) static
 
+$(RECOMP_ELF): $(RABBITIZER_LIB)
+
 $(BUILD_BASE)/%.elf: %.cpp
-	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) -o $@ $^ $(LDFLAGS)
+	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) $(RABBITIZER_LIB) -o $@ $^ $(LDFLAGS)
 
 
 $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/% | $(RECOMP_ELF)
