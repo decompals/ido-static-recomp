@@ -3135,7 +3135,8 @@ static void r_pass6(void) {
                 f.nargs = 1 + i;
             }
         }
-        f.v0_in = (insn.f_livein & insn.b_livein & r_map_reg(RABBITIZER_REG_GPR_O32_v0)) != 0 && !f.referenced_by_function_pointer;
+        f.v0_in = (insn.f_livein & insn.b_livein & r_map_reg(RABBITIZER_REG_GPR_O32_v0)) != 0 &&
+                  !f.referenced_by_function_pointer;
     }
 }
 
@@ -3165,6 +3166,30 @@ static void pass6(void) {
     }
 }
 
+static void r_dump(void) {
+    char buf[0x100] = { 0 };
+
+    for (size_t i = 0; i < rinsns.size(); i++) {
+        RInsn& insn = rinsns[i];
+        uint32_t vaddr = text_vaddr + i * sizeof(uint32_t);
+        if (label_addresses.count(vaddr)) {
+            if (symbol_names.count(vaddr)) {
+                printf("L%08x: //%s\n", vaddr, symbol_names[vaddr].c_str());
+            } else {
+                printf("L%08x:\n", vaddr);
+            }
+        }
+
+        // TODO: construct an immediate override for the instructions
+        RabbitizerInstruction_disassemble(&insn.instruction, buf, NULL, 0, 0);
+        printf("\t%s", buf);
+        if (insn.patched) {
+            printf("\t[patched, immediate now 0x%X]", insn.patched_addr);
+        }
+        printf("\n");
+    }
+}
+
 static void dump(void) {
     for (size_t i = 0; i < insns.size(); i++) {
         Insn& insn = insns[i];
@@ -3180,8 +3205,44 @@ static void dump(void) {
     }
 }
 
+static const char* r_r(RabbitizerRegister_GprO32 reg) {
+    static const char* regs[] = {
+        /*  */ "zero", "at", "v0", "v1",
+        /*  */ "a0",   "a1", "a2", "a3",
+        /*  */ "t0",   "t1", "t2", "t3", "t4", "t5", "t6", "t7",
+        /*  */ "s0",   "s1", "s2", "s3", "s4", "s5", "s6", "s7",
+        /*  */ "t8",   "t9", "k0", "k1", "gp", "sp", "fp", "ra",
+    };
+    return regs[reg];
+}
+
 static const char* r(uint32_t reg) {
     return cs_reg_name(handle, reg);
+}
+
+static const char* r_wr(RabbitizerRegister_Cop1O32 reg) {
+    // clang-format off
+    static const char *regs[] = {
+        "f0.w[0]", "f0.w[1]",
+        "f2.w[0]", "f2.w[1]",
+        "f4.w[0]", "f4.w[1]",
+        "f6.w[0]", "f6.w[1]",
+        "f8.w[0]", "f8.w[1]",
+        "f10.w[0]", "f10.w[1]",
+        "f12.w[0]", "f12.w[1]",
+        "f14.w[0]", "f14.w[1]",
+        "f16.w[0]", "f16.w[1]",
+        "f18.w[0]", "f18.w[1]",
+        "f20.w[0]", "f20.w[1]",
+        "f22.w[0]", "f22.w[1]",
+        "f24.w[0]", "f24.w[1]",
+        "f26.w[0]", "f26.w[1]",
+        "f28.w[0]", "f28.w[1]",
+        "f30.w[0]", "f30.w[1]"
+    };
+    // clang-format on
+
+    return regs[reg - RABBITIZER_REG_COP1_O32_fv0];
 }
 
 static const char* wr(uint32_t reg) {
@@ -3210,6 +3271,31 @@ static const char* wr(uint32_t reg) {
     return regs[reg - MIPS_REG_F0];
 }
 
+static const char* r_fr(RabbitizerRegister_Cop1O32 reg) {
+    // clang-format off
+    static const char *regs[] = {
+        "f0.f[0]", "f0.f[1]",
+        "f2.f[0]", "f2.f[1]",
+        "f4.f[0]", "f4.f[1]",
+        "f6.f[0]", "f6.f[1]",
+        "f8.f[0]", "f8.f[1]",
+        "f10.f[0]", "f10.f[1]",
+        "f12.f[0]", "f12.f[1]",
+        "f14.f[0]", "f14.f[1]",
+        "f16.f[0]", "f16.f[1]",
+        "f18.f[0]", "f18.f[1]",
+        "f20.f[0]", "f20.f[1]",
+        "f22.f[0]", "f22.f[1]",
+        "f24.f[0]", "f24.f[1]",
+        "f26.f[0]", "f26.f[1]",
+        "f28.f[0]", "f28.f[1]",
+        "f30.f[0]", "f30.f[1]",
+    };
+    // clang-format on
+
+    return regs[reg - RABBITIZER_REG_COP1_O32_fv0];
+}
+
 static const char* fr(uint32_t reg) {
     // clang-format off
     static const char *regs[] = {
@@ -3234,6 +3320,32 @@ static const char* fr(uint32_t reg) {
 
     assert(reg >= MIPS_REG_F0 && reg <= MIPS_REG_F31);
     return regs[reg - MIPS_REG_F0];
+}
+
+static const char* r_dr(RabbitizerRegister_Cop1O32 reg) {
+    // clang-format off
+    static const char *regs[] = {
+        "f0",
+        "f2",
+        "f4",
+        "f6",
+        "f8",
+        "f10",
+        "f12",
+        "f14",
+        "f16",
+        "f18",
+        "f20",
+        "f22",
+        "f24",
+        "f26",
+        "f28",
+        "f30"
+    };
+    // clang-format on
+
+    assert((reg - RABBITIZER_REG_COP1_O32_fv0) % 2 == 0);
+    return regs[(reg - RABBITIZER_REG_COP1_O32_fv0) / 2];
 }
 
 static const char* dr(uint32_t reg) {
