@@ -1,8 +1,8 @@
-#include <assert.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-#include <inttypes.h>
+#include <cassert>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <cinttypes>
 #include <unistd.h>
 
 #include <algorithm>
@@ -10,6 +10,7 @@
 #include <set>
 #include <vector>
 #include <string>
+#include <string_view>
 
 #include <capstone.h>
 
@@ -151,7 +152,7 @@ static uint32_t procedure_table_len;
 #define FLAG_NO_MEM 1
 #define FLAG_VARARG 2
 
-static const struct {
+static const struct ExternFunction {
     const char* name;
     const char* params;
     int flags;
@@ -2135,25 +2136,24 @@ static TYPE r_insn_to_type(RInsn& insn) {
         case RABBITIZER_INSTR_ID_cpu_tlt:
             return TYPE_2S;
 
-
         case RABBITIZER_INSTR_ID_cpu_div:
-                return TYPE_D_LO_HI_2S;
+            return TYPE_D_LO_HI_2S;
 
         case RABBITIZER_INSTR_ID_cpu_div_s:
         case RABBITIZER_INSTR_ID_cpu_div_d:
-                return TYPE_NOP;
+            return TYPE_NOP;
 
         case RABBITIZER_INSTR_ID_cpu_divu:
         case RABBITIZER_INSTR_ID_cpu_mult:
         case RABBITIZER_INSTR_ID_cpu_multu:
             return TYPE_D_LO_HI_2S;
 
-        // case RABBITIZER_INSTR_ID_cpu_negu: // ? Capstone NEG
-                return TYPE_1D_1S;
+            // case RABBITIZER_INSTR_ID_cpu_negu: // ? Capstone NEG
+            return TYPE_1D_1S;
 
         case RABBITIZER_INSTR_ID_cpu_neg_s:
         case RABBITIZER_INSTR_ID_cpu_neg_d:
-                return TYPE_NOP;
+            return TYPE_NOP;
 
         case RABBITIZER_INSTR_ID_cpu_jalr:
             return TYPE_1S;
@@ -2308,6 +2308,223 @@ static TYPE insn_to_type(Insn& i) {
     }
 }
 
+static uint32_t get_dest_reg_mask(const RabbitizerInstruction* instr) {
+    if (RabbitizerInstrDescriptor_modifiesRt(instr->descriptor)) {
+        return r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(instr));
+    } else if (RabbitizerInstrDescriptor_modifiesRd(instr->descriptor)) {
+        return r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rd(instr));
+    } else {
+        assert(!"No destination registers");
+    }
+}
+
+static uint32_t get_single_source_reg_mask(const RabbitizerInstruction* instr) {
+    if (RabbitizerInstruction_hasOperandAlias(instr, RAB_OPERAND_cpu_rs)) {
+        return r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(instr));
+    } else if (RabbitizerInstruction_hasOperandAlias(instr, RAB_OPERAND_cpu_rt)) {
+        return r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(instr));
+    } else {
+        assert(!"No source registers");
+    }
+}
+
+static uint32_t get_all_source_reg_mask(const RabbitizerInstruction* instr) {
+    uint32_t ret = 0;
+
+    if (RabbitizerInstruction_hasOperandAlias(instr, RAB_OPERAND_cpu_rs)) {
+        ret |= r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(instr));
+    }
+    if (RabbitizerInstruction_hasOperandAlias(instr, RAB_OPERAND_cpu_rt) &&
+        !RabbitizerInstrDescriptor_modifiesRt(instr->descriptor)) {
+        ret |= r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(instr));
+    }
+    return ret;
+}
+
+static void r_pass4(void) {
+    vector<uint32_t> q; // Why is this called q?
+    uint64_t livein_func_start = 1U | r_map_reg(RABBITIZER_REG_GPR_O32_a0) | r_map_reg(RABBITIZER_REG_GPR_O32_a1) |
+                                 r_map_reg(RABBITIZER_REG_GPR_O32_sp) | r_map_reg(RABBITIZER_REG_GPR_O32_zero);
+
+    q.push_back(main_addr);
+    rinsns[addr_to_i(main_addr)].f_livein = livein_func_start;
+
+    for (auto& it : data_function_pointers) {
+        q.push_back(it.second);
+        rinsns[addr_to_i(it.second)].f_livein =
+            livein_func_start | r_map_reg(RABBITIZER_REG_GPR_O32_a2) | r_map_reg(RABBITIZER_REG_GPR_O32_a3);
+    }
+
+    for (auto& addr : li_function_pointers) {
+        q.push_back(addr);
+        rinsns[addr_to_i(addr)].f_livein =
+            livein_func_start | r_map_reg(RABBITIZER_REG_GPR_O32_a2) | r_map_reg(RABBITIZER_REG_GPR_O32_a3);
+    }
+
+    while (!q.empty()) {
+        uint32_t addr = q.back();
+        q.pop_back();
+        uint32_t i = addr_to_i(addr);
+        RInsn& insn = rinsns[i];
+        uint64_t live = insn.f_livein | 1U;
+
+        switch (r_insn_to_type(insn)) {
+            case TYPE_1D:
+                live |= get_dest_reg_mask(&insn.instruction);
+                break;
+
+            case TYPE_1D_1S:
+                if (live & get_single_source_reg_mask(&insn.instruction)) {
+                    live |= get_dest_reg_mask(&insn.instruction);
+                }
+                break;
+
+            case TYPE_1D_2S:
+                if ((live & r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(&insn.instruction))) &&
+                    (live & r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(&insn.instruction)))) {
+                    live |= get_dest_reg_mask(&insn.instruction);
+                }
+                break;
+
+            case TYPE_D_LO_HI_2S:
+                if ((live & r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(&insn.instruction))) &&
+                    (live & r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(&insn.instruction)))) {
+                    live |= r_map_reg(RABBITIZER_REG_GPR_O32_lo);
+                    live |= r_map_reg(RABBITIZER_REG_GPR_O32_hi);
+                }
+                break;
+
+            default:
+                break;
+        }
+
+        if ((insn.f_liveout | live) == insn.f_liveout) {
+            // No new bits
+            continue;
+        }
+
+        live |= insn.f_liveout;
+        insn.f_liveout = live;
+
+        bool function_entry = false;
+
+        for (Edge& e : insn.successors) {
+            uint64_t new_live = live;
+
+            if (e.function_exit) {
+                new_live &= 1U | r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_v1) |
+                            r_map_reg(RABBITIZER_REG_GPR_O32_zero);
+            } else if (e.function_entry) {
+                new_live &= 1U | r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_a0) |
+                            r_map_reg(RABBITIZER_REG_GPR_O32_a1) | r_map_reg(RABBITIZER_REG_GPR_O32_a2) |
+                            r_map_reg(RABBITIZER_REG_GPR_O32_a3) | r_map_reg(RABBITIZER_REG_GPR_O32_sp) |
+                            r_map_reg(RABBITIZER_REG_GPR_O32_zero);
+                function_entry = true;
+            } else if (e.extern_function) {
+                string_view name;
+                // bool is_extern_function = false;
+                size_t extern_function_id;
+                uint32_t address = insn.patched ? insn.patched_addr
+                                                : RabbitizerInstruction_getInstrIndexAsVram(&rinsns[i - 1].instruction);
+                // TODO: Can this only ever be a J-type instruction?
+                auto it = symbol_names.find(address);
+                // auto it = symbol_names.find(rinsns[i - 1].operands[0].imm);
+                const ExternFunction* found_fn = nullptr;
+
+                if (it != symbol_names.end()) {
+                    name = it->second;
+
+                    for (auto& fn : extern_functions) {
+                        if (name == fn.name) {
+                            found_fn = &fn;
+                            break;
+                        }
+                    }
+
+                    if (found_fn == nullptr) {
+                        fprintf(stderr, "missing extern function: %s\n", string(name).c_str());
+                    }
+                }
+
+                assert(found_fn);
+
+                char ret_type = found_fn->params[0];
+
+                // if (it != symbol_names.end()) {
+                //     name = it->second;
+
+                //     for (size_t i = 0; i < sizeof(extern_functions) / sizeof(extern_functions[0]); i++) {
+                //         if (name == extern_functions[i].name) {
+                //             is_extern_function = true;
+                //             extern_function_id = i;
+                //             break;
+                //         }
+                //     }
+
+                //     if (!is_extern_function) {
+                //         fprintf(stderr, "missing extern function: %s\n", name.c_str());
+                //     }
+                // }
+
+                // assert(is_extern_function);
+
+                // auto& fn = extern_functions[extern_function_id];
+                // char ret_type = fn.params[0];
+
+                new_live &=
+                    ~(r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_a0) |
+                      r_map_reg(RABBITIZER_REG_GPR_O32_a1) | r_map_reg(RABBITIZER_REG_GPR_O32_a2) |
+                      r_map_reg(RABBITIZER_REG_GPR_O32_a3) | r_map_reg(RABBITIZER_REG_GPR_O32_v1) | temporary_regs());
+
+                switch (ret_type) {
+                    case 'i':
+                    case 'u':
+                    case 'p':
+                        new_live |= r_map_reg(RABBITIZER_REG_GPR_O32_v0);
+                        break;
+
+                    case 'f':
+                        break;
+
+                    case 'd':
+                        break;
+
+                    case 'v':
+                        break;
+
+                    case 'l':
+                    case 'j':
+                        new_live |= r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_v1);
+                        break;
+                }
+            } else if (e.function_pointer) {
+                new_live &=
+                    ~(r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_a0) |
+                      r_map_reg(RABBITIZER_REG_GPR_O32_a1) | r_map_reg(RABBITIZER_REG_GPR_O32_a2) |
+                      r_map_reg(RABBITIZER_REG_GPR_O32_a3) | r_map_reg(RABBITIZER_REG_GPR_O32_v1) | temporary_regs());
+                new_live |= r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_v1);
+            }
+
+            if ((rinsns[e.i].f_livein | new_live) != rinsns[e.i].f_livein) {
+                rinsns[e.i].f_livein |= new_live;
+                q.push_back(text_vaddr + e.i * sizeof(uint32_t));
+            }
+        }
+
+        if (function_entry) {
+            // add one edge that skips the function call, for callee-saved register liveness propagation
+            live &= ~(r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_a0) |
+                      r_map_reg(RABBITIZER_REG_GPR_O32_a1) | r_map_reg(RABBITIZER_REG_GPR_O32_a2) |
+                      r_map_reg(RABBITIZER_REG_GPR_O32_a3) | r_map_reg(RABBITIZER_REG_GPR_O32_v1) | temporary_regs());
+
+            if ((rinsns[i + 1].f_livein | live) != rinsns[i + 1].f_livein) {
+                rinsns[i + 1].f_livein |= live;
+                q.push_back(text_vaddr + (i + 1) * sizeof(uint32_t));
+            }
+        }
+    }
+}
+
 static void pass4(void) {
     vector<uint32_t> q;
     uint64_t livein_func_start =
@@ -2451,6 +2668,231 @@ static void pass4(void) {
             if ((insns[idx + 1].f_livein | live) != insns[idx + 1].f_livein) {
                 insns[idx + 1].f_livein |= live;
                 q.push_back(text_vaddr + (idx + 1) * 4);
+            }
+        }
+    }
+}
+
+static void r_pass5(void) {
+    vector<uint32_t> q;
+
+    assert(functions.count(main_addr));
+
+    q = functions[main_addr].returns;
+    for (auto addr : q) {
+        rinsns[addr_to_i(addr)].b_liveout = 1U | r_map_reg(RABBITIZER_REG_GPR_O32_v0);
+    }
+
+    for (auto& it : data_function_pointers) {
+        for (auto addr : functions[it.second].returns) {
+            q.push_back(addr);
+            rinsns[addr_to_i(addr)].b_liveout =
+                1U | r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_v1);
+        }
+    }
+
+    for (auto& func_addr : li_function_pointers) {
+        for (auto addr : functions[func_addr].returns) {
+            q.push_back(addr);
+            rinsns[addr_to_i(addr)].b_liveout =
+                1U | r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_v1);
+        }
+    }
+
+    for (size_t i = 0; i < rinsns.size(); i++) {
+        if (rinsns[i].f_livein != 0) {
+            // Instruction is reachable
+            q.push_back(text_vaddr + i * sizeof(uint32_t));
+        }
+    }
+
+    while (!q.empty()) {
+        uint32_t addr = q.back();
+
+        q.pop_back();
+
+        uint32_t i = addr_to_i(addr);
+        RInsn& insn = rinsns[i];
+        uint64_t live = insn.b_liveout | 1;
+
+        switch (r_insn_to_type(insn)) {
+            case TYPE_1S:
+                live |= get_single_source_reg_mask(&insn.instruction);
+                break;
+
+            case TYPE_1S_POS1:
+                live |= get_single_source_reg_mask(&insn.instruction);
+                break;
+
+            case TYPE_2S:
+                live |= get_all_source_reg_mask(&insn.instruction);
+                break;
+
+            case TYPE_1D:
+                live &= ~get_dest_reg_mask(&insn.instruction);
+                break;
+
+            case TYPE_1D_1S:
+                if (live & get_dest_reg_mask(&insn.instruction)) {
+                    live &= ~get_dest_reg_mask(&insn.instruction);
+                    live |= get_single_source_reg_mask(&insn.instruction);
+                }
+                break;
+
+            case TYPE_1D_2S:
+                if (live & get_dest_reg_mask(&insn.instruction)) {
+                    live &= ~get_dest_reg_mask(&insn.instruction);
+                    live |= get_all_source_reg_mask(&insn.instruction);
+                }
+                break;
+
+            case TYPE_D_LO_HI_2S: {
+                bool used = (live & (r_map_reg(RABBITIZER_REG_GPR_O32_lo) | r_map_reg(RABBITIZER_REG_GPR_O32_hi)));
+                live &= ~(r_map_reg(RABBITIZER_REG_GPR_O32_lo) | r_map_reg(RABBITIZER_REG_GPR_O32_hi));
+                if (used) {
+                    live |= get_all_source_reg_mask(&insn.instruction);
+                }
+            } break;
+
+            case TYPE_NOP:
+                break;
+        }
+
+        if ((insn.b_livein | live) == insn.b_livein) {
+            // No new bits
+            continue;
+        }
+
+        live |= insn.b_livein;
+        insn.b_livein = live;
+
+        bool function_exit = false;
+
+        for (Edge& e : insn.predecessors) {
+            uint64_t new_live = live;
+
+            if (e.function_exit) {
+                new_live &= 1U | r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_v1);
+                function_exit = true;
+            } else if (e.function_entry) {
+                new_live &= 1U | r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_a0) |
+                            r_map_reg(RABBITIZER_REG_GPR_O32_a1) | r_map_reg(RABBITIZER_REG_GPR_O32_a2) |
+                            r_map_reg(RABBITIZER_REG_GPR_O32_a3) | r_map_reg(RABBITIZER_REG_GPR_O32_sp);
+            } else if (e.extern_function) {
+                string_view name;
+                bool is_extern_function = false;
+                size_t extern_function_id;
+                const ExternFunction* found_fn = nullptr;
+                uint32_t address = insn.patched ? insn.patched_addr
+                                                : RabbitizerInstruction_getInstrIndexAsVram(&rinsns[i - 2].instruction);
+                // TODO: Can this only ever be a J-type instruction?
+                auto it = symbol_names.find(address);
+
+                if (it != symbol_names.end()) {
+                    name = it->second;
+                    for (auto& fn : extern_functions) {
+                        if (name == fn.name) {
+                            found_fn = &fn;
+                            break;
+                        }
+                    }
+                }
+
+                assert(found_fn);
+
+                uint64_t args = 1U;
+
+                if (found_fn->flags & FLAG_VARARG) {
+                    // Assume the worst, that all four registers are used
+                    for (int j = 0; j < 4; j++) {
+                        args |= r_map_reg((RabbitizerRegister_GprO32)(RABBITIZER_REG_GPR_O32_a0 + j));
+                    }
+                }
+
+                int pos = 0;
+                int pos_float = 0;
+                bool only_floats_so_far = true;
+
+                for (const char* p = found_fn->params + 1; *p != '\0'; ++p) {
+                    switch (*p) {
+                        case 'i':
+                        case 'u':
+                        case 'p':
+                        case 't':
+                            only_floats_so_far = false;
+                            if (pos < 4) {
+                                args |= r_map_reg((RabbitizerRegister_GprO32)(RABBITIZER_REG_GPR_O32_a0 + pos));
+                            }
+                            ++pos;
+                            break;
+
+                        case 'f':
+                            if (only_floats_so_far && pos_float < 4) {
+                                pos_float += 2;
+                            } else if (pos < 4) {
+                                args |= r_map_reg((RabbitizerRegister_GprO32)(RABBITIZER_REG_GPR_O32_a0 + pos));
+                            }
+                            ++pos;
+                            break;
+
+                        case 'd':
+                            // !!!
+                            if (pos % 1 != 0) {
+                                ++pos;
+                            }
+                            if (only_floats_so_far && pos_float < 4) {
+                                pos_float += 2;
+                            } else if (pos < 4) {
+                                args |= r_map_reg((RabbitizerRegister_GprO32)(RABBITIZER_REG_GPR_O32_a0 + pos)) |
+                                        r_map_reg((RabbitizerRegister_GprO32)(RABBITIZER_REG_GPR_O32_a0 + pos + 1));
+                            }
+                            pos += 2;
+                            break;
+
+                        case 'l':
+                        case 'j':
+                            if (pos % 1 != 0) {
+                                ++pos;
+                            }
+                            only_floats_so_far = false;
+                            if (pos < 4) {
+                                args |= r_map_reg((RabbitizerRegister_GprO32)(RABBITIZER_REG_GPR_O32_a0 + pos)) |
+                                        r_map_reg((RabbitizerRegister_GprO32)(RABBITIZER_REG_GPR_O32_a0 + pos + 1));
+                            }
+                            pos += 2;
+                            break;
+                    }
+                }
+                args |= r_map_reg(RABBITIZER_REG_GPR_O32_sp);
+                new_live &=
+                    ~(r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_a0) |
+                      r_map_reg(RABBITIZER_REG_GPR_O32_a1) | r_map_reg(RABBITIZER_REG_GPR_O32_a2) |
+                      r_map_reg(RABBITIZER_REG_GPR_O32_a3) | r_map_reg(RABBITIZER_REG_GPR_O32_v1) | temporary_regs());
+                new_live |= args;
+            } else if (e.function_pointer) {
+                new_live &=
+                    ~(r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_a0) |
+                      r_map_reg(RABBITIZER_REG_GPR_O32_a1) | r_map_reg(RABBITIZER_REG_GPR_O32_a2) |
+                      r_map_reg(RABBITIZER_REG_GPR_O32_a3) | r_map_reg(RABBITIZER_REG_GPR_O32_v1) | temporary_regs());
+                new_live |= r_map_reg(RABBITIZER_REG_GPR_O32_a0) | r_map_reg(RABBITIZER_REG_GPR_O32_a1) |
+                            r_map_reg(RABBITIZER_REG_GPR_O32_a2) | r_map_reg(RABBITIZER_REG_GPR_O32_a3);
+            }
+
+            if ((rinsns[e.i].b_liveout | new_live) != rinsns[e.i].b_liveout) {
+                rinsns[e.i].b_liveout |= new_live;
+                q.push_back(text_vaddr + e.i * sizeof(uint32_t));
+            }
+        }
+
+        if (function_exit) {
+            // add one edge that skips the function call, for callee-saved register liveness propagation
+            live &= ~(r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_a0) |
+                      r_map_reg(RABBITIZER_REG_GPR_O32_a1) | r_map_reg(RABBITIZER_REG_GPR_O32_a2) |
+                      r_map_reg(RABBITIZER_REG_GPR_O32_a3) | r_map_reg(RABBITIZER_REG_GPR_O32_v1) | temporary_regs());
+
+            if ((rinsns[i - 1].b_liveout | live) != rinsns[i - 1].b_liveout) {
+                rinsns[i - 1].b_liveout |= live;
+                q.push_back(text_vaddr + (i - 1) * sizeof(uint32_t));
             }
         }
     }
@@ -2668,6 +3110,32 @@ static void pass5(void) {
                 q.push_back(text_vaddr + (idx - 1) * 4);
             }
         }
+    }
+}
+
+static void r_pass6(void) {
+    for (auto& it : functions) {
+        uint32_t addr = it.first;
+        Function& f = it.second;
+
+        for (uint32_t ret : f.returns) {
+            RInsn& i = rinsns[addr_to_i(ret)];
+
+            if (i.f_liveout & i.b_liveout & r_map_reg(RABBITIZER_REG_GPR_O32_v1)) {
+                f.nret = 2;
+            } else if ((i.f_liveout & i.b_liveout & r_map_reg(RABBITIZER_REG_GPR_O32_v0)) && f.nret == 0) {
+                f.nret = 1;
+            }
+        }
+
+        RInsn& insn = rinsns.at(addr_to_i(addr));
+
+        for (int i = 0; i < 4; i++) {
+            if (insn.f_livein & insn.b_livein & r_map_reg((RabbitizerRegister_GprO32)(RABBITIZER_REG_GPR_O32_a0 + i))) {
+                f.nargs = 1 + i;
+            }
+        }
+        f.v0_in = (insn.f_livein & insn.b_livein & r_map_reg(RABBITIZER_REG_GPR_O32_v0)) != 0 && !f.referenced_by_function_pointer;
     }
 }
 
