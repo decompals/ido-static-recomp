@@ -152,6 +152,23 @@ static uint32_t procedure_table_len;
 #define FLAG_NO_MEM 1
 #define FLAG_VARARG 2
 
+/**
+ * Struct containing information on external functions that are called using the wrappers in `libc_impl.c`.
+ *
+ * name:    function name
+ * params:  first char is return type, subsequent chars are argument types. Key to chars used:
+ *          - 'v' void
+ *          - 'i' signed int (int32_t)
+ *          - 'u' unsigned int (uint32_t)
+ *          - 'p' pointer (uintptr_t)
+ *          - 'f' float
+ *          - 'd' double
+ *          - 'l' signed long long (int64_t)
+ *          - 'j' unsigned long long (uint64_t)
+ *          - 't' trampoline
+ *
+ * flags:   use defines above
+ */
 static const struct ExternFunction {
     const char* name;
     const char* params;
@@ -2308,7 +2325,7 @@ static TYPE insn_to_type(Insn& i) {
     }
 }
 
-static uint32_t get_dest_reg_mask(const RabbitizerInstruction* instr) {
+static uint64_t get_dest_reg_mask(const RabbitizerInstruction* instr) {
     if (RabbitizerInstrDescriptor_modifiesRt(instr->descriptor)) {
         return r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(instr));
     } else if (RabbitizerInstrDescriptor_modifiesRd(instr->descriptor)) {
@@ -2318,7 +2335,7 @@ static uint32_t get_dest_reg_mask(const RabbitizerInstruction* instr) {
     }
 }
 
-static uint32_t get_single_source_reg_mask(const RabbitizerInstruction* instr) {
+static uint64_t get_single_source_reg_mask(const RabbitizerInstruction* instr) {
     if (RabbitizerInstruction_hasOperandAlias(instr, RAB_OPERAND_cpu_rs)) {
         return r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(instr));
     } else if (RabbitizerInstruction_hasOperandAlias(instr, RAB_OPERAND_cpu_rt)) {
@@ -2328,8 +2345,8 @@ static uint32_t get_single_source_reg_mask(const RabbitizerInstruction* instr) {
     }
 }
 
-static uint32_t get_all_source_reg_mask(const RabbitizerInstruction* instr) {
-    uint32_t ret = 0;
+static uint64_t get_all_source_reg_mask(const RabbitizerInstruction* instr) {
+    uint64_t ret = 0;
 
     if (RabbitizerInstruction_hasOperandAlias(instr, RAB_OPERAND_cpu_rs)) {
         ret |= r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(instr));
@@ -2367,6 +2384,7 @@ static void r_pass4(void) {
         uint32_t i = addr_to_i(addr);
         RInsn& insn = rinsns[i];
         uint64_t live = insn.f_livein | 1U;
+        uint64_t src_regs_map;
 
         switch (r_insn_to_type(insn)) {
             case TYPE_1D:
@@ -2374,21 +2392,22 @@ static void r_pass4(void) {
                 break;
 
             case TYPE_1D_1S:
-                if (live & get_single_source_reg_mask(&insn.instruction)) {
+                src_regs_map = get_single_source_reg_mask(&insn.instruction);
+                if (live & src_regs_map) {
                     live |= get_dest_reg_mask(&insn.instruction);
                 }
                 break;
 
             case TYPE_1D_2S:
-                if ((live & r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(&insn.instruction))) &&
-                    (live & r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(&insn.instruction)))) {
+                src_regs_map = get_all_source_reg_mask(&insn.instruction);
+                if ((live & src_regs_map) == src_regs_map) {
                     live |= get_dest_reg_mask(&insn.instruction);
                 }
                 break;
 
             case TYPE_D_LO_HI_2S:
-                if ((live & r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(&insn.instruction))) &&
-                    (live & r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(&insn.instruction)))) {
+                src_regs_map = get_all_source_reg_mask(&insn.instruction);
+                if ((live & src_regs_map) == src_regs_map) {
                     live |= r_map_reg(RABBITIZER_REG_GPR_O32_lo);
                     live |= r_map_reg(RABBITIZER_REG_GPR_O32_hi);
                 }
@@ -3205,7 +3224,7 @@ static void dump(void) {
     }
 }
 
-static const char* r_r(RabbitizerRegister_GprO32 reg) {
+static const char* r_r(uint32_t reg) {
     static const char* regs[] = {
         /*  */ "zero", "at", "v0", "v1",
         /*  */ "a0",   "a1", "a2", "a3",
@@ -3220,7 +3239,7 @@ static const char* r(uint32_t reg) {
     return cs_reg_name(handle, reg);
 }
 
-static const char* r_wr(RabbitizerRegister_Cop1O32 reg) {
+static const char* r_wr(uint32_t reg) {
     // clang-format off
     static const char *regs[] = {
         "f0.w[0]", "f0.w[1]",
@@ -3271,7 +3290,7 @@ static const char* wr(uint32_t reg) {
     return regs[reg - MIPS_REG_F0];
 }
 
-static const char* r_fr(RabbitizerRegister_Cop1O32 reg) {
+static const char* r_fr(uint32_t reg) {
     // clang-format off
     static const char *regs[] = {
         "f0.f[0]", "f0.f[1]",
@@ -3322,7 +3341,7 @@ static const char* fr(uint32_t reg) {
     return regs[reg - MIPS_REG_F0];
 }
 
-static const char* r_dr(RabbitizerRegister_Cop1O32 reg) {
+static const char* r_dr(uint32_t reg) {
     // clang-format off
     static const char *regs[] = {
         "f0",
@@ -3417,7 +3436,8 @@ static void r_dump_cond_branch_likely(int i, const char* lhs, const char* op, co
     if (!TRACE) {
         printf("else goto L%x;\n", target);
     } else {
-        printf("else {printf(\"pc=0x%08x (ignored)\\n\"); goto L%x;}\n", text_vaddr + (i + 1) * sizeof(uint32_t), target);
+        printf("else {printf(\"pc=0x%08x (ignored)\\n\"); goto L%x;}\n", text_vaddr + (i + 1) * sizeof(uint32_t),
+               target);
     }
     label_addresses.insert(target);
 }
@@ -3433,64 +3453,263 @@ static void dump_cond_branch_likely(int i, const char* lhs, const char* op, cons
     label_addresses.insert(target);
 }
 
+static void r_dump_jal(int i, uint32_t imm) {
+    string_view name;
+    auto it = symbol_names.find(imm);
+    const ExternFunction* found_fn = nullptr;
+
+    // Check for an external function at the address in the immediate. If it does not exist, function is internal
+    if (it != symbol_names.end()) {
+        name = it->second;
+        for (auto& fn : extern_functions) {
+            if (name == fn.name) {
+                found_fn = &fn;
+                break;
+            }
+        }
+    }
+
+    dump_instr(i + 1);
+
+    if (found_fn != nullptr) {
+        if (found_fn->flags & FLAG_VARARG) {
+            for (int j = 0; j < 4; j++) {
+                printf("MEM_U32(sp + %d) = %s;\n", j * 4, r_r(RABBITIZER_REG_GPR_O32_a0 + j));
+            }
+        }
+
+        const char ret_type = found_fn->params[0];
+
+        switch (ret_type) {
+            case 'v':
+                break;
+
+            case 'i':
+            case 'u':
+            case 'p':
+                printf("%s = ", r_r(RABBITIZER_REG_GPR_O32_v0));
+                break;
+
+            case 'f':
+                printf("%s = ", r_fr(RABBITIZER_REG_COP1_O32_fv0));
+                break;
+
+            case 'd':
+                printf("tempf64 = ");
+                break;
+
+            case 'l':
+            case 'j':
+                printf("temp64 = ");
+                break;
+        }
+
+        printf("wrapper_%s(", string(name).c_str());
+
+        bool first = true;
+
+        if (!(found_fn->flags & FLAG_NO_MEM)) {
+            printf("mem");
+            first = false;
+        }
+
+        int pos = 0;
+        int pos_float = 0;
+        bool only_floats_so_far = true;
+        bool needs_sp = false;
+
+        for (const char* p = &found_fn->params[1]; *p != '\0'; ++p) {
+            if (!first) {
+                printf(", ");
+            }
+
+            first = false;
+
+            switch (*p) {
+                case 't':
+                    printf("trampoline, ");
+                    needs_sp = true;
+                    // fallthrough
+                case 'i':
+                case 'u':
+                case 'p':
+                    only_floats_so_far = false;
+                    if (pos < 4) {
+                        printf("%s", r_r(RABBITIZER_REG_GPR_O32_a0 + pos));
+                    } else {
+                        printf("MEM_%c32(sp + %d)", *p == 'i' ? 'S' : 'U', pos * 4);
+                    }
+                    ++pos;
+                    break;
+
+                case 'f':
+                    if (only_floats_so_far && pos_float < 4) {
+                        printf("%s", r_fr(RABBITIZER_REG_COP1_O32_fa0 + pos_float));
+                        pos_float += 2;
+                    } else if (pos < 4) {
+                        printf("BITCAST_U32_TO_F32(%s)", r_r(RABBITIZER_REG_GPR_O32_a0 + pos));
+                    } else {
+                        printf("BITCAST_U32_TO_F32(MEM_U32(sp + %d))", pos * 4);
+                    }
+                    ++pos;
+                    break;
+
+                case 'd':
+                    if (pos % 1 != 0) {
+                        ++pos;
+                    }
+                    if (only_floats_so_far && pos_float < 4) {
+                        printf("double_from_FloatReg(%s)", r_dr(RABBITIZER_REG_COP1_O32_fa0 + pos_float));
+                        pos_float += 2;
+                    } else if (pos < 4) {
+                        printf("BITCAST_U64_TO_F64(((uint64_t)%s << 32) | (uint64_t)%s)",
+                               r_r(RABBITIZER_REG_GPR_O32_a0 + pos), r_r(RABBITIZER_REG_GPR_O32_a0 + pos + 1));
+                    } else {
+                        printf("BITCAST_U64_TO_F64(((uint64_t)MEM_U32(sp + %d) << 32) | "
+                               "(uint64_t)MEM_U32(sp + "
+                               "%d))",
+                               pos * 4, (pos + 1) * 4);
+                    }
+                    pos += 2;
+                    break;
+
+                case 'l':
+                case 'j':
+                    if (pos % 1 != 0) {
+                        ++pos;
+                    }
+                    only_floats_so_far = false;
+                    if (*p == 'l') {
+                        printf("(int64_t)");
+                    }
+                    if (pos < 4) {
+                        printf("(((uint64_t)%s << 32) | (uint64_t)%s)", r_r(RABBITIZER_REG_GPR_O32_a0 + pos),
+                               r_r(RABBITIZER_REG_GPR_O32_a0 + pos + 1));
+                    } else {
+                        printf("(((uint64_t)MEM_U32(sp + %d) << 32) | (uint64_t)MEM_U32(sp + %d))", pos * 4,
+                               (pos + 1) * 4);
+                    }
+                    pos += 2;
+                    break;
+            }
+        }
+
+        if ((found_fn->flags & FLAG_VARARG) || needs_sp) {
+            printf("%s%s", first ? "" : ", ", r_r(RABBITIZER_REG_GPR_O32_sp));
+        }
+
+        printf(");\n");
+
+        if (ret_type == 'l' || ret_type == 'j') {
+            printf("%s = (uint32_t)(temp64 >> 32);\n", r_r(RABBITIZER_REG_GPR_O32_v0));
+            printf("%s = (uint32_t)temp64;\n", r_r(RABBITIZER_REG_GPR_O32_v1));
+        } else if (ret_type == 'd') {
+            printf("%s = FloatReg_from_double(tempf64);\n", r_dr(RABBITIZER_REG_COP1_O32_fv0));
+        }
+
+        if (!name.empty()) {
+            // printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(), r_r(RABBITIZER_REG_GPR_O32_a0));
+        }
+    } else {
+        Function& f = functions.find(imm)->second;
+
+        if (f.nret == 1) {
+            printf("v0 = ");
+        } else if (f.nret == 2) {
+            printf("temp64 = ");
+        }
+
+        if (!name.empty()) {
+            // printf("printf(\"%s %%x\\n\", %s);\n", string(name).c_str(), r_r(RABBITIZER_REG_GPR_O32_a0));
+            printf("f_%s", string(name).c_str());
+        } else {
+            printf("func_%x", imm);
+        }
+
+        printf("(mem, sp");
+
+        if (f.v0_in) {
+            printf(", %s", r_r(RABBITIZER_REG_GPR_O32_v0));
+        }
+
+        for (uint32_t i = 0; i < f.nargs; i++) {
+            printf(", %s", r_r(RABBITIZER_REG_GPR_O32_a0 + i));
+        }
+
+        printf(");\n");
+
+        if (f.nret == 2) {
+            printf("%s = (uint32_t)(temp64 >> 32);\n", r_r(RABBITIZER_REG_GPR_O32_v0));
+            printf("%s = (uint32_t)temp64;\n", r_r(RABBITIZER_REG_GPR_O32_v1));
+        }
+    }
+
+    printf("goto L%x;\n", text_vaddr + (i + 2) * sizeof(uint32_t));
+    label_addresses.insert(text_vaddr + (i + 2) * sizeof(uint32_t));
+}
+
 static void r_dump_instr(int i) {
+    RInsn& insn = rinsns[i];
+
     const char* symbol_name = NULL;
-    if (symbol_names.count(text_vaddr + i * 4) != 0) {
-        symbol_name = symbol_names[text_vaddr + i * 4].c_str();
+    if (symbol_names.count(text_vaddr + i * sizeof(uint32_t)) != 0) {
+        symbol_name = symbol_names[text_vaddr + i * sizeof(uint32_t)].c_str();
         printf("//%s:\n", symbol_name);
     }
+
     if (TRACE) {
-        printf("++cnt; printf(\"pc=0x%08x%s%s\\n\"); ", text_vaddr + i * 4, symbol_name ? " " : "",
+        printf("++cnt; printf(\"pc=0x%08x%s%s\\n\"); ", text_vaddr + i * sizeof(uint32_t), symbol_name ? " " : "",
                symbol_name ? symbol_name : "");
     }
-    Insn& insn = insns[i];
-    if (!insn.is_jump && !conservative) {
-        switch (insn_to_type(insn)) {
+
+    uint64_t src_regs_map;
+    if (!insn.instruction.descriptor->isJump && !conservative) {
+        switch (r_insn_to_type(insn)) {
             case TYPE_1S:
-                if (!(insn.f_livein & map_reg(insn.operands[0].reg))) {
+                if (!(insn.f_livein & get_single_source_reg_mask(&insn.instruction))) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                 }
                 break;
 
             case TYPE_1S_POS1:
-                if (!(insn.f_livein & map_reg(insn.operands[1].reg))) {
+                if (!(insn.f_livein & get_single_source_reg_mask(&insn.instruction))) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                 }
                 break;
 
             case TYPE_2S:
-                if (!(insn.f_livein & map_reg(insn.operands[0].reg)) ||
-                    !(insn.f_livein & map_reg(insn.operands[1].reg))) {
+                src_regs_map = src_regs_map = get_all_source_reg_mask(&insn.instruction);
+                if (!((insn.f_livein & src_regs_map) == src_regs_map)) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                 }
                 break;
 
             case TYPE_1D_2S:
-                if (!(insn.f_livein & map_reg(insn.operands[2].reg))) {
+                if (!(insn.f_livein & r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(&insn.instruction)))) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                     break;
                 }
                 // fallthrough
             case TYPE_1D_1S:
-                if (!(insn.f_livein & map_reg(insn.operands[1].reg))) {
+                if (!(insn.f_livein & get_single_source_reg_mask(&insn.instruction))) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                     break;
                 }
                 // fallthrough
             case TYPE_1D:
-                if (!(insn.b_liveout & map_reg(insn.operands[0].reg))) {
+                if (!(insn.b_liveout & get_dest_reg_mask(&insn.instruction))) {
                     printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
                 }
                 break;
 
             case TYPE_D_LO_HI_2S:
-                if (!(insn.f_livein & map_reg(insn.operands[0].reg)) ||
-                    !(insn.f_livein & map_reg(insn.operands[1].reg))) {
+                src_regs_map = src_regs_map = get_all_source_reg_mask(&insn.instruction);
+                if (!((insn.f_livein & src_regs_map) == src_regs_map)) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                     break;
                 }
 
-                if (!(insn.b_liveout & (map_reg(MIPS_REG_LO) | map_reg(MIPS_REG_HI)))) {
+                if (!(insn.b_liveout & (r_map_reg(RABBITIZER_REG_GPR_O32_lo) | r_map_reg(RABBITIZER_REG_GPR_O32_hi)))) {
                     printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
                 }
                 break;
@@ -3499,449 +3718,341 @@ static void r_dump_instr(int i) {
                 break;
         }
     }
-    switch (insn.id) {
-        case MIPS_INS_ADD:
-        case MIPS_INS_ADDU:
-            if (insn.mnemonic == "add.s") {
-                printf("%s = %s + %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg), fr(insn.operands[2].reg));
-            } else if (insn.mnemonic == "add.d") {
-                printf("%s = FloatReg_from_double(double_from_FloatReg(%s) + double_from_FloatReg(%s));\n",
-                       dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
-            } else {
-                printf("%s = %s + %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), r(insn.operands[2].reg));
-            }
+
+    uint32_t imm;
+    switch (insn.instruction.uniqueId) {
+        case RABBITIZER_INSTR_ID_cpu_add:
+        case RABBITIZER_INSTR_ID_cpu_addu:
+            printf("%s = %s + %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_ADDI:
-        case MIPS_INS_ADDIU:
-            printf("%s = %s + 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
-                   (uint32_t)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_add_s:
+            printf("%s = %s + %s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)), r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
             break;
 
-        case MIPS_INS_AND:
-            printf("%s = %s & %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), r(insn.operands[2].reg));
+        case RABBITIZER_INSTR_ID_cpu_add_d:
+            printf("%s = FloatReg_from_double(double_from_FloatReg(%s) + double_from_FloatReg(%s));\n",
+                   r_dr(RAB_INSTR_GET_fd(&insn.instruction)), r_dr(RAB_INSTR_GET_fs(&insn.instruction)),
+                   r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
             break;
 
-        case MIPS_INS_ANDI:
-            printf("%s = %s & 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
-                   (uint32_t)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_addi:
+        case RABBITIZER_INSTR_ID_cpu_addiu:
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("%s = %s + 0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), imm);
             break;
 
-        case MIPS_INS_BEQ:
-            dump_cond_branch(i, r(insn.operands[0].reg), "==", r(insn.operands[1].reg));
+        case RABBITIZER_INSTR_ID_cpu_and:
+            printf("%s = %s & %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_BEQL:
-            dump_cond_branch_likely(i, r(insn.operands[0].reg), "==", r(insn.operands[1].reg));
+        case RABBITIZER_INSTR_ID_cpu_andi:
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("%s = %s & 0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), imm);
             break;
 
-        case MIPS_INS_BGEZ:
-            dump_cond_branch(i, r(insn.operands[0].reg), ">=", "0");
+        case RABBITIZER_INSTR_ID_cpu_beq:
+            dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                             "==", r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_BGEZL:
-            dump_cond_branch_likely(i, r(insn.operands[0].reg), ">=", "0");
+        case RABBITIZER_INSTR_ID_cpu_beql:
+            dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                                    "==", r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_BGTZ:
-            dump_cond_branch(i, r(insn.operands[0].reg), ">", "0");
+        case RABBITIZER_INSTR_ID_cpu_bgez:
+            dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), ">=", "0");
             break;
 
-        case MIPS_INS_BGTZL:
-            dump_cond_branch_likely(i, r(insn.operands[0].reg), ">", "0");
+        case RABBITIZER_INSTR_ID_cpu_bgezl:
+            dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), ">=", "0");
             break;
 
-        case MIPS_INS_BLEZ:
-            dump_cond_branch(i, r(insn.operands[0].reg), "<=", "0");
+        case RABBITIZER_INSTR_ID_cpu_bgtz:
+            dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), ">", "0");
             break;
 
-        case MIPS_INS_BLEZL:
-            dump_cond_branch_likely(i, r(insn.operands[0].reg), "<=", "0");
+        case RABBITIZER_INSTR_ID_cpu_bgtzl:
+            dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), ">", "0");
             break;
 
-        case MIPS_INS_BLTZ:
-            dump_cond_branch(i, r(insn.operands[0].reg), "<", "0");
+        case RABBITIZER_INSTR_ID_cpu_blez:
+            dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), "<=", "0");
             break;
 
-        case MIPS_INS_BLTZL:
-            dump_cond_branch_likely(i, r(insn.operands[0].reg), "<", "0");
+        case RABBITIZER_INSTR_ID_cpu_blezl:
+            dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), "<=", "0");
             break;
 
-        case MIPS_INS_BNE:
-            dump_cond_branch(i, r(insn.operands[0].reg), "!=", r(insn.operands[1].reg));
+        case RABBITIZER_INSTR_ID_cpu_bltz:
+            dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), "<", "0");
             break;
 
-        case MIPS_INS_BNEL:
-            dump_cond_branch_likely(i, r(insn.operands[0].reg),
-                                    "!=", insn.mnemonic == "bnezl" ? "0" : r(insn.operands[1].reg));
+        case RABBITIZER_INSTR_ID_cpu_bltzl:
+            dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), "<", "0");
             break;
 
-        case MIPS_INS_BREAK:
+        case RABBITIZER_INSTR_ID_cpu_bne:
+            dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                             "!=", r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_bnel:
+            dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                                    "!=", r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            break;
+
+            // // Not emitted by rabbitizer
+            // case RABBITIZER_INSTR_ID_cpu_bnezl:
+            //     dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+            //                             "!=", "0");
+            //     break;
+
+        case RABBITIZER_INSTR_ID_cpu_break:
             printf("abort();\n");
             break;
 
-        case MIPS_INS_BEQZ:
-            dump_cond_branch(i, r(insn.operands[0].reg), "==", "0");
+        case RABBITIZER_INSTR_ID_cpu_beqz:
+            dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), "==", "0");
             break;
 
-            /* case MIPS_INS_BEQZL:
-                dump_cond_branch_likely(i, r(insn.operands[0].reg), "==", "0");
+            /* case RABBITIZER_INSTR_ID_cpu_beqzl:
+                dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction), "==", "0");
                 break; */
 
-        case MIPS_INS_B:
+        case RABBITIZER_INSTR_ID_cpu_b:
             dump_instr(i + 1);
-            printf("goto L%x;\n", (int32_t)insn.operands[0].imm);
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("goto L%x;\n", imm);
             break;
 
-        case MIPS_INS_BC1F:
-        case MIPS_INS_BC1T:
-            printf("if (%scf) {", insn.id == MIPS_INS_BC1F ? "!" : "");
+        case RABBITIZER_INSTR_ID_cpu_bc1f:
+            printf("if (!cf) {");
             dump_instr(i + 1);
-            printf("goto L%x;}\n", (int32_t)insn.operands[0].imm);
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("goto L%x;}\n", imm);
             break;
 
-        case MIPS_INS_BC1FL:
-        case MIPS_INS_BC1TL: {
-            uint32_t target = text_vaddr + (i + 2) * 4;
-            printf("if (%scf) {", insn.id == MIPS_INS_BC1FL ? "!" : "");
+        case RABBITIZER_INSTR_ID_cpu_bc1t:
+            printf("if (cf) {");
             dump_instr(i + 1);
-            printf("goto L%x;}\n", (int32_t)insn.operands[0].imm);
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("goto L%x;}\n", imm);
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_bc1fl: {
+            uint32_t target = text_vaddr + (i + 2) * sizeof(uint32_t);
+            printf("if (!cf) {");
+            dump_instr(i + 1);
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("goto L%x;}\n", imm);
             if (!TRACE) {
                 printf("else goto L%x;\n", target);
             } else {
-                printf("else {printf(\"pc=0x%08x (ignored)\\n\"); goto L%x;}\n", text_vaddr + (i + 1) * 4, target);
+                printf("else {printf(\"pc=0x%08x (ignored)\\n\"); goto L%x;}\n",
+                       text_vaddr + (i + 1) * sizeof(uint32_t), target);
             }
             label_addresses.insert(target);
         } break;
 
-        case MIPS_INS_BNEZ:
-            dump_cond_branch(i, r(insn.operands[0].reg), "!=", "0");
-            break;
-
-            /* case MIPS_INS_BNEZL:
-                dump_cond_branch_likely(i, r(insn.operands[0].reg), "!=", "0");
-                break; */
-
-        case MIPS_INS_C:
-            if (insn.mnemonic == "c.lt.s") {
-                printf("cf = %s < %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg));
-            } else if (insn.mnemonic == "c.le.s") {
-                printf("cf = %s <= %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg));
-            } else if (insn.mnemonic == "c.eq.s") {
-                printf("cf = %s == %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg));
-            } else if (insn.mnemonic == "c.lt.d") {
-                printf("cf = double_from_FloatReg(%s) < double_from_FloatReg(%s);\n", dr(insn.operands[0].reg),
-                       dr(insn.operands[1].reg));
-            } else if (insn.mnemonic == "c.le.d") {
-                printf("cf = double_from_FloatReg(%s) <= double_from_FloatReg(%s);\n", dr(insn.operands[0].reg),
-                       dr(insn.operands[1].reg));
-            } else if (insn.mnemonic == "c.eq.d") {
-                printf("cf = double_from_FloatReg(%s) == double_from_FloatReg(%s);\n", dr(insn.operands[0].reg),
-                       dr(insn.operands[1].reg));
-            }
-            break;
-
-        case MIPS_INS_CVT:
-            if (insn.mnemonic == "cvt.s.w") {
-                printf("%s = (int)%s;\n", fr(insn.operands[0].reg), wr(insn.operands[1].reg));
-            } else if (insn.mnemonic == "cvt.d.w") {
-                printf("%s = FloatReg_from_double((int)%s);\n", dr(insn.operands[0].reg), wr(insn.operands[1].reg));
-            } else if (insn.mnemonic == "cvt.d.s") {
-                printf("%s = FloatReg_from_double(%s);\n", dr(insn.operands[0].reg), fr(insn.operands[1].reg));
-            } else if (insn.mnemonic == "cvt.s.d") {
-                printf("%s = double_from_FloatReg(%s);\n", fr(insn.operands[0].reg), dr(insn.operands[1].reg));
-            } else if (insn.mnemonic == "cvt.w.d") {
-                printf("%s = cvt_w_d(double_from_FloatReg(%s));\n", wr(insn.operands[0].reg), dr(insn.operands[1].reg));
-            } else if (insn.mnemonic == "cvt.w.s") {
-                printf("%s = cvt_w_s(%s);\n", wr(insn.operands[0].reg), fr(insn.operands[1].reg));
-            } else {
-                goto unimplemented;
-            }
-            break;
-
-        case MIPS_INS_CFC1:
-            assert(insn.operands[1].reg == MIPS_REG_31);
-            printf("%s = fcsr;\n", r(insn.operands[0].reg));
-            break;
-
-        case MIPS_INS_CTC1:
-            assert(insn.operands[1].reg == MIPS_REG_31);
-            printf("fcsr = %s;\n", r(insn.operands[0].reg));
-            break;
-
-        case MIPS_INS_DIV:
-            if (insn.mnemonic == "div.s") {
-                assert(insn.op_count == 3);
-                printf("%s = %s / %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg), fr(insn.operands[2].reg));
-            } else if (insn.mnemonic == "div.d") {
-                assert(insn.op_count == 3);
-                printf("%s = FloatReg_from_double(double_from_FloatReg(%s) / double_from_FloatReg(%s));\n",
-                       dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
-            } else {
-                assert(insn.op_count == 2);
-                printf("lo = (int)%s / (int)%s; ", r(insn.operands[0].reg), r(insn.operands[1].reg));
-                printf("hi = (int)%s %% (int)%s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
-            }
-            break;
-
-        case MIPS_INS_DIVU:
-            assert(insn.op_count == 2);
-            printf("lo = %s / %s; ", r(insn.operands[0].reg), r(insn.operands[1].reg));
-            printf("hi = %s %% %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
-            break;
-
-        case MIPS_INS_MOV:
-            if (insn.mnemonic == "mov.s") {
-                printf("%s = %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg));
-            } else if (insn.mnemonic == "mov.d") {
-                printf("%s = %s;\n", dr(insn.operands[0].reg), dr(insn.operands[1].reg));
-            } else {
-                goto unimplemented;
-            }
-            break;
-
-        case MIPS_INS_MUL:
-            if (insn.mnemonic == "mul.s") {
-                printf("%s = %s * %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg), fr(insn.operands[2].reg));
-            } else if (insn.mnemonic == "mul.d") {
-                printf("%s = FloatReg_from_double(double_from_FloatReg(%s) * double_from_FloatReg(%s));\n",
-                       dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
-            } else {
-                goto unimplemented;
-            }
-            break;
-
-        case MIPS_INS_NEG:
-            if (insn.mnemonic == "neg.s") {
-                printf("%s = -%s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg));
-            } else if (insn.mnemonic == "neg.d") {
-                printf("%s = FloatReg_from_double(-double_from_FloatReg(%s));\n", dr(insn.operands[0].reg),
-                       dr(insn.operands[1].reg));
-            } else {
-                printf("%s = -%s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
-            }
-            break;
-
-        case MIPS_INS_SUB:
-            if (insn.mnemonic == "sub.s") {
-                printf("%s = %s - %s;\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg), fr(insn.operands[2].reg));
-            } else if (insn.mnemonic == "sub.d") {
-                printf("%s = FloatReg_from_double(double_from_FloatReg(%s) - double_from_FloatReg(%s));\n",
-                       dr(insn.operands[0].reg), dr(insn.operands[1].reg), dr(insn.operands[2].reg));
-            } else {
-                goto unimplemented;
-            }
-            break;
-
-        case MIPS_INS_J:
+        case RABBITIZER_INSTR_ID_cpu_bc1tl: {
+            uint32_t target = text_vaddr + (i + 2) * sizeof(uint32_t);
+            printf("if (cf) {");
             dump_instr(i + 1);
-            printf("goto L%x;\n", (uint32_t)insn.operands[0].imm);
-            break;
-
-        case MIPS_INS_JAL: {
-            string name;
-            bool is_extern_function = false;
-            size_t extern_function_id;
-            auto it = symbol_names.find(insn.operands[0].imm);
-
-            if (it != symbol_names.end()) {
-                name = it->second;
-
-                for (size_t i = 0; i < sizeof(extern_functions) / sizeof(extern_functions[0]); i++) {
-                    if (name == extern_functions[i].name) {
-                        is_extern_function = true;
-                        extern_function_id = i;
-                        break;
-                    }
-                }
-            }
-
-            dump_instr(i + 1);
-
-            if (is_extern_function) {
-                auto& fn = extern_functions[extern_function_id];
-
-                if (fn.flags & FLAG_VARARG) {
-                    for (int j = 0; j < 4; j++) {
-                        printf("MEM_U32(sp + %d) = %s;\n", j * 4, r(MIPS_REG_A0 + j));
-                    }
-                }
-
-                char ret_type = fn.params[0];
-
-                if (ret_type != 'v') {
-                    switch (ret_type) {
-                        case 'i':
-                        case 'u':
-                        case 'p':
-                            printf("%s = ", r(MIPS_REG_V0));
-                            break;
-
-                        case 'f':
-                            printf("%s = ", fr(MIPS_REG_F0));
-                            break;
-
-                        case 'd':
-                            printf("tempf64 = ");
-                            break;
-
-                        case 'l':
-                        case 'j':
-                            printf("temp64 = ");
-                            break;
-                    }
-                }
-
-                printf("wrapper_%s(", name.c_str());
-
-                bool first = true;
-
-                if (!(fn.flags & FLAG_NO_MEM)) {
-                    printf("mem");
-                    first = false;
-                }
-
-                int pos = 0;
-                int pos_float = 0;
-                bool only_floats_so_far = true;
-                bool needs_sp = false;
-
-                for (const char* p = fn.params + 1; *p != '\0'; ++p) {
-                    if (!first) {
-                        printf(", ");
-                    }
-
-                    first = false;
-
-                    switch (*p) {
-                        case 't':
-                            printf("trampoline, ");
-                            needs_sp = true;
-                            // fallthrough
-                        case 'i':
-                        case 'u':
-                        case 'p':
-                            only_floats_so_far = false;
-                            if (pos < 4) {
-                                printf("%s", r(MIPS_REG_A0 + pos));
-                            } else {
-                                printf("MEM_%c32(sp + %d)", *p == 'i' ? 'S' : 'U', pos * 4);
-                            }
-                            ++pos;
-                            break;
-
-                        case 'f':
-                            if (only_floats_so_far && pos_float < 4) {
-                                printf("%s", fr(MIPS_REG_F12 + pos_float));
-                                pos_float += 2;
-                            } else if (pos < 4) {
-                                printf("BITCAST_U32_TO_F32(%s)", r(MIPS_REG_A0 + pos));
-                            } else {
-                                printf("BITCAST_U32_TO_F32(MEM_U32(sp + %d))", pos * 4);
-                            }
-                            ++pos;
-                            break;
-
-                        case 'd':
-                            if (pos % 1 != 0) {
-                                ++pos;
-                            }
-                            if (only_floats_so_far && pos_float < 4) {
-                                printf("double_from_FloatReg(%s)", dr(MIPS_REG_F12 + pos_float));
-                                pos_float += 2;
-                            } else if (pos < 4) {
-                                printf("BITCAST_U64_TO_F64(((uint64_t)%s << 32) | (uint64_t)%s)", r(MIPS_REG_A0 + pos),
-                                       r(MIPS_REG_A0 + pos + 1));
-                            } else {
-                                printf("BITCAST_U64_TO_F64(((uint64_t)MEM_U32(sp + %d) << 32) | (uint64_t)MEM_U32(sp + "
-                                       "%d))",
-                                       pos * 4, (pos + 1) * 4);
-                            }
-                            pos += 2;
-                            break;
-
-                        case 'l':
-                        case 'j':
-                            if (pos % 1 != 0) {
-                                ++pos;
-                            }
-                            only_floats_so_far = false;
-                            if (*p == 'l') {
-                                printf("(int64_t)");
-                            }
-                            if (pos < 4) {
-                                printf("(((uint64_t)%s << 32) | (uint64_t)%s)", r(MIPS_REG_A0 + pos),
-                                       r(MIPS_REG_A0 + pos + 1));
-                            } else {
-                                printf("(((uint64_t)MEM_U32(sp + %d) << 32) | (uint64_t)MEM_U32(sp + %d))", pos * 4,
-                                       (pos + 1) * 4);
-                            }
-                            pos += 2;
-                            break;
-                    }
-                }
-
-                if ((fn.flags & FLAG_VARARG) || needs_sp) {
-                    printf("%s%s", first ? "" : ", ", r(MIPS_REG_SP));
-                }
-
-                printf(");\n");
-
-                if (ret_type == 'l' || ret_type == 'j') {
-                    printf("%s = (uint32_t)(temp64 >> 32);\n", r(MIPS_REG_V0));
-                    printf("%s = (uint32_t)temp64;\n", r(MIPS_REG_V1));
-                } else if (ret_type == 'd') {
-                    printf("%s = FloatReg_from_double(tempf64);\n", dr(MIPS_REG_F0));
-                }
-
-                if (!name.empty()) {
-                    // printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(), r(MIPS_REG_A0));
-                }
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("goto L%x;}\n", imm);
+            if (!TRACE) {
+                printf("else goto L%x;\n", target);
             } else {
-                Function& f = functions.find((uint32_t)insn.operands[0].imm)->second;
-
-                if (f.nret == 1) {
-                    printf("v0 = ");
-                } else if (f.nret == 2) {
-                    printf("temp64 = ");
-                }
-
-                if (!name.empty()) {
-                    // printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(), r(MIPS_REG_A0));
-                    printf("f_%s", name.c_str());
-                } else {
-                    printf("func_%x", (uint32_t)insn.operands[0].imm);
-                }
-
-                printf("(mem, sp");
-
-                if (f.v0_in) {
-                    printf(", %s", r(MIPS_REG_V0));
-                }
-
-                for (uint32_t i = 0; i < f.nargs; i++) {
-                    printf(", %s", r(MIPS_REG_A0 + i));
-                }
-
-                printf(");\n");
-
-                if (f.nret == 2) {
-                    printf("%s = (uint32_t)(temp64 >> 32);\n", r(MIPS_REG_V0));
-                    printf("%s = (uint32_t)temp64;\n", r(MIPS_REG_V1));
-                }
+                printf("else {printf(\"pc=0x%08x (ignored)\\n\"); goto L%x;}\n",
+                       text_vaddr + (i + 1) * sizeof(uint32_t), target);
             }
-
-            printf("goto L%x;\n", text_vaddr + (i + 2) * 4);
-            label_addresses.insert(text_vaddr + (i + 2) * 4);
+            label_addresses.insert(target);
         } break;
 
-        case MIPS_INS_JALR:
-            printf("fp_dest = %s;\n", r(insn.operands[0].reg));
+        case RABBITIZER_INSTR_ID_cpu_bnez:
+            dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), "!=", "0");
+            break;
+
+            // // Rabbitizer does not emit this anyway
+            // case RABBITIZER_INSTR_ID_cpu_bnezl:
+            //     dump_cond_branch_likely(i, r_r(insn.operands[0].reg), "!=", "0");
+            //     break;
+
+        case RABBITIZER_INSTR_ID_cpu_c_lt_s:
+            printf("cf = %s < %s;\n", r_fr(RAB_INSTR_GET_fs(&insn.instruction)),
+                   r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_c_le_s:
+            printf("cf = %s <= %s;\n", r_fr(RAB_INSTR_GET_fs(&insn.instruction)),
+                   r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_c_eq_s:
+            printf("cf = %s == %s;\n", r_fr(RAB_INSTR_GET_fs(&insn.instruction)),
+                   r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_c_lt_d:
+            printf("cf = double_from_FloatReg(%s) < double_from_FloatReg(%s);\n",
+                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)), r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_c_le_d:
+            printf("cf = double_from_FloatReg(%s) <= double_from_FloatReg(%s);\n",
+                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)), r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_c_eq_d:
+            printf("cf = double_from_FloatReg(%s) == double_from_FloatReg(%s);\n",
+                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)), r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_cvt_s_w:
+            printf("%s = (int)%s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_wr(RAB_INSTR_GET_fs(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_cvt_d_w:
+            printf("%s = FloatReg_from_double((int)%s);\n", r_dr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_wr(RAB_INSTR_GET_fs(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_cvt_d_s:
+            printf("%s = FloatReg_from_double(%s);\n", r_dr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_cvt_s_d:
+            printf("%s = double_from_FloatReg(%s);\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_cvt_w_d:
+            printf("%s = cvt_w_d(double_from_FloatReg(%s));\n", r_wr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_cvt_w_s:
+            printf("%s = cvt_w_s(%s);\n", r_wr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_cvt_l_d:
+        case RABBITIZER_INSTR_ID_cpu_cvt_l_s:
+        case RABBITIZER_INSTR_ID_cpu_cvt_s_l:
+        case RABBITIZER_INSTR_ID_cpu_cvt_d_l:
+            goto unimplemented;
+
+        case RABBITIZER_INSTR_ID_cpu_cfc1:
+            assert(RAB_INSTR_GET_cop1cs(&insn.instruction) == RABBITIZER_REG_COP1_CONTROL_FpcCsr);
+            printf("%s = fcsr;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_ctc1:
+            assert(RAB_INSTR_GET_cop1cs(&insn.instruction) == RABBITIZER_REG_COP1_CONTROL_FpcCsr);
+            printf("fcsr = %s;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_div:
+            printf("lo = (int)%s / (int)%s; ", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("hi = (int)%s %% (int)%s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_divu:
+            printf("lo = %s / %s; ", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("hi = %s %% %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_div_s:
+            printf("%s = %s / %s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)), r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_div_d:
+            printf("%s = FloatReg_from_double(double_from_FloatReg(%s) / double_from_FloatReg(%s));\n",
+                   r_dr(RAB_INSTR_GET_fd(&insn.instruction)), r_dr(RAB_INSTR_GET_fs(&insn.instruction)),
+                   r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_mov_s:
+            printf("%s = %s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)), r_fr(RAB_INSTR_GET_fs(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_mov_d:
+            printf("%s = %s;\n", r_dr(RAB_INSTR_GET_fd(&insn.instruction)), r_dr(RAB_INSTR_GET_fs(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_mul_s:
+            printf("%s = %s * %s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)), r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_mul_d:
+            printf("%s = FloatReg_from_double(double_from_FloatReg(%s) * double_from_FloatReg(%s));\n",
+                   r_dr(RAB_INSTR_GET_fd(&insn.instruction)), r_dr(RAB_INSTR_GET_fs(&insn.instruction)),
+                   r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_negu:
+            printf("%s = -%s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_neg_s:
+            printf("%s = -%s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)), r_fr(RAB_INSTR_GET_fs(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_neg_d:
+            printf("%s = FloatReg_from_double(-double_from_FloatReg(%s));\n", r_dr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_sub:
+            goto unimplemented;
+
+        case RABBITIZER_INSTR_ID_cpu_sub_s:
+            printf("%s = %s - %s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)), r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_sub_d:
+            printf("%s = FloatReg_from_double(double_from_FloatReg(%s) - double_from_FloatReg(%s));\n",
+                   r_dr(RAB_INSTR_GET_fd(&insn.instruction)), r_dr(RAB_INSTR_GET_fs(&insn.instruction)),
+                   r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
+            break;
+
+            // Jumps
+
+        case RABBITIZER_INSTR_ID_cpu_j:
             dump_instr(i + 1);
-            printf("temp64 = trampoline(mem, sp, %s, %s, %s, %s, fp_dest);\n", r(MIPS_REG_A0), r(MIPS_REG_A1),
-                   r(MIPS_REG_A2), r(MIPS_REG_A3));
-            printf("%s = (uint32_t)(temp64 >> 32);\n", r(MIPS_REG_V0));
-            printf("%s = (uint32_t)temp64;\n", r(MIPS_REG_V1));
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("goto L%x;\n", imm);
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_jal:
+            // TODO: Seriously consider extracting this into another function
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            r_dump_jal(i, imm);
+            break;
+
+        case MIPS_INS_JALR:
+            printf("fp_dest = %s;\n", r_r(insn.operands[0].reg));
+            dump_instr(i + 1);
+            printf("temp64 = trampoline(mem, sp, %s, %s, %s, %s, fp_dest);\n", r_r(MIPS_REG_A0), r_r(MIPS_REG_A1),
+                   r_r(MIPS_REG_A2), r_r(MIPS_REG_A3));
+            printf("%s = (uint32_t)(temp64 >> 32);\n", r_r(MIPS_REG_V0));
+            printf("%s = (uint32_t)temp64;\n", r_r(MIPS_REG_V1));
             printf("goto L%x;\n", text_vaddr + (i + 2) * 4);
             label_addresses.insert(text_vaddr + (i + 2) * 4);
             break;
@@ -3961,12 +4072,12 @@ static void r_dump_instr(int i) {
                 }
 
                 printf("};\n");
-                printf("dest = Lswitch%x[%s];\n", insn.jtbl_addr, r(insn.index_reg));
+                printf("dest = Lswitch%x[%s];\n", insn.jtbl_addr, r_r(insn.index_reg));
                 dump_instr(i + 1);
                 printf("goto *dest;\n");
 #else
                 assert(insns[i + 1].id == MIPS_INS_NOP);
-                printf("switch (%s) {\n", r(insn.index_reg));
+                printf("switch (%s) {\n", r_r(insn.index_reg));
 
                 for (uint32_t i = 0; i < insn.num_cases; i++) {
                     uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + i * 4) + gp_value;
@@ -3978,7 +4089,7 @@ static void r_dump_instr(int i) {
 #endif
             } else {
                 if (insn.operands[0].reg != MIPS_REG_RA) {
-                    printf("UNSUPPORTED JR %s %s\n", insn.op_str.c_str(), r(insn.operands[0].reg));
+                    printf("UNSUPPORTED JR %s %s\n", insn.op_str.c_str(), r_r(insn.operands[0].reg));
                 } else {
                     dump_instr(i + 1);
                     switch (find_function(text_vaddr + i * 4)->second.nret) {
@@ -3999,51 +4110,51 @@ static void r_dump_instr(int i) {
             break;
 
         case MIPS_INS_LB:
-            printf("%s = MEM_S8(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base),
+            printf("%s = MEM_S8(%s + %d);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
                    (int)insn.operands[1].mem.disp);
             break;
 
         case MIPS_INS_LBU:
-            printf("%s = MEM_U8(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base),
+            printf("%s = MEM_U8(%s + %d);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
                    (int)insn.operands[1].mem.disp);
             break;
 
         case MIPS_INS_LH:
-            printf("%s = MEM_S16(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base),
+            printf("%s = MEM_S16(%s + %d);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
                    (int)insn.operands[1].mem.disp);
             break;
 
         case MIPS_INS_LHU:
-            printf("%s = MEM_U16(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base),
+            printf("%s = MEM_U16(%s + %d);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
                    (int)insn.operands[1].mem.disp);
             break;
 
         case MIPS_INS_LUI:
-            printf("%s = 0x%x;\n", r(insn.operands[0].reg), ((uint32_t)insn.operands[1].imm) << 16);
+            printf("%s = 0x%x;\n", r_r(insn.operands[0].reg), ((uint32_t)insn.operands[1].imm) << 16);
             break;
 
         case MIPS_INS_LW:
-            printf("%s = MEM_U32(%s + %d);\n", r(insn.operands[0].reg), r(insn.operands[1].mem.base),
+            printf("%s = MEM_U32(%s + %d);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
                    (int)insn.operands[1].mem.disp);
             break;
 
         case MIPS_INS_LWC1:
-            printf("%s = MEM_U32(%s + %d);\n", wr(insn.operands[0].reg), r(insn.operands[1].mem.base),
+            printf("%s = MEM_U32(%s + %d);\n", r_wr(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
                    (int)insn.operands[1].mem.disp);
             break;
 
         case MIPS_INS_LDC1:
             assert((insn.operands[0].reg - MIPS_REG_F0) % 2 == 0);
-            printf("%s = MEM_U32(%s + %d);\n", wr(insn.operands[0].reg + 1), r(insn.operands[1].mem.base),
+            printf("%s = MEM_U32(%s + %d);\n", r_wr(insn.operands[0].reg + 1), r_r(insn.operands[1].mem.base),
                    (int)insn.operands[1].mem.disp);
-            printf("%s = MEM_U32(%s + %d + 4);\n", wr(insn.operands[0].reg), r(insn.operands[1].mem.base),
+            printf("%s = MEM_U32(%s + %d + 4);\n", r_wr(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
                    (int)insn.operands[1].mem.disp);
             break;
 
         case MIPS_INS_LWL: {
-            const char* reg = r(insn.operands[0].reg);
+            const char* reg = r_r(insn.operands[0].reg);
 
-            printf("%s = %s + %d; ", reg, r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
+            printf("%s = %s + %d; ", reg, r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
             printf("%s = (MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + 3);\n", reg,
                    reg, reg, reg, reg);
         } break;
@@ -4055,159 +4166,160 @@ static void r_dump_instr(int i) {
         case MIPS_INS_LI:
             if (insn.is_global_got_memop && text_vaddr <= insn.operands[1].imm &&
                 insn.operands[1].imm < text_vaddr + text_section_len) {
-                printf("%s = 0x%x; // function pointer\n", r(insn.operands[0].reg), (uint32_t)insn.operands[1].imm);
+                printf("%s = 0x%x; // function pointer\n", r_r(insn.operands[0].reg), (uint32_t)insn.operands[1].imm);
                 label_addresses.insert((uint32_t)insn.operands[1].imm);
             } else {
-                printf("%s = 0x%x;\n", r(insn.operands[0].reg), (uint32_t)insn.operands[1].imm);
+                printf("%s = 0x%x;\n", r_r(insn.operands[0].reg), (uint32_t)insn.operands[1].imm);
             }
             break;
 
         case MIPS_INS_MFC1:
-            printf("%s = %s;\n", r(insn.operands[0].reg), wr(insn.operands[1].reg));
+            printf("%s = %s;\n", r_r(insn.operands[0].reg), r_wr(insn.operands[1].reg));
             break;
 
         case MIPS_INS_MFHI:
-            printf("%s = hi;\n", r(insn.operands[0].reg));
+            printf("%s = hi;\n", r_r(insn.operands[0].reg));
             break;
 
         case MIPS_INS_MFLO:
-            printf("%s = lo;\n", r(insn.operands[0].reg));
+            printf("%s = lo;\n", r_r(insn.operands[0].reg));
             break;
 
         case MIPS_INS_MOVE:
-            printf("%s = %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
+            printf("%s = %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg));
             break;
 
         case MIPS_INS_MTC1:
-            printf("%s = %s;\n", wr(insn.operands[1].reg), r(insn.operands[0].reg));
+            printf("%s = %s;\n", r_wr(insn.operands[1].reg), r_r(insn.operands[0].reg));
             break;
 
         case MIPS_INS_MULT:
-            printf("lo = %s * %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
-            printf("hi = (uint32_t)((int64_t)(int)%s * (int64_t)(int)%s >> 32);\n", r(insn.operands[0].reg),
-                   r(insn.operands[1].reg));
+            printf("lo = %s * %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg));
+            printf("hi = (uint32_t)((int64_t)(int)%s * (int64_t)(int)%s >> 32);\n", r_r(insn.operands[0].reg),
+                   r_r(insn.operands[1].reg));
             break;
 
         case MIPS_INS_MULTU:
-            printf("lo = %s * %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
-            printf("hi = (uint32_t)((uint64_t)%s * (uint64_t)%s >> 32);\n", r(insn.operands[0].reg),
-                   r(insn.operands[1].reg));
+            printf("lo = %s * %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg));
+            printf("hi = (uint32_t)((uint64_t)%s * (uint64_t)%s >> 32);\n", r_r(insn.operands[0].reg),
+                   r_r(insn.operands[1].reg));
             break;
 
         case MIPS_INS_SQRT:
-            printf("%s = sqrtf(%s);\n", fr(insn.operands[0].reg), fr(insn.operands[1].reg));
+            printf("%s = sqrtf(%s);\n", r_fr(insn.operands[0].reg), r_fr(insn.operands[1].reg));
             break;
 
             // case MIPS_INS_FSQRT:
-            //     printf("%s = sqrtf(%s);\n", wr(insn.operands[0].reg), wr(insn.operands[1].reg));
+            //     printf("%s = sqrtf(%s);\n", r_wr(insn.operands[0].reg), r_wr(insn.operands[1].reg));
             //     break;
 
         case MIPS_INS_NEGU:
-            printf("%s = -%s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
+            printf("%s = -%s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg));
             break;
 
         case MIPS_INS_NOR:
-            printf("%s = ~(%s | %s);\n", r(insn.operands[0].reg), r(insn.operands[1].reg), r(insn.operands[2].reg));
+            printf("%s = ~(%s | %s);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
+                   r_r(insn.operands[2].reg));
             break;
 
         case MIPS_INS_NOT:
-            printf("%s = ~%s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg));
+            printf("%s = ~%s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg));
             break;
 
         case MIPS_INS_OR:
-            printf("%s = %s | %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), r(insn.operands[2].reg));
+            printf("%s = %s | %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg), r_r(insn.operands[2].reg));
             break;
 
         case MIPS_INS_ORI:
-            printf("%s = %s | 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+            printf("%s = %s | 0x%x;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
                    (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_SB:
-            printf("MEM_U8(%s + %d) = (uint8_t)%s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
-                   r(insn.operands[0].reg));
+            printf("MEM_U8(%s + %d) = (uint8_t)%s;\n", r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
+                   r_r(insn.operands[0].reg));
             break;
 
         case MIPS_INS_SH:
-            printf("MEM_U16(%s + %d) = (uint16_t)%s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
-                   r(insn.operands[0].reg));
+            printf("MEM_U16(%s + %d) = (uint16_t)%s;\n", r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
+                   r_r(insn.operands[0].reg));
             break;
 
         case MIPS_INS_SLL:
-            printf("%s = %s << %d;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+            printf("%s = %s << %d;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
                    (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_SLLV:
-            printf("%s = %s << (%s & 0x1f);\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
-                   r(insn.operands[2].reg));
+            printf("%s = %s << (%s & 0x1f);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
+                   r_r(insn.operands[2].reg));
             break;
 
         case MIPS_INS_SLT:
-            printf("%s = (int)%s < (int)%s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
-                   r(insn.operands[2].reg));
+            printf("%s = (int)%s < (int)%s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
+                   r_r(insn.operands[2].reg));
             break;
 
         case MIPS_INS_SLTI:
-            printf("%s = (int)%s < (int)0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+            printf("%s = (int)%s < (int)0x%x;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
                    (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_SLTIU:
-            printf("%s = %s < 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+            printf("%s = %s < 0x%x;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
                    (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_SLTU:
-            printf("%s = %s < %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), r(insn.operands[2].reg));
+            printf("%s = %s < %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg), r_r(insn.operands[2].reg));
             break;
 
         case MIPS_INS_SRA:
-            printf("%s = (int)%s >> %d;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+            printf("%s = (int)%s >> %d;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
                    (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_SRAV:
-            printf("%s = (int)%s >> (%s & 0x1f);\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
-                   r(insn.operands[2].reg));
+            printf("%s = (int)%s >> (%s & 0x1f);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
+                   r_r(insn.operands[2].reg));
             break;
 
         case MIPS_INS_SRL:
-            printf("%s = %s >> %d;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+            printf("%s = %s >> %d;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
                    (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_SRLV:
-            printf("%s = %s >> (%s & 0x1f);\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
-                   r(insn.operands[2].reg));
+            printf("%s = %s >> (%s & 0x1f);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
+                   r_r(insn.operands[2].reg));
             break;
 
         case MIPS_INS_SUBU:
-            printf("%s = %s - %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), r(insn.operands[2].reg));
+            printf("%s = %s - %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg), r_r(insn.operands[2].reg));
             break;
 
         case MIPS_INS_SW:
-            printf("MEM_U32(%s + %d) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
-                   r(insn.operands[0].reg));
+            printf("MEM_U32(%s + %d) = %s;\n", r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
+                   r_r(insn.operands[0].reg));
             break;
 
         case MIPS_INS_SWC1:
-            printf("MEM_U32(%s + %d) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
-                   wr(insn.operands[0].reg));
+            printf("MEM_U32(%s + %d) = %s;\n", r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
+                   r_wr(insn.operands[0].reg));
             break;
 
         case MIPS_INS_SDC1:
             assert((insn.operands[0].reg - MIPS_REG_F0) % 2 == 0);
-            printf("MEM_U32(%s + %d) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
-                   wr(insn.operands[0].reg + 1));
-            printf("MEM_U32(%s + %d + 4) = %s;\n", r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
-                   wr(insn.operands[0].reg));
+            printf("MEM_U32(%s + %d) = %s;\n", r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
+                   r_wr(insn.operands[0].reg + 1));
+            printf("MEM_U32(%s + %d + 4) = %s;\n", r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
+                   r_wr(insn.operands[0].reg));
             break;
 
         case MIPS_INS_SWL:
             for (int i = 0; i < 4; i++) {
-                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r(insn.operands[1].mem.base),
-                       (int)insn.operands[1].mem.disp, i, r(insn.operands[0].reg), (3 - i) * 8);
+                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r_r(insn.operands[1].mem.base),
+                       (int)insn.operands[1].mem.disp, i, r_r(insn.operands[0].reg), (3 - i) * 8);
             }
             break;
 
@@ -4217,45 +4329,45 @@ static void r_dump_instr(int i) {
 
         case MIPS_INS_TRUNC:
             if (insn.mnemonic == "trunc.w.s") {
-                printf("%s = (int)%s;\n", wr(insn.operands[0].reg), fr(insn.operands[1].reg));
+                printf("%s = (int)%s;\n", r_wr(insn.operands[0].reg), r_fr(insn.operands[1].reg));
             } else if (insn.mnemonic == "trunc.w.d") {
-                printf("%s = (int)double_from_FloatReg(%s);\n", wr(insn.operands[0].reg), dr(insn.operands[1].reg));
+                printf("%s = (int)double_from_FloatReg(%s);\n", r_wr(insn.operands[0].reg), r_dr(insn.operands[1].reg));
             } else {
                 goto unimplemented;
             }
             break;
 
         case MIPS_INS_XOR:
-            printf("%s = %s ^ %s;\n", r(insn.operands[0].reg), r(insn.operands[1].reg), r(insn.operands[2].reg));
+            printf("%s = %s ^ %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg), r_r(insn.operands[2].reg));
             break;
 
         case MIPS_INS_XORI:
-            printf("%s = %s ^ 0x%x;\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+            printf("%s = %s ^ 0x%x;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
                    (uint32_t)insn.operands[2].imm);
             break;
 
         case MIPS_INS_TNE:
-            printf("assert(%s == %s && \"tne %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+            printf("assert(%s == %s && \"tne %d\");\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
                    (int)insn.operands[2].imm);
             break;
 
         case MIPS_INS_TEQ:
-            printf("assert(%s != %s && \"teq %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+            printf("assert(%s != %s && \"teq %d\");\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
                    (int)insn.operands[2].imm);
             break;
 
         case MIPS_INS_TGE:
-            printf("assert((int)%s < (int)%s && \"tge %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+            printf("assert((int)%s < (int)%s && \"tge %d\");\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
                    (int)insn.operands[2].imm);
             break;
 
         case MIPS_INS_TGEU:
-            printf("assert(%s < %s && \"tgeu %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+            printf("assert(%s < %s && \"tgeu %d\");\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
                    (int)insn.operands[2].imm);
             break;
 
         case MIPS_INS_TLT:
-            printf("assert((int)%s >= (int)%s && \"tlt %d\");\n", r(insn.operands[0].reg), r(insn.operands[1].reg),
+            printf("assert((int)%s >= (int)%s && \"tlt %d\");\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
                    (int)insn.operands[2].imm);
             break;
 
