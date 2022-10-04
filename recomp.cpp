@@ -1769,7 +1769,7 @@ static void pass2(void) {
 }
 
 static void r_add_edge(uint32_t from, uint32_t to, bool function_entry = false, bool function_exit = false,
-                     bool extern_function = false, bool function_pointer = false) {
+                       bool extern_function = false, bool function_pointer = false) {
     Edge fe = Edge(), be = Edge();
 
     fe.i = to;
@@ -1826,9 +1826,8 @@ static void r_pass3(void) {
             case RABBITIZER_INSTR_ID_cpu_bc1f:
             case RABBITIZER_INSTR_ID_cpu_bc1t:
                 r_add_edge(i, i + 1);
-                r_add_edge(i + 1,
-                         addr_to_i(insn.patched ? insn.patched_addr
-                                                : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction)));
+                r_add_edge(i + 1, insn.patched ? addr_to_i(insn.patched_addr)
+                                               : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction));
                 break;
 
             case RABBITIZER_INSTR_ID_cpu_beql:
@@ -1841,18 +1840,22 @@ static void r_pass3(void) {
             case RABBITIZER_INSTR_ID_cpu_bc1tl:
                 r_add_edge(i, i + 1);
                 r_add_edge(i, i + 2);
-                r_add_edge(i + 1,
-                         addr_to_i(insn.patched ? insn.patched_addr
-                                                : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction)));
+                r_add_edge(i + 1, insn.patched ? addr_to_i(insn.patched_addr)
+                                               : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction));
+                // r_add_edge(i + 1, addr_to_i(insn.patched
+                //                                 ? insn.patched_addr
+                //                                 : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction)));
                 rinsns[i + 1].no_following_successor = true; // don't inspect delay slot
                 break;
 
             case RABBITIZER_INSTR_ID_cpu_b:
             case RABBITIZER_INSTR_ID_cpu_j:
                 r_add_edge(i, i + 1);
-                r_add_edge(i + 1,
-                         addr_to_i(insn.patched ? insn.patched_addr
-                                                : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction)));
+                r_add_edge(i + 1, insn.patched ? addr_to_i(insn.patched_addr)
+                                               : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction));
+                // r_add_edge(i + 1, addr_to_i(insn.patched
+                //                                 ? insn.patched_addr
+                //                                 : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction)));
                 rinsns[i + 1].no_following_successor = true; // don't inspect delay slot
                 break;
 
@@ -1871,7 +1874,7 @@ static void r_pass3(void) {
                         r_add_edge(i + 1, addr_to_i(dest_addr));
                     }
                 } else {
-                    assert(RAB_INSTR_GET_rt(&insn.instruction) == RABBITIZER_REG_GPR_O32_ra &&
+                    assert(RAB_INSTR_GET_rs(&insn.instruction) == RABBITIZER_REG_GPR_O32_ra &&
                            "jump to address in register not supported");
                 }
 
