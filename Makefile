@@ -62,7 +62,8 @@ CFLAGS       ?= -MMD -I.
 CXXSTD       ?= -std=c++17
 CXXFLAGS     ?= -MMD -I$(RABBITIZER)/include
 WARNINGS     ?= -Wall -Wextra
-LDFLAGS      ?= -lm -Ltools/rabbitizer/build -lrabbitizer
+LDFLAGS      ?= -lm 
+#-Ltools/rabbitizer/build -lrabbitizer
 RECOMP_FLAGS ?=
 
 ifneq ($(WERROR),0)
@@ -98,7 +99,7 @@ IRIX_USR_DIR ?= $(IRIX_BASE)/$(VERSION)/usr
 # -- Location of the irix tool chain error messages
 ERR_STRS        := $(BUILT_BIN)/err.english.cc
 
-RECOMP_ELF      := $(BUILD_BASE)/recomp.elf
+RECOMP_ELF      := $(BUILD_BASE)/rrecomp.elf
 LIBC_IMPL_O     := libc_impl.o
 
 TARGET_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/$(binary))
@@ -152,7 +153,8 @@ $(RABBITIZER_LIB):
 $(RECOMP_ELF): $(RABBITIZER_LIB)
 
 $(BUILD_BASE)/%.elf: %.cpp
-	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) $(RABBITIZER_LIB) -o $@ $^ $(LDFLAGS)
+#	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) -o $@ $^ $(LDFLAGS)
+	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 
 $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/% | $(RECOMP_ELF)

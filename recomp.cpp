@@ -941,7 +941,7 @@ static void r_pass1(void) {
                                     &RabbitizerInstrDescriptor_Descriptors[rinsns[i - 1].instruction.uniqueId];
                             }
 
-                            // printf("jump table at %08x, size %u\n", jtbl_addr, num_cases);
+                            printf("jump table at %08x, size %u\n", jtbl_addr, num_cases);
                             insn.jtbl_addr = jtbl_addr;
                             insn.num_cases = num_cases;
                             insn.index_reg = index_reg;
