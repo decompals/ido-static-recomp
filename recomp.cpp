@@ -1844,10 +1844,11 @@ static void r_pass3(void) {
                 if (insn.jtbl_addr != 0) {
                     uint32_t jtbl_pos = insn.jtbl_addr - rodata_vaddr;
 
-                    assert(jtbl_pos < rodata_section_len && jtbl_pos + insn.num_cases * 4 <= rodata_section_len);
+                    assert(jtbl_pos < rodata_section_len &&
+                           jtbl_pos + insn.num_cases * sizeof(uint32_t) <= rodata_section_len);
 
                     for (uint32_t j = 0; j < insn.num_cases; j++) {
-                        uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + j * 4) + gp_value;
+                        uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + j * sizeof(uint32_t)) + gp_value;
 
                         add_edge(i + 1, addr_to_i(dest_addr));
                     }
@@ -3393,6 +3394,8 @@ static const char* dr(uint32_t reg) {
     return regs[(reg - MIPS_REG_F0) / 2];
 }
 
+static void r_dump_instr(int i);
+
 static void dump_instr(int i);
 
 static void r_dump_cond_branch(int i, const char* lhs, const char* op, const char* rhs) {
@@ -3407,7 +3410,7 @@ static void r_dump_cond_branch(int i, const char* lhs, const char* op, const cha
         }
     }
     printf("if (%s%s %s %s%s) {", cast1, lhs, op, cast2, rhs);
-    dump_instr(i + 1);
+    r_dump_instr(i + 1);
 
     uint32_t addr = insn.patched ? insn.patched_addr : RAB_INSTR_GET_immediate(&insn.instruction);
 
@@ -3436,7 +3439,7 @@ static void r_dump_cond_branch_likely(int i, const char* lhs, const char* op, co
     if (!TRACE) {
         printf("else goto L%x;\n", target);
     } else {
-        printf("else {printf(\"pc=0x%08x (ignored)\\n\"); goto L%x;}\n", text_vaddr + (i + 1) * sizeof(uint32_t),
+        printf("else {printf(\"pc=0x%08x (ignored)\\n\"); goto L%x;}\n", text_vaddr + (i + 1) * 4,
                target);
     }
     label_addresses.insert(target);
@@ -3469,7 +3472,7 @@ static void r_dump_jal(int i, uint32_t imm) {
         }
     }
 
-    dump_instr(i + 1);
+    r_dump_instr(i + 1);
 
     if (found_fn != nullptr) {
         if (found_fn->flags & FLAG_VARARG) {
@@ -3644,8 +3647,8 @@ static void r_dump_jal(int i, uint32_t imm) {
         }
     }
 
-    printf("goto L%x;\n", text_vaddr + (i + 2) * sizeof(uint32_t));
-    label_addresses.insert(text_vaddr + (i + 2) * sizeof(uint32_t));
+    printf("goto L%x;\n", text_vaddr + (i + 2) * 4);
+    label_addresses.insert(text_vaddr + (i + 2) * 4);
 }
 
 static void r_dump_instr(int i) {
@@ -3658,7 +3661,7 @@ static void r_dump_instr(int i) {
     }
 
     if (TRACE) {
-        printf("++cnt; printf(\"pc=0x%08x%s%s\\n\"); ", text_vaddr + i * sizeof(uint32_t), symbol_name ? " " : "",
+        printf("++cnt; printf(\"pc=0x%08x%s%s\\n\"); ", text_vaddr + i * 4, symbol_name ? " " : "",
                symbol_name ? symbol_name : "");
     }
 
@@ -3720,6 +3723,8 @@ static void r_dump_instr(int i) {
     }
 
     uint32_t imm;
+    int32_t s_imm;
+    char buf[0x100];
     switch (insn.instruction.uniqueId) {
         case RABBITIZER_INSTR_ID_cpu_add:
         case RABBITIZER_INSTR_ID_cpu_addu:
@@ -3827,21 +3832,21 @@ static void r_dump_instr(int i) {
                 break; */
 
         case RABBITIZER_INSTR_ID_cpu_b:
-            dump_instr(i + 1);
+            r_dump_instr(i + 1);
             imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
             printf("goto L%x;\n", imm);
             break;
 
         case RABBITIZER_INSTR_ID_cpu_bc1f:
             printf("if (!cf) {");
-            dump_instr(i + 1);
+            r_dump_instr(i + 1);
             imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
             printf("goto L%x;}\n", imm);
             break;
 
         case RABBITIZER_INSTR_ID_cpu_bc1t:
             printf("if (cf) {");
-            dump_instr(i + 1);
+            r_dump_instr(i + 1);
             imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
             printf("goto L%x;}\n", imm);
             break;
@@ -3849,14 +3854,14 @@ static void r_dump_instr(int i) {
         case RABBITIZER_INSTR_ID_cpu_bc1fl: {
             uint32_t target = text_vaddr + (i + 2) * sizeof(uint32_t);
             printf("if (!cf) {");
-            dump_instr(i + 1);
+            r_dump_instr(i + 1);
             imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
             printf("goto L%x;}\n", imm);
             if (!TRACE) {
                 printf("else goto L%x;\n", target);
             } else {
                 printf("else {printf(\"pc=0x%08x (ignored)\\n\"); goto L%x;}\n",
-                       text_vaddr + (i + 1) * sizeof(uint32_t), target);
+                       text_vaddr + (i + 1) * 4, target);
             }
             label_addresses.insert(target);
         } break;
@@ -3864,14 +3869,14 @@ static void r_dump_instr(int i) {
         case RABBITIZER_INSTR_ID_cpu_bc1tl: {
             uint32_t target = text_vaddr + (i + 2) * sizeof(uint32_t);
             printf("if (cf) {");
-            dump_instr(i + 1);
+            r_dump_instr(i + 1);
             imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
             printf("goto L%x;}\n", imm);
             if (!TRACE) {
                 printf("else goto L%x;\n", target);
             } else {
                 printf("else {printf(\"pc=0x%08x (ignored)\\n\"); goto L%x;}\n",
-                       text_vaddr + (i + 1) * sizeof(uint32_t), target);
+                       text_vaddr + (i + 1) * 4, target);
             }
             label_addresses.insert(target);
         } break;
@@ -4006,7 +4011,7 @@ static void r_dump_instr(int i) {
             break;
 
         case RABBITIZER_INSTR_ID_cpu_negu:
-            printf("%s = -%s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg));
+            printf("%s = -%s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
         case RABBITIZER_INSTR_ID_cpu_neg_s:
@@ -4035,52 +4040,53 @@ static void r_dump_instr(int i) {
             // Jumps
 
         case RABBITIZER_INSTR_ID_cpu_j:
-            dump_instr(i + 1);
+            r_dump_instr(i + 1);
             imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
             printf("goto L%x;\n", imm);
             break;
 
         case RABBITIZER_INSTR_ID_cpu_jal:
-            // TODO: Seriously consider extracting this into another function
             imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
             r_dump_jal(i, imm);
             break;
 
-        case MIPS_INS_JALR:
-            printf("fp_dest = %s;\n", r_r(insn.operands[0].reg));
-            dump_instr(i + 1);
-            printf("temp64 = trampoline(mem, sp, %s, %s, %s, %s, fp_dest);\n", r_r(MIPS_REG_A0), r_r(MIPS_REG_A1),
-                   r_r(MIPS_REG_A2), r_r(MIPS_REG_A3));
-            printf("%s = (uint32_t)(temp64 >> 32);\n", r_r(MIPS_REG_V0));
-            printf("%s = (uint32_t)temp64;\n", r_r(MIPS_REG_V1));
+        case RABBITIZER_INSTR_ID_cpu_jalr:
+            printf("fp_dest = %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)));
+            r_dump_instr(i + 1);
+            printf("temp64 = trampoline(mem, sp, %s, %s, %s, %s, fp_dest);\n", r_r(RABBITIZER_REG_GPR_O32_a0),
+                   r_r(RABBITIZER_REG_GPR_O32_a1), r_r(RABBITIZER_REG_GPR_O32_a2), r_r(RABBITIZER_REG_GPR_O32_a3));
+            printf("%s = (uint32_t)(temp64 >> 32);\n", r_r(RABBITIZER_REG_GPR_O32_v0));
+            printf("%s = (uint32_t)temp64;\n", r_r(RABBITIZER_REG_GPR_O32_v1));
             printf("goto L%x;\n", text_vaddr + (i + 2) * 4);
             label_addresses.insert(text_vaddr + (i + 2) * 4);
             break;
 
-        case MIPS_INS_JR:
+        case RABBITIZER_INSTR_ID_cpu_jr:
+            // TODO: understand why the switch version fails, and why only it needs the nop
             if (insn.jtbl_addr != 0) {
                 uint32_t jtbl_pos = insn.jtbl_addr - rodata_vaddr;
 
-                assert(jtbl_pos < rodata_section_len && jtbl_pos + insn.num_cases * 4 <= rodata_section_len);
+                assert(jtbl_pos < rodata_section_len &&
+                       jtbl_pos + insn.num_cases * sizeof(uint32_t) <= rodata_section_len);
 #if 1
                 printf(";static void *const Lswitch%x[] = {\n", insn.jtbl_addr);
 
                 for (uint32_t i = 0; i < insn.num_cases; i++) {
-                    uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + i * 4) + gp_value;
+                    uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + i * sizeof(uint32_t)) + gp_value;
                     printf("&&L%x,\n", dest_addr);
                     label_addresses.insert(dest_addr);
                 }
 
                 printf("};\n");
                 printf("dest = Lswitch%x[%s];\n", insn.jtbl_addr, r_r(insn.index_reg));
-                dump_instr(i + 1);
+                r_dump_instr(i + 1);
                 printf("goto *dest;\n");
 #else
                 assert(insns[i + 1].id == MIPS_INS_NOP);
                 printf("switch (%s) {\n", r_r(insn.index_reg));
 
                 for (uint32_t i = 0; i < insn.num_cases; i++) {
-                    uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + i * 4) + gp_value;
+                    uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + i * sizeof(uint32_t)) + gp_value;
                     printf("case %u: goto L%x;\n", i, dest_addr);
                     label_addresses.insert(dest_addr);
                 }
@@ -4088,11 +4094,13 @@ static void r_dump_instr(int i) {
                 printf("}\n");
 #endif
             } else {
-                if (insn.operands[0].reg != MIPS_REG_RA) {
-                    printf("UNSUPPORTED JR %s %s\n", insn.op_str.c_str(), r_r(insn.operands[0].reg));
+                if (RAB_INSTR_GET_rs(&insn.instruction) != RABBITIZER_REG_GPR_O32_ra) {
+                    // TODO: not clear what should go here instead of op_str
+                    // printf("UNSUPPORTED JR %s %s\n", insn.op_str.c_str(), r_r(RAB_INSTR_GET_rs(&insn.instruction)));
+                    printf("UNSUPPORTED JR %s    (no jumptable available)\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)));
                 } else {
-                    dump_instr(i + 1);
-                    switch (find_function(text_vaddr + i * 4)->second.nret) {
+                    r_dump_instr(i + 1);
+                    switch (find_function(text_vaddr + i * sizeof(uint32_t))->second.nret) {
                         case 0:
                             printf("return;\n");
                             break;
@@ -4109,275 +4117,325 @@ static void r_dump_instr(int i) {
             }
             break;
 
-        case MIPS_INS_LB:
-            printf("%s = MEM_S8(%s + %d);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
-                   (int)insn.operands[1].mem.disp);
+        case RABBITIZER_INSTR_ID_cpu_lb:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("%s = MEM_S8(%s + %d);\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
             break;
 
-        case MIPS_INS_LBU:
-            printf("%s = MEM_U8(%s + %d);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
-                   (int)insn.operands[1].mem.disp);
+        case RABBITIZER_INSTR_ID_cpu_lbu:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("%s = MEM_U8(%s + %d);\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
             break;
 
-        case MIPS_INS_LH:
-            printf("%s = MEM_S16(%s + %d);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
-                   (int)insn.operands[1].mem.disp);
+        case RABBITIZER_INSTR_ID_cpu_lh:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("%s = MEM_S16(%s + %d);\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
             break;
 
-        case MIPS_INS_LHU:
-            printf("%s = MEM_U16(%s + %d);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
-                   (int)insn.operands[1].mem.disp);
+        case RABBITIZER_INSTR_ID_cpu_lhu:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("%s = MEM_U16(%s + %d);\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
             break;
 
-        case MIPS_INS_LUI:
-            printf("%s = 0x%x;\n", r_r(insn.operands[0].reg), ((uint32_t)insn.operands[1].imm) << 16);
+        case RABBITIZER_INSTR_ID_cpu_lui:
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("%s = 0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)), imm << 16);
             break;
 
-        case MIPS_INS_LW:
-            printf("%s = MEM_U32(%s + %d);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
-                   (int)insn.operands[1].mem.disp);
+        case RABBITIZER_INSTR_ID_cpu_lw:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("%s = MEM_U32(%s + %d);\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
             break;
 
-        case MIPS_INS_LWC1:
-            printf("%s = MEM_U32(%s + %d);\n", r_wr(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
-                   (int)insn.operands[1].mem.disp);
+        case RABBITIZER_INSTR_ID_cpu_lwc1:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("%s = MEM_U32(%s + %d);\n", r_wr(RAB_INSTR_GET_ft(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
             break;
 
-        case MIPS_INS_LDC1:
-            assert((insn.operands[0].reg - MIPS_REG_F0) % 2 == 0);
-            printf("%s = MEM_U32(%s + %d);\n", r_wr(insn.operands[0].reg + 1), r_r(insn.operands[1].mem.base),
-                   (int)insn.operands[1].mem.disp);
-            printf("%s = MEM_U32(%s + %d + 4);\n", r_wr(insn.operands[0].reg), r_r(insn.operands[1].mem.base),
-                   (int)insn.operands[1].mem.disp);
+        case RABBITIZER_INSTR_ID_cpu_ldc1:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            assert((RAB_INSTR_GET_ft(&insn.instruction) - RABBITIZER_REG_COP1_O32_fv0) % 2 == 0);
+            printf("%s = MEM_U32(%s + %d);\n", r_wr(RAB_INSTR_GET_ft(&insn.instruction) + 1),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
+            printf("%s = MEM_U32(%s + %d + 4);\n", r_wr(RAB_INSTR_GET_ft(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
             break;
 
-        case MIPS_INS_LWL: {
-            const char* reg = r_r(insn.operands[0].reg);
+        case RABBITIZER_INSTR_ID_cpu_lwl: {
+            const char* reg = r_r(RAB_INSTR_GET_rt(&insn.instruction));
 
-            printf("%s = %s + %d; ", reg, r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp);
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+
+            printf("%s = %s + %d; ", reg, r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
             printf("%s = (MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + 3);\n", reg,
                    reg, reg, reg, reg);
         } break;
 
-        case MIPS_INS_LWR:
-            printf("//lwr %s\n", insn.op_str.c_str());
+        case RABBITIZER_INSTR_ID_cpu_lwr:
+            // TODO: Not sure how to do this
+            // s_imm = insn.patched ? insn.patched_addr :
+            // RabbitizerInstruction_getProcessedImmediate(&insn.instruction); printf("//lwr %s\n",
+            // RabbitizerInstruction_disassembleOperands(&insn.instruction, buf, NULL, 0)); printf("//lwr %s\n",
+            // insn.op_str.c_str());
             break;
 
+#if 0
         case MIPS_INS_LI:
-            if (insn.is_global_got_memop && text_vaddr <= insn.operands[1].imm &&
-                insn.operands[1].imm < text_vaddr + text_section_len) {
+            // Not at all clear what to do here
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            assert(0 && "LI");
+
+            if (insn.is_global_got_memop && (text_vaddr <= imm) && (imm < text_vaddr + text_section_len)) {
                 printf("%s = 0x%x; // function pointer\n", r_r(insn.operands[0].reg), (uint32_t)insn.operands[1].imm);
                 label_addresses.insert((uint32_t)insn.operands[1].imm);
             } else {
                 printf("%s = 0x%x;\n", r_r(insn.operands[0].reg), (uint32_t)insn.operands[1].imm);
             }
             break;
+#endif
 
-        case MIPS_INS_MFC1:
-            printf("%s = %s;\n", r_r(insn.operands[0].reg), r_wr(insn.operands[1].reg));
+        case RABBITIZER_INSTR_ID_cpu_mfc1:
+            printf("%s = %s;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)), r_wr(RAB_INSTR_GET_fs(&insn.instruction)));
             break;
 
-        case MIPS_INS_MFHI:
-            printf("%s = hi;\n", r_r(insn.operands[0].reg));
+        case RABBITIZER_INSTR_ID_cpu_mfhi:
+            printf("%s = hi;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)));
             break;
 
-        case MIPS_INS_MFLO:
-            printf("%s = lo;\n", r_r(insn.operands[0].reg));
+        case RABBITIZER_INSTR_ID_cpu_mflo:
+            printf("%s = lo;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)));
             break;
 
-        case MIPS_INS_MOVE:
-            printf("%s = %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg));
+        case RABBITIZER_INSTR_ID_cpu_move:
+            printf("%s = %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)), r_r(RAB_INSTR_GET_rs(&insn.instruction)));
             break;
 
-        case MIPS_INS_MTC1:
-            printf("%s = %s;\n", r_wr(insn.operands[1].reg), r_r(insn.operands[0].reg));
+        case RABBITIZER_INSTR_ID_cpu_mtc1:
+            printf("%s = %s;\n", r_wr(RAB_INSTR_GET_fs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_MULT:
-            printf("lo = %s * %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg));
-            printf("hi = (uint32_t)((int64_t)(int)%s * (int64_t)(int)%s >> 32);\n", r_r(insn.operands[0].reg),
-                   r_r(insn.operands[1].reg));
+        case RABBITIZER_INSTR_ID_cpu_mult:
+            printf("lo = %s * %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("hi = (uint32_t)((int64_t)(int)%s * (int64_t)(int)%s >> 32);\n",
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_MULTU:
-            printf("lo = %s * %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg));
-            printf("hi = (uint32_t)((uint64_t)%s * (uint64_t)%s >> 32);\n", r_r(insn.operands[0].reg),
-                   r_r(insn.operands[1].reg));
+        case RABBITIZER_INSTR_ID_cpu_multu:
+            printf("lo = %s * %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("hi = (uint32_t)((uint64_t)%s * (uint64_t)%s >> 32);\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_SQRT:
-            printf("%s = sqrtf(%s);\n", r_fr(insn.operands[0].reg), r_fr(insn.operands[1].reg));
+        // case MIPS_INS_SQRT:
+        case RABBITIZER_INSTR_ID_cpu_sqrt_s:
+            printf("%s = sqrtf(%s);\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)));
             break;
 
             // case MIPS_INS_FSQRT:
             //     printf("%s = sqrtf(%s);\n", r_wr(insn.operands[0].reg), r_wr(insn.operands[1].reg));
             //     break;
 
-        case MIPS_INS_NEGU:
-            printf("%s = -%s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg));
+            // TODO: covered elsewhere?
+            // case RABBITIZER_INSTR_ID_cpu_negu:
+            //     printf("%s = -%s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+            //     r_r(RAB_INSTR_GET_rt(&insn.instruction))); break;
+
+        case RABBITIZER_INSTR_ID_cpu_nor:
+            printf("%s = ~(%s | %s);\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_NOR:
-            printf("%s = ~(%s | %s);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   r_r(insn.operands[2].reg));
+        case RABBITIZER_INSTR_ID_cpu_not:
+            printf("%s = ~%s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)), r_r(RAB_INSTR_GET_rs(&insn.instruction)));
             break;
 
-        case MIPS_INS_NOT:
-            printf("%s = ~%s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg));
+        case RABBITIZER_INSTR_ID_cpu_or:
+            printf("%s = %s | %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_OR:
-            printf("%s = %s | %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg), r_r(insn.operands[2].reg));
+        case RABBITIZER_INSTR_ID_cpu_ori:
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("%s = %s | 0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), imm);
             break;
 
-        case MIPS_INS_ORI:
-            printf("%s = %s | 0x%x;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   (uint32_t)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_sb:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("MEM_U8(%s + %d) = (uint8_t)%s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_SB:
-            printf("MEM_U8(%s + %d) = (uint8_t)%s;\n", r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
-                   r_r(insn.operands[0].reg));
+        case RABBITIZER_INSTR_ID_cpu_sh:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("MEM_U16(%s + %d) = (uint16_t)%s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_SH:
-            printf("MEM_U16(%s + %d) = (uint16_t)%s;\n", r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
-                   r_r(insn.operands[0].reg));
+        case RABBITIZER_INSTR_ID_cpu_sll:
+            printf("%s = %s << %d;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), RAB_INSTR_GET_sa(&insn.instruction));
             break;
 
-        case MIPS_INS_SLL:
-            printf("%s = %s << %d;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   (uint32_t)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_sllv:
+            printf("%s = %s << (%s & 0x1f);\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), r_r(RAB_INSTR_GET_rs(&insn.instruction)));
             break;
 
-        case MIPS_INS_SLLV:
-            printf("%s = %s << (%s & 0x1f);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   r_r(insn.operands[2].reg));
+        case RABBITIZER_INSTR_ID_cpu_slt:
+            printf("%s = (int)%s < (int)%s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_SLT:
-            printf("%s = (int)%s < (int)%s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   r_r(insn.operands[2].reg));
+        case RABBITIZER_INSTR_ID_cpu_slti:
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("%s = (int)%s < (int)0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), imm);
             break;
 
-        case MIPS_INS_SLTI:
-            printf("%s = (int)%s < (int)0x%x;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   (uint32_t)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_sltiu:
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("%s = %s < 0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), imm);
             break;
 
-        case MIPS_INS_SLTIU:
-            printf("%s = %s < 0x%x;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   (uint32_t)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_sltu:
+            printf("%s = %s < %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_SLTU:
-            printf("%s = %s < %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg), r_r(insn.operands[2].reg));
+        case RABBITIZER_INSTR_ID_cpu_sra:
+            printf("%s = (int)%s >> %d;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), RAB_INSTR_GET_sa(&insn.instruction));
             break;
 
-        case MIPS_INS_SRA:
-            printf("%s = (int)%s >> %d;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   (uint32_t)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_srav:
+            printf("%s = (int)%s >> (%s & 0x1f);\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), r_r(RAB_INSTR_GET_rs(&insn.instruction)));
             break;
 
-        case MIPS_INS_SRAV:
-            printf("%s = (int)%s >> (%s & 0x1f);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   r_r(insn.operands[2].reg));
+        case RABBITIZER_INSTR_ID_cpu_srl:
+            printf("%s = %s >> %d;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), RAB_INSTR_GET_sa(&insn.instruction));
             break;
 
-        case MIPS_INS_SRL:
-            printf("%s = %s >> %d;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   (uint32_t)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_srlv:
+            printf("%s = %s >> (%s & 0x1f);\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), r_r(RAB_INSTR_GET_rs(&insn.instruction)));
             break;
 
-        case MIPS_INS_SRLV:
-            printf("%s = %s >> (%s & 0x1f);\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   r_r(insn.operands[2].reg));
+        case RABBITIZER_INSTR_ID_cpu_subu:
+            printf("%s = %s - %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_SUBU:
-            printf("%s = %s - %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg), r_r(insn.operands[2].reg));
+        case RABBITIZER_INSTR_ID_cpu_sw:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("MEM_U32(%s + %d) = %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_SW:
-            printf("MEM_U32(%s + %d) = %s;\n", r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
-                   r_r(insn.operands[0].reg));
+        case RABBITIZER_INSTR_ID_cpu_swc1:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("MEM_U32(%s + %d) = %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
+                   r_wr(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_SWC1:
-            printf("MEM_U32(%s + %d) = %s;\n", r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
-                   r_wr(insn.operands[0].reg));
+        case RABBITIZER_INSTR_ID_cpu_sdc1:
+            assert((RAB_INSTR_GET_ft(&insn.instruction) - RABBITIZER_REG_COP1_O32_fv0) % 2 == 0);
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("MEM_U32(%s + %d) = %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
+                   r_wr(RAB_INSTR_GET_ft(&insn.instruction) + 1));
+            printf("MEM_U32(%s + %d + 4) = %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
+                   r_wr(RAB_INSTR_GET_ft(&insn.instruction)));
             break;
 
-        case MIPS_INS_SDC1:
-            assert((insn.operands[0].reg - MIPS_REG_F0) % 2 == 0);
-            printf("MEM_U32(%s + %d) = %s;\n", r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
-                   r_wr(insn.operands[0].reg + 1));
-            printf("MEM_U32(%s + %d + 4) = %s;\n", r_r(insn.operands[1].mem.base), (int)insn.operands[1].mem.disp,
-                   r_wr(insn.operands[0].reg));
-            break;
-
-        case MIPS_INS_SWL:
+        case RABBITIZER_INSTR_ID_cpu_swl:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
             for (int i = 0; i < 4; i++) {
-                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r_r(insn.operands[1].mem.base),
-                       (int)insn.operands[1].mem.disp, i, r_r(insn.operands[0].reg), (3 - i) * 8);
+                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
+                       i, r_r(RAB_INSTR_GET_rt(&insn.instruction)), (3 - i) * 8);
             }
             break;
 
-        case MIPS_INS_SWR:
-            printf("//swr %s\n", insn.op_str.c_str());
+        case RABBITIZER_INSTR_ID_cpu_swr:
+            // TODO: Fix this
+            RabbitizerInstruction_disassembleOperands(&insn.instruction, buf, NULL, 0);
+            printf("//swr %s\n", buf);
             break;
 
-        case MIPS_INS_TRUNC:
-            if (insn.mnemonic == "trunc.w.s") {
-                printf("%s = (int)%s;\n", r_wr(insn.operands[0].reg), r_fr(insn.operands[1].reg));
-            } else if (insn.mnemonic == "trunc.w.d") {
-                printf("%s = (int)double_from_FloatReg(%s);\n", r_wr(insn.operands[0].reg), r_dr(insn.operands[1].reg));
-            } else {
-                goto unimplemented;
-            }
+        case RABBITIZER_INSTR_ID_cpu_trunc_w_s:
+            printf("%s = (int)%s;\n", r_wr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)));
             break;
 
-        case MIPS_INS_XOR:
-            printf("%s = %s ^ %s;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg), r_r(insn.operands[2].reg));
+        case RABBITIZER_INSTR_ID_cpu_trunc_w_d:
+            printf("%s = (int)double_from_FloatReg(%s);\n", r_wr(RAB_INSTR_GET_fd(&insn.instruction)),
+                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)));
             break;
 
-        case MIPS_INS_XORI:
-            printf("%s = %s ^ 0x%x;\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   (uint32_t)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_trunc_l_d:
+        case RABBITIZER_INSTR_ID_cpu_trunc_l_s:
+            goto unimplemented;
+
+        case RABBITIZER_INSTR_ID_cpu_xor:
+            printf("%s = %s ^ %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
             break;
 
-        case MIPS_INS_TNE:
-            printf("assert(%s == %s && \"tne %d\");\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   (int)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_xori:
+            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("%s = %s ^ 0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), imm);
             break;
 
-        case MIPS_INS_TEQ:
-            printf("assert(%s != %s && \"teq %d\");\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   (int)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_tne:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("assert(%s == %s && \"tne %d\");\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), s_imm);
             break;
 
-        case MIPS_INS_TGE:
-            printf("assert((int)%s < (int)%s && \"tge %d\");\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   (int)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_teq:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("assert(%s != %s && \"teq %d\");\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), s_imm);
             break;
 
-        case MIPS_INS_TGEU:
-            printf("assert(%s < %s && \"tgeu %d\");\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   (int)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_tge:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("assert((int)%s < (int)%s && \"tge %d\");\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), s_imm);
             break;
 
-        case MIPS_INS_TLT:
-            printf("assert((int)%s >= (int)%s && \"tlt %d\");\n", r_r(insn.operands[0].reg), r_r(insn.operands[1].reg),
-                   (int)insn.operands[2].imm);
+        case RABBITIZER_INSTR_ID_cpu_tgeu:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("assert(%s < %s && \"tgeu %d\");\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), s_imm);
             break;
 
-        case MIPS_INS_NOP:
+        case RABBITIZER_INSTR_ID_cpu_tlt:
+            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            printf("assert((int)%s >= (int)%s && \"tlt %d\");\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), s_imm);
+            break;
+
+        case RABBITIZER_INSTR_ID_cpu_nop:
             printf("//nop;\n");
             break;
 
         default:
         unimplemented:
-            printf("UNIMPLEMENTED %s %s\n", insn.mnemonic.c_str(), insn.op_str.c_str());
+            RabbitizerInstruction_disassemble(&insn.instruction, buf, NULL, 0, 0);
+            printf("UNIMPLEMENTED 0x%X : %s\n", insn.instruction.word, buf);
             break;
     }
 }
@@ -5240,7 +5298,7 @@ static void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret
             continue;
         }
 
-        if (addr >= text_vaddr && addr < text_vaddr + text_section_len && addr % 4 == 0) {
+        if ((addr >= text_vaddr) && (addr < text_vaddr + text_section_len) && ((addr % 4) == 0)) {
 #if INSPECT_FUNCTION_POINTERS
             fprintf(stderr, "assuming function pointer 0x%x at 0x%x\n", addr, section_vaddr + i);
 #endif
@@ -5249,6 +5307,43 @@ static void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret
             functions[addr].referenced_by_function_pointer = true;
         }
     }
+}
+
+static void r_dump_function_signature(Function& f, uint32_t vaddr) {
+    printf("static ");
+    switch (f.nret) {
+        case 0:
+            printf("void ");
+            break;
+
+        case 1:
+            printf("uint32_t ");
+            break;
+
+        case 2:
+            printf("uint64_t ");
+            break;
+    }
+
+    auto name_it = symbol_names.find(vaddr);
+
+    if (name_it != symbol_names.end()) {
+        printf("f_%s", name_it->second.c_str());
+    } else {
+        printf("func_%x", vaddr);
+    }
+
+    printf("(uint8_t *mem, uint32_t sp");
+
+    if (f.v0_in) {
+        printf(", uint32_t %s", r(RABBITIZER_REG_GPR_O32_v0));
+    }
+
+    for (uint32_t i = 0; i < f.nargs; i++) {
+        printf(", uint32_t %s", r(RABBITIZER_REG_GPR_O32_a0 + i));
+    }
+
+    printf(")");
 }
 
 static void dump_function_signature(Function& f, uint32_t vaddr) {
@@ -5286,6 +5381,305 @@ static void dump_function_signature(Function& f, uint32_t vaddr) {
     }
 
     printf(")");
+}
+
+static void r_dump_c(void) {
+    map<string, uint32_t> symbol_names_inv;
+
+    for (auto& it : symbol_names) {
+        symbol_names_inv[it.second] = it.first;
+    }
+
+    uint32_t min_addr = UINT32_MAX;
+    uint32_t max_addr = 0;
+
+    if (data_section_len > 0) {
+        min_addr = std::min(min_addr, data_vaddr);
+        max_addr = std::max(max_addr, data_vaddr + data_section_len);
+    }
+    if (rodata_section_len > 0) {
+        min_addr = std::min(min_addr, rodata_vaddr);
+        max_addr = std::max(max_addr, rodata_vaddr + rodata_section_len);
+    }
+    if (bss_section_len) {
+        min_addr = std::min(min_addr, bss_vaddr);
+        max_addr = std::max(max_addr, bss_vaddr + bss_section_len);
+    }
+
+    // get pagesize at runtime
+#if defined(_WIN32) && !defined(__CYGWIN__)
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    uint32_t page_size = si.dwPageSize;
+#else
+    uint32_t page_size = sysconf(_SC_PAGESIZE);
+#endif /* _WIN32 && !__CYGWIN__ */
+    min_addr = min_addr & ~(page_size - 1);
+    max_addr = (max_addr + (page_size - 1)) & ~(page_size - 1);
+
+    uint32_t stack_bottom = min_addr;
+    min_addr -= 1 * 1024 * 1024; // 1 MB stack
+    stack_bottom -= 16;          // for main's stack frame
+
+    printf("#include \"header.h\"\n");
+
+    if (conservative) {
+        printf("static uint32_t s0, s1, s2, s3, s4, s5, s6, s7, fp;\n");
+    }
+
+    printf("static const uint32_t rodata[] = {\n");
+
+    for (size_t i = 0; i < rodata_section_len; i += 4) {
+        printf("0x%x,%s", read_u32_be(rodata_section + i), i % 32 == 28 ? "\n" : "");
+    }
+
+    printf("};\n");
+    printf("static const uint32_t data[] = {\n");
+
+    for (size_t i = 0; i < data_section_len; i += 4) {
+        printf("0x%x,%s", read_u32_be(data_section + i), i % 32 == 28 ? "\n" : "");
+    }
+
+    printf("};\n");
+
+    /* if (!data_function_pointers.empty()) {
+        printf("static const struct { uint32_t orig_addr; void *recompiled_addr; } data_function_pointers[] = {\n");
+        for (auto item : data_function_pointers) {
+            printf("{0x%x, &&L%x},\n", item.first, item.second);
+        }
+        printf("};\n");
+    } */
+
+    if (TRACE) {
+        printf("static unsigned long long int cnt = 0;\n");
+    }
+
+    for (auto& f_it : functions) {
+        if (insns[addr_to_i(f_it.first)].f_livein != 0) {
+            // Function is used
+            r_dump_function_signature(f_it.second, f_it.first);
+            printf(";\n");
+        }
+    }
+
+    if (!data_function_pointers.empty() || !li_function_pointers.empty()) {
+        printf("uint64_t trampoline(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, "
+               "uint32_t fp_dest) {\n");
+        printf("switch (fp_dest) {\n");
+
+        for (auto& it : functions) {
+            Function& f = it.second;
+
+            if (f.referenced_by_function_pointer) {
+                printf("case 0x%x: ", it.first);
+
+                if (f.nret == 1) {
+                    printf("return (uint64_t)");
+                } else if (f.nret == 2) {
+                    printf("return ");
+                }
+
+                auto name_it = symbol_names.find(it.first);
+
+                if (name_it != symbol_names.end()) {
+                    printf("f_%s", name_it->second.c_str());
+                } else {
+                    printf("func_%x", it.first);
+                }
+
+                printf("(mem, sp");
+
+                for (unsigned int i = 0; i < f.nargs; i++) {
+                    printf(", a%d", i);
+                }
+
+                printf(")");
+
+                if (f.nret == 1) {
+                    printf(" << 32");
+                }
+
+                printf(";");
+
+                if (f.nret == 0) {
+                    printf(" return 0;");
+                }
+
+                printf("\n");
+            }
+        }
+
+        printf("default: abort();");
+        printf("}\n");
+        printf("}\n");
+    }
+
+    printf("int run(uint8_t *mem, int argc, char *argv[]) {\n");
+    printf("mmap_initial_data_range(mem, 0x%x, 0x%x);\n", min_addr, max_addr);
+
+    printf("memcpy(mem + 0x%x, rodata, 0x%x);\n", rodata_vaddr, rodata_section_len);
+    printf("memcpy(mem + 0x%x, data, 0x%x);\n", data_vaddr, data_section_len);
+
+    /* if (!data_function_pointers.empty()) {
+        if (!LABELS_64_BIT) {
+            printf("for (int i = 0; i < %d; i++) MEM_U32(data_function_pointers[i].orig_addr) =
+    (uint32_t)(uintptr_t)data_function_pointers[i].recompiled_addr;\n", (int)data_function_pointers.size()); } else {
+            printf("for (int i = 0; i < %d; i++) MEM_U32(data_function_pointers[i].orig_addr) =
+    (uint32_t)((uintptr_t)data_function_pointers[i].recompiled_addr - (uintptr_t)&&Loffset);\n",
+    (int)data_function_pointers.size());
+        }
+    } */
+
+    printf("MEM_S32(0x%x) = argc;\n", symbol_names_inv.at("__Argc"));
+    printf("MEM_S32(0x%x) = argc;\n", stack_bottom);
+    printf("uint32_t al = argc * 4; for (int i = 0; i < argc; i++) al += strlen(argv[i]) + 1;\n");
+    printf("uint32_t arg_addr = wrapper_malloc(mem, al);\n");
+    printf("MEM_U32(0x%x) = arg_addr;\n", symbol_names_inv.at("__Argv"));
+    printf("MEM_U32(0x%x) = arg_addr;\n", stack_bottom + 4);
+    printf("uint32_t arg_strpos = arg_addr + argc * 4;\n");
+    printf("for (int i = 0; i < argc; i++) {MEM_U32(arg_addr + i * 4) = arg_strpos; uint32_t p = 0; do { "
+           "MEM_S8(arg_strpos) = argv[i][p]; ++arg_strpos; } while (argv[i][p++] != '\\0');}\n");
+
+    printf("setup_libc_data(mem);\n");
+
+    // printf("gp = 0x%x;\n", gp_value); // only to recreate the outcome when ugen reads uninitialized stack memory
+
+    printf("int ret = f_main(mem, 0x%x", stack_bottom);
+
+    Function& main_func = functions[main_addr];
+
+    if (main_func.nargs >= 1) {
+        printf(", argc");
+    }
+
+    if (main_func.nargs >= 2) {
+        printf(", arg_addr");
+    }
+
+    printf(");\n");
+
+    if (TRACE) {
+        printf("end: fprintf(stderr, \"cnt: %%llu\\n\", cnt);\n");
+    }
+
+    printf("return ret;\n");
+    printf("}\n");
+
+    for (auto& f_it : functions) {
+        Function& f = f_it.second;
+        uint32_t start_addr = f_it.first;
+        uint32_t end_addr = f.end_addr;
+
+        if (insns[addr_to_i(start_addr)].f_livein == 0) {
+            // Non-used function, skip
+            continue;
+        }
+
+        printf("\n");
+        r_dump_function_signature(f, start_addr);
+        printf(" {\n");
+        printf("const uint32_t zero = 0;\n");
+
+        if (!conservative) {
+            printf("uint32_t at = 0, v1 = 0, t0 = 0, t1 = 0, t2 = 0,\n");
+            printf("t3 = 0, t4 = 0, t5 = 0, t6 = 0, t7 = 0, s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0,\n");
+            printf("s6 = 0, s7 = 0, t8 = 0, t9 = 0, gp = 0, fp = 0, s8 = 0, ra = 0;\n");
+        } else {
+            printf("uint32_t at = 0, v1 = 0, t0 = 0, t1 = 0, t2 = 0,\n");
+            printf("t3 = 0, t4 = 0, t5 = 0, t6 = 0, t7 = 0, t8 = 0, t9 = 0, gp = 0x10000, ra = 0x10000;\n");
+        }
+
+        printf("uint32_t lo = 0, hi = 0;\n");
+        printf("int cf = 0;\n");
+        printf("uint64_t temp64;\n");
+        printf("double tempf64;\n");
+        printf("uint32_t fp_dest;\n");
+        printf("void *dest;\n");
+
+        if (!f.v0_in) {
+            printf("uint32_t v0 = 0;\n");
+        }
+
+        for (uint32_t j = f.nargs; j < 4; j++) {
+            printf("uint32_t %s = 0;\n", r(MIPS_REG_A0 + j));
+        }
+
+        for (size_t i = addr_to_i(start_addr), end_i = addr_to_i(end_addr); i < end_i; i++) {
+            Insn& insn = insns[i];
+            uint32_t vaddr = text_vaddr + i * 4;
+            if (label_addresses.count(vaddr)) {
+                printf("L%x:\n", vaddr);
+            }
+            r_dump_instr(i);
+        }
+
+        printf("}\n");
+    }
+    /* for (size_t i = 0; i < insns.size(); i++) {
+        Insn& insn = insns[i];
+        uint32_t vaddr = text_vaddr + i * 4;
+        auto fn_it = functions.find(vaddr);
+
+        if (fn_it != functions.end()) {
+            Function& f = fn_it->second;
+
+            printf("}\n\n");
+
+            switch (f.nret) {
+                case 0:
+                    printf("void ");
+                    break;
+
+                case 1:
+                    printf("uint32_t ");
+                    break;
+
+                case 2:
+                    printf("uint64_t ");
+                    break;
+            }
+
+            auto name_it = symbol_names.find(vaddr);
+
+            if (name_it != symbol_names.end()) {
+                printf("%s", name_it->second.c_str());
+            } else {
+                printf("func_%x", vaddr);
+            }
+
+            printf("(uint8_t *mem, uint32_t sp");
+
+            if (f.v0_in) {
+                printf(", uint32_t %s", r(MIPS_REG_V0));
+            }
+
+            for (uint32_t i = 0; i < f.nargs; i++) {
+                printf(", uint32_t %s", r(MIPS_REG_A0 + i));
+            }
+
+            printf(") {\n");
+            printf("const uint32_t zero = 0;\n");
+            printf("uint32_t at = 0, v1 = 0, t0 = 0, t1 = 0, t2 = 0,\n");
+            printf("t3 = 0, t4 = 0, t5 = 0, t6 = 0, t7 = 0, s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0,\n");
+            printf("s6 = 0, s7 = 0, t8 = 0, t9 = 0, gp = 0, fp = 0, s8 = 0, ra = 0;\n");
+            printf("uint32_t lo = 0, hi = 0;\n");
+            printf("int cf = 0;\n");
+
+            if (!f.v0_in) {
+                printf("uint32_t v0 = 0;\n");
+            }
+
+            for (uint32_t j = f.nargs; j < 4; j++) {
+                printf("uint32_t %s = 0;\n", r(MIPS_REG_A0 + j));
+            }
+        }
+
+        if (label_addresses.count(vaddr)) {
+            printf("L%x:\n", vaddr);
+        }
+
+        dump_instr(i);
+    } */
 }
 
 static void dump_c(void) {
