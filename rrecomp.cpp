@@ -661,7 +661,7 @@ static void r_pass1(void) {
 
                         for (int j = 5; j <= end; j++) {
                             if ((rinsns[lw - has_extra - j].instruction.uniqueId == RABBITIZER_INSTR_ID_cpu_sltiu) &&
-                                (RAB_INSTR_GET_rs(&rinsns[lw - has_extra - j].instruction) ==
+                                (RAB_INSTR_GET_rt(&rinsns[lw - has_extra - j].instruction) ==
                                  RABBITIZER_REG_GPR_O32_at)) {
                                 sltiu_index = j;
                                 break;
@@ -707,7 +707,7 @@ static void r_pass1(void) {
                                     &RabbitizerInstrDescriptor_Descriptors[rinsns[i - 1].instruction.uniqueId];
                             }
 
-                            printf("jump table at %08x, size %u\n", jtbl_addr, num_cases);
+                            // printf("jump table at %08x, size %u\n", jtbl_addr, num_cases);
                             insn.jtbl_addr = jtbl_addr;
                             insn.num_cases = num_cases;
                             insn.index_reg = index_reg;
@@ -1117,8 +1117,10 @@ static void r_pass3(void) {
             case RABBITIZER_INSTR_ID_cpu_bc1f:
             case RABBITIZER_INSTR_ID_cpu_bc1t:
                 r_add_edge(i, i + 1);
-                r_add_edge(i + 1, insn.patched ? addr_to_i(insn.patched_addr)
-                                               : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction));
+                r_add_edge(i + 1,
+                           addr_to_i(insn.patched ? insn.patched_addr
+                                                  : insn.instruction.vram +
+                                                        RabbitizerInstruction_getBranchOffset(&insn.instruction)));
                 break;
 
             case RABBITIZER_INSTR_ID_cpu_beql:
@@ -1131,24 +1133,20 @@ static void r_pass3(void) {
             case RABBITIZER_INSTR_ID_cpu_bc1tl:
                 r_add_edge(i, i + 1);
                 r_add_edge(i, i + 2);
-                r_add_edge(i + 1, insn.patched ? addr_to_i(insn.patched_addr)
-                                               : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction));
-                // r_add_edge(i + 1, addr_to_i(insn.patched
-                //                                 ? insn.patched_addr
-                //                                 :
-                //                                 (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction)));
+                r_add_edge(i + 1,
+                           addr_to_i(insn.patched ? insn.patched_addr
+                                                  : insn.instruction.vram +
+                                                        RabbitizerInstruction_getBranchOffset(&insn.instruction)));
                 rinsns[i + 1].no_following_successor = true; // don't inspect delay slot
                 break;
 
             case RABBITIZER_INSTR_ID_cpu_b:
             case RABBITIZER_INSTR_ID_cpu_j:
                 r_add_edge(i, i + 1);
-                r_add_edge(i + 1, insn.patched ? addr_to_i(insn.patched_addr)
-                                               : (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction));
-                // r_add_edge(i + 1, addr_to_i(insn.patched
-                //                                 ? insn.patched_addr
-                //                                 :
-                //                                 (uint32_t)RabbitizerInstruction_getBranchOffset(&insn.instruction)));
+                r_add_edge(i + 1,
+                           addr_to_i(insn.patched ? insn.patched_addr
+                                                  : insn.instruction.vram +
+                                                        RabbitizerInstruction_getBranchOffset(&insn.instruction)));
                 rinsns[i + 1].no_following_successor = true; // don't inspect delay slot
                 break;
 
@@ -1167,7 +1165,6 @@ static void r_pass3(void) {
                         r_add_edge(i + 1, addr_to_i(dest_addr));
                     }
                 } else {
-                    printf("VRAM: %X\n", insn.instruction.vram);
                     assert(RAB_INSTR_GET_rs(&insn.instruction) == RABBITIZER_REG_GPR_O32_ra &&
                            "jump to address in register not supported");
                 }
