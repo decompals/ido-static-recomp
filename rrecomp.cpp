@@ -357,7 +357,9 @@ static uint32_t get_dest_reg(const RabbitizerInstruction* instr) {
     } else if (RabbitizerInstrDescriptor_modifiesRd(instr->descriptor)) {
         return (RabbitizerRegister_GprO32)RAB_INSTR_GET_rd(instr);
     } else {
-        assert(!"No destination registers");
+        // assert(!"No destination registers");
+        // This should be okay...
+        return RABBITIZER_REG_GPR_O32_zero;
     }
 }
 
@@ -473,7 +475,7 @@ static void r_link_with_jalr(int offset) {
     int end_search = std::max(0, offset - MAX_LOOKBACK);
 
     for (int search = offset - 1; search >= end_search; search--) {
-        if (RAB_INSTR_GET_rs(&rinsns[search].instruction) == RABBITIZER_REG_GPR_O32_t9) {
+        if (get_dest_reg(&rinsns[search].instruction) == RABBITIZER_REG_GPR_O32_t9) {
             // should be a switch with returns
             switch (rinsns[search].instruction.uniqueId) {
                 case RABBITIZER_INSTR_ID_cpu_lw:
@@ -1176,7 +1178,9 @@ static void r_pass3(void) {
             case RABBITIZER_INSTR_ID_cpu_jal: {
                 r_add_edge(i, i + 1);
 
-                uint32_t dest = RabbitizerInstruction_getInstrIndexAsVram(&insn.instruction);
+                uint32_t dest =
+                    insn.patched ? insn.patched_addr : RabbitizerInstruction_getInstrIndexAsVram(&insn.instruction);
+                fprintf(stderr, "%d: %X: %X\n", i, insn.instruction.word, dest);
 
                 if (dest > mcount_addr && dest >= text_vaddr && dest < text_vaddr + text_section_len) {
                     r_add_edge(i + 1, addr_to_i(dest), true);
@@ -1381,7 +1385,9 @@ static uint64_t get_dest_reg_mask(const RabbitizerInstruction* instr) {
     } else if (RabbitizerInstrDescriptor_modifiesRd(instr->descriptor)) {
         return r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rd(instr));
     } else {
-        assert(!"No destination registers");
+        // assert(!"No destination registers");
+        // Fine since we want to add nothing
+        return 0;
     }
 }
 
@@ -1391,7 +1397,9 @@ static uint64_t get_single_source_reg_mask(const RabbitizerInstruction* instr) {
     } else if (RabbitizerInstruction_hasOperandAlias(instr, RAB_OPERAND_cpu_rt)) {
         return r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(instr));
     } else {
-        assert(!"No source registers");
+        // assert(!"No source registers");
+        // Fine since we want to add nothing
+        return 0;
     }
 }
 
@@ -1480,6 +1488,11 @@ static void r_pass4(void) {
         for (Edge& e : insn.successors) {
             uint64_t new_live = live;
 
+            if (i == 8444) {
+                fprintf(stderr, "%X, %X, %X, %X\n", e.function_entry, e.function_exit, e.extern_function,
+                        e.function_pointer);
+            }
+
             if (e.function_exit) {
                 new_live &= 1U | r_map_reg(RABBITIZER_REG_GPR_O32_v0) | r_map_reg(RABBITIZER_REG_GPR_O32_v1) |
                             r_map_reg(RABBITIZER_REG_GPR_O32_zero);
@@ -1493,8 +1506,10 @@ static void r_pass4(void) {
                 string_view name;
                 // bool is_extern_function = false;
                 size_t extern_function_id;
-                uint32_t address = insn.patched ? insn.patched_addr
-                                                : RabbitizerInstruction_getInstrIndexAsVram(&rinsns[i - 1].instruction);
+                uint32_t address = rinsns[i - 1].patched
+                                       ? rinsns[i - 1].patched_addr
+                                       : RabbitizerInstruction_getInstrIndexAsVram(&rinsns[i - 1].instruction);
+                fprintf(stderr, "%X\n", address);
                 // TODO: Can this only ever be a J-type instruction?
                 auto it = symbol_names.find(address);
                 // auto it = symbol_names.find(rinsns[i - 1].operands[0].imm);
