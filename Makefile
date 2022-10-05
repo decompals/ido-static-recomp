@@ -51,7 +51,7 @@ else
 endif
 
 RABBITIZER := tools/rabbitizer
-RABBITIZER_LIB := $(RABBITIZER)/build/librabbitizer.a
+RABBITIZER_LIB := $(RABBITIZER)/build/librabbitizerpp.a
 
 CC    := gcc
 CXX   := g++
@@ -60,10 +60,10 @@ STRIP := strip
 CSTD         ?= -std=c11
 CFLAGS       ?= -MMD -I.
 CXXSTD       ?= -std=c++17
-CXXFLAGS     ?= -MMD -I$(RABBITIZER)/include
+CXXFLAGS     ?= -MMD -I$(RABBITIZER)/cplusplus/include
 WARNINGS     ?= -Wall -Wextra
 LDFLAGS      ?= -lm 
-#-Ltools/rabbitizer/build -lrabbitizer
+#-Ltools/rabbitizer/build -lrabbitizerpp
 RECOMP_FLAGS ?=
 
 ifneq ($(WERROR),0)
