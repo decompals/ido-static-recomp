@@ -60,7 +60,7 @@ STRIP := strip
 CSTD         ?= -std=c11
 CFLAGS       ?= -MMD -I.
 CXXSTD       ?= -std=c++17
-CXXFLAGS     ?= -MMD -I$(RABBITIZER)/cplusplus/include
+CXXFLAGS     ?= -MMD -I$(RABBITIZER)/include -I$(RABBITIZER)/cplusplus/include
 WARNINGS     ?= -Wall -Wextra
 LDFLAGS      ?= -lm 
 #-Ltools/rabbitizer/build -lrabbitizerpp
@@ -137,6 +137,7 @@ clean:
 
 distclean: clean
 	$(RM) -r $(BUILD_BASE)
+	make -C $(RABBITIZER) distclean
 
 
 .PHONY: all clean distclean setup
