@@ -1719,8 +1719,9 @@ static void r_pass5(void) {
                 bool is_extern_function = false;
                 size_t extern_function_id;
                 const ExternFunction* found_fn = nullptr;
-                uint32_t address = insn.patched ? insn.patched_addr
-                                                : RabbitizerInstruction_getInstrIndexAsVram(&rinsns[i - 2].instruction);
+                uint32_t address = rinsns[i - 2].patched
+                                       ? rinsns[i - 2].patched_addr
+                                       : RabbitizerInstruction_getInstrIndexAsVram(&rinsns[i - 2].instruction);
                 // TODO: Can this only ever be a J-type instruction?
                 auto it = symbol_names.find(address);
 
