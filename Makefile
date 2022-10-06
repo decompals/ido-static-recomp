@@ -62,8 +62,7 @@ CFLAGS       ?= -MMD -I.
 CXXSTD       ?= -std=c++17
 CXXFLAGS     ?= -MMD -I$(RABBITIZER)/include -I$(RABBITIZER)/cplusplus/include
 WARNINGS     ?= -Wall -Wextra
-LDFLAGS      ?= -lm 
-#-Ltools/rabbitizer/build -lrabbitizerpp
+LDFLAGS      ?= -lm -Ltools/rabbitizer/build -lrabbitizerpp
 RECOMP_FLAGS ?=
 
 ifneq ($(WERROR),0)
@@ -130,14 +129,16 @@ $(RECOMP_ELF): WARNINGS  += -Wno-unused-variable -Wno-unused-but-set-variable -W
 
 all: $(TARGET_BINARIES) $(ERR_STRS)
 
-setup: $(RECOMP_ELF) $(RABBITIZER_LIB)
+setup:
+	$(MAKE) -C $(RABBITIZER) static CC=$(CC)
+	$(MAKE) $(RECOMP_ELF)
 
 clean:
 	$(RM) -r $(BUILD_DIR)
 
 distclean: clean
 	$(RM) -r $(BUILD_BASE)
-	make -C $(RABBITIZER) distclean
+	$(MAKE) -C $(RABBITIZER) distclean
 
 
 .PHONY: all clean distclean setup
@@ -148,22 +149,17 @@ distclean: clean
 
 #### Various Recipes ####
 
-$(RABBITIZER_LIB):
-	make -C $(RABBITIZER) static CC=$(CC)
-
-$(RECOMP_ELF): $(RABBITIZER_LIB)
-
 $(BUILD_BASE)/%.elf: %.cpp
 #	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) -o $@ $^ $(LDFLAGS)
 	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 
 $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/% | $(RECOMP_ELF)
-	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@
+	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
 # cc is special and is stored on the `bin` folder instead of the `lib` one
 $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/% | $(RECOMP_ELF)
-	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@
+	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
 
 $(BUILT_BIN)/%.cc: $(IRIX_USR_DIR)/lib/%.cc
