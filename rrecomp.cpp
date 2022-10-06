@@ -471,7 +471,7 @@ static void r_link_with_jalr(int offset) {
     int end_search = std::max(0, offset - MAX_LOOKBACK);
 
     for (int search = offset - 1; search >= end_search; search--) {
-        if (get_dest_reg(&rinsns[search].instruction) == rabbitizer::Registers::Cpu::GprO32::GPR_O32_t9) {
+        if (get_dest_reg(rinsns[search].instruction) == rabbitizer::Registers::Cpu::GprO32::GPR_O32_t9) {
             // should be a switch with returns
             switch (rinsns[search].instruction.getUniqueId()) {
                 case rabbitizer::InstrId::UniqueId::cpu_lw:
@@ -486,7 +486,7 @@ static void r_link_with_jalr(int offset) {
                         // function_entry_points.insert(rinsns[search].linked_value);
                         rinsns[offset].patched = true;
                         rinsns[offset].patched_addr =
-                            RabbitizerInstruction_getProcessedImmediate(&rinsns[offset].instruction);
+                            rinsns[offset].instruction.getProcessedImmediate();
                         rinsns[offset].instruction.uniqueId = rabbitizer::InstrId::UniqueId::cpu_jal;
                         rinsns[offset].instruction.descriptor =
                             &RabbitizerInstrDescriptor_Descriptors[rinsns[search].instruction.uniqueId];
@@ -1358,7 +1358,7 @@ static TYPE r_insn_to_type(RInsn& insn) {
             if (insn.jtbl_addr != 0) {
                 insn.instruction.word = RAB_INSTR_PACK_rs(insn.instruction.word, insn.index_reg);
             }
-            if (RAB_INSTR_GET_rt(&insn.instruction) == rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra) {
+            if (insn.instruction.GetO32_rt() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra) {
                 return TYPE_NOP;
             }
             return TYPE_1S;
@@ -1503,7 +1503,7 @@ static void r_pass4(void) {
                 size_t extern_function_id;
                 uint32_t address = rinsns[i - 1].patched
                                        ? rinsns[i - 1].patched_addr
-                                       : RabbitizerInstruction_getInstrIndexAsVram(&rinsns[i - 1].instruction);
+                                       : rinsns[i - 1].instruction.getInstrIndexAsVram();
                 fprintf(stderr, "%X\n", address);
                 // TODO: Can this only ever be a J-type instruction?
                 auto it = symbol_names.find(address);
@@ -1714,9 +1714,8 @@ static void r_pass5(void) {
                 bool is_extern_function = false;
                 size_t extern_function_id;
                 const ExternFunction* found_fn = nullptr;
-                uint32_t address = rinsns[i - 2].patched
-                                       ? rinsns[i - 2].patched_addr
-                                       : RabbitizerInstruction_getInstrIndexAsVram(&rinsns[i - 2].instruction);
+                uint32_t address = rinsns[i - 2].patched ? rinsns[i - 2].patched_addr
+                                                : rinsns[i - 2].instruction.getInstrIndexAsVram();
                 // TODO: Can this only ever be a J-type instruction?
                 auto it = symbol_names.find(address);
 
@@ -1848,7 +1847,7 @@ static void r_pass6(void) {
         RInsn& insn = rinsns.at(addr_to_i(addr));
 
         for (int i = 0; i < 4; i++) {
-            if (insn.f_livein & insn.b_livein & r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + i))) {
+            if (insn.f_livein & insn.b_livein & r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + i))) {
                 f.nargs = 1 + i;
             }
         }
@@ -1886,6 +1885,8 @@ static const char* r_r(uint32_t reg) {
         /*  */ "s0",   "s1", "s2", "s3", "s4", "s5", "s6", "s7",
         /*  */ "t8",   "t9", "k0", "k1", "gp", "sp", "fp", "ra",
     };
+
+    assert(reg < std::size(regs));
     return regs[reg];
 }
 
@@ -1911,7 +1912,10 @@ static const char* r_wr(uint32_t reg) {
     };
     // clang-format on
 
-    return regs[reg - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0];
+    size_t index = reg - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0;
+
+    assert(index < std::size(regs));
+    return regs[index];
 }
 
 static const char* r_fr(uint32_t reg) {
@@ -1936,7 +1940,10 @@ static const char* r_fr(uint32_t reg) {
     };
     // clang-format on
 
-    return regs[reg - RABBITIZER_REG_COP1_O32_fv0];
+    size_t index = reg - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0;
+
+    assert(index < std::size(regs));
+    return regs[index];
 }
 
 static const char* r_dr(uint32_t reg) {
@@ -1961,8 +1968,12 @@ static const char* r_dr(uint32_t reg) {
     };
     // clang-format on
 
-    assert((reg - RABBITIZER_REG_COP1_O32_fv0) % 2 == 0);
-    return regs[(reg - RABBITIZER_REG_COP1_O32_fv0) / 2];
+    size_t index = reg - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0;
+
+    assert(index % 2 == 0);
+    index /= 2;
+    assert(index < std::size(regs));
+    return regs[index];
 }
 
 static void r_dump_instr(int i);
@@ -1981,7 +1992,7 @@ static void r_dump_cond_branch(int i, const char* lhs, const char* op, const cha
     printf("if (%s%s %s %s%s) {", cast1, lhs, op, cast2, rhs);
     r_dump_instr(i + 1);
 
-    uint32_t addr = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+    uint32_t addr = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
 
     printf("goto L%x;}\n", addr);
 }
@@ -2019,7 +2030,7 @@ static void r_dump_jal(int i, uint32_t imm) {
     if (found_fn != nullptr) {
         if (found_fn->flags & FLAG_VARARG) {
             for (int j = 0; j < 4; j++) {
-                printf("MEM_U32(sp + %d) = %s;\n", j * 4, r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + j));
+                printf("MEM_U32(sp + %d) = %s;\n", j * 4, r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + j));
             }
         }
 
@@ -2032,11 +2043,11 @@ static void r_dump_jal(int i, uint32_t imm) {
             case 'i':
             case 'u':
             case 'p':
-                printf("%s = ", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
+                printf("%s = ", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
                 break;
 
             case 'f':
-                printf("%s = ", r_fr(RABBITIZER_REG_COP1_O32_fv0));
+                printf("%s = ", r_fr((int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0));
                 break;
 
             case 'd':
@@ -2080,7 +2091,7 @@ static void r_dump_jal(int i, uint32_t imm) {
                 case 'p':
                     only_floats_so_far = false;
                     if (pos < 4) {
-                        printf("%s", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos));
+                        printf("%s", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos));
                     } else {
                         printf("MEM_%c32(sp + %d)", *p == 'i' ? 'S' : 'U', pos * 4);
                     }
@@ -2089,10 +2100,10 @@ static void r_dump_jal(int i, uint32_t imm) {
 
                 case 'f':
                     if (only_floats_so_far && pos_float < 4) {
-                        printf("%s", r_fr(RABBITIZER_REG_COP1_O32_fa0 + pos_float));
+                        printf("%s", r_fr((int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fa0 + pos_float));
                         pos_float += 2;
                     } else if (pos < 4) {
-                        printf("BITCAST_U32_TO_F32(%s)", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos));
+                        printf("BITCAST_U32_TO_F32(%s)", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos));
                     } else {
                         printf("BITCAST_U32_TO_F32(MEM_U32(sp + %d))", pos * 4);
                     }
@@ -2104,11 +2115,11 @@ static void r_dump_jal(int i, uint32_t imm) {
                         ++pos;
                     }
                     if (only_floats_so_far && pos_float < 4) {
-                        printf("double_from_FloatReg(%s)", r_dr(RABBITIZER_REG_COP1_O32_fa0 + pos_float));
+                        printf("double_from_FloatReg(%s)", r_dr((int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fa0 + pos_float));
                         pos_float += 2;
                     } else if (pos < 4) {
                         printf("BITCAST_U64_TO_F64(((uint64_t)%s << 32) | (uint64_t)%s)",
-                               r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos), r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos + 1));
+                               r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos), r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos + 1));
                     } else {
                         printf("BITCAST_U64_TO_F64(((uint64_t)MEM_U32(sp + %d) << 32) | "
                                "(uint64_t)MEM_U32(sp + "
@@ -2128,8 +2139,8 @@ static void r_dump_jal(int i, uint32_t imm) {
                         printf("(int64_t)");
                     }
                     if (pos < 4) {
-                        printf("(((uint64_t)%s << 32) | (uint64_t)%s)", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos),
-                               r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos + 1));
+                        printf("(((uint64_t)%s << 32) | (uint64_t)%s)", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos),
+                               r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos + 1));
                     } else {
                         printf("(((uint64_t)MEM_U32(sp + %d) << 32) | (uint64_t)MEM_U32(sp + %d))", pos * 4,
                                (pos + 1) * 4);
@@ -2140,20 +2151,20 @@ static void r_dump_jal(int i, uint32_t imm) {
         }
 
         if ((found_fn->flags & FLAG_VARARG) || needs_sp) {
-            printf("%s%s", first ? "" : ", ", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_sp));
+            printf("%s%s", first ? "" : ", ", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_sp));
         }
 
         printf(");\n");
 
         if (ret_type == 'l' || ret_type == 'j') {
-            printf("%s = (uint32_t)(temp64 >> 32);\n", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
-            printf("%s = (uint32_t)temp64;\n", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v1));
+            printf("%s = (uint32_t)(temp64 >> 32);\n", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
+            printf("%s = (uint32_t)temp64;\n", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_v1));
         } else if (ret_type == 'd') {
-            printf("%s = FloatReg_from_double(tempf64);\n", r_dr(RABBITIZER_REG_COP1_O32_fv0));
+            printf("%s = FloatReg_from_double(tempf64);\n", r_dr((int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0));
         }
 
         if (!name.empty()) {
-            // printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(), r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0));
+            // printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(), r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0));
         }
     } else {
         Function& f = functions.find(imm)->second;
@@ -2165,7 +2176,7 @@ static void r_dump_jal(int i, uint32_t imm) {
         }
 
         if (!name.empty()) {
-            // printf("printf(\"%s %%x\\n\", %s);\n", string(name).c_str(), r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0));
+            // printf("printf(\"%s %%x\\n\", %s);\n", string(name).c_str(), r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0));
             printf("f_%s", string(name).c_str());
         } else {
             printf("func_%x", imm);
@@ -2174,18 +2185,18 @@ static void r_dump_jal(int i, uint32_t imm) {
         printf("(mem, sp");
 
         if (f.v0_in) {
-            printf(", %s", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
+            printf(", %s", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
         }
 
         for (uint32_t i = 0; i < f.nargs; i++) {
-            printf(", %s", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + i));
+            printf(", %s", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + i));
         }
 
         printf(");\n");
 
         if (f.nret == 2) {
-            printf("%s = (uint32_t)(temp64 >> 32);\n", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
-            printf("%s = (uint32_t)temp64;\n", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v1));
+            printf("%s = (uint32_t)(temp64 >> 32);\n", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
+            printf("%s = (uint32_t)temp64;\n", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_v1));
         }
     }
 
@@ -2208,7 +2219,7 @@ static void r_dump_instr(int i) {
     }
 
     uint64_t src_regs_map;
-    if (!insn.instruction.descriptor->isJump && !conservative) {
+    if (!insn.instruction.isJump() && !conservative) {
         switch (r_insn_to_type(insn)) {
             case TYPE_1S:
                 if (!(insn.f_livein & get_single_source_reg_mask(insn.instruction))) {
@@ -2230,7 +2241,7 @@ static void r_dump_instr(int i) {
                 break;
 
             case TYPE_1D_2S:
-                if (!(insn.f_livein & r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(&insn.instruction)))) {
+                if (!(insn.f_livein & r_map_reg(insn.instruction.GetO32_rt()))) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                     break;
                 }
@@ -2270,94 +2281,94 @@ static void r_dump_instr(int i) {
     switch (insn.instruction.getUniqueId()) {
         case rabbitizer::InstrId::UniqueId::cpu_add:
         case rabbitizer::InstrId::UniqueId::cpu_addu:
-            printf("%s = %s + %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("%s = %s + %s;\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rs()), r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_add_s:
-            printf("%s = %s + %s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)), r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
+            printf("%s = %s + %s;\n", r_fr((int)insn.instruction.GetO32_fd()),
+                   r_fr((int)insn.instruction.GetO32_fs()), r_fr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_add_d:
             printf("%s = FloatReg_from_double(double_from_FloatReg(%s) + double_from_FloatReg(%s));\n",
-                   r_dr(RAB_INSTR_GET_fd(&insn.instruction)), r_dr(RAB_INSTR_GET_fs(&insn.instruction)),
-                   r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
+                   r_dr((int)insn.instruction.GetO32_fd()), r_dr((int)insn.instruction.GetO32_fs()),
+                   r_dr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_addi:
         case rabbitizer::InstrId::UniqueId::cpu_addiu:
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("%s = %s + 0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), imm);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("%s = %s + 0x%x;\n", r_r((int)insn.instruction.GetO32_rt()),
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_and:
-            printf("%s = %s & %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("%s = %s & %s;\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rs()), r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_andi:
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("%s = %s & 0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), imm);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("%s = %s & 0x%x;\n", r_r((int)insn.instruction.GetO32_rt()),
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_beq:
-            r_dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                               "==", r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            r_dump_cond_branch(i, r_r((int)insn.instruction.GetO32_rs()),
+                               "==", r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_beql:
-            r_dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                                      "==", r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            r_dump_cond_branch_likely(i, r_r((int)insn.instruction.GetO32_rs()),
+                                      "==", r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bgez:
-            r_dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), ">=", "0");
+            r_dump_cond_branch(i, r_r((int)insn.instruction.GetO32_rs()), ">=", "0");
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bgezl:
-            r_dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), ">=", "0");
+            r_dump_cond_branch_likely(i, r_r((int)insn.instruction.GetO32_rs()), ">=", "0");
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bgtz:
-            r_dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), ">", "0");
+            r_dump_cond_branch(i, r_r((int)insn.instruction.GetO32_rs()), ">", "0");
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bgtzl:
-            r_dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), ">", "0");
+            r_dump_cond_branch_likely(i, r_r((int)insn.instruction.GetO32_rs()), ">", "0");
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_blez:
-            r_dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), "<=", "0");
+            r_dump_cond_branch(i, r_r((int)insn.instruction.GetO32_rs()), "<=", "0");
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_blezl:
-            r_dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), "<=", "0");
+            r_dump_cond_branch_likely(i, r_r((int)insn.instruction.GetO32_rs()), "<=", "0");
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bltz:
-            r_dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), "<", "0");
+            r_dump_cond_branch(i, r_r((int)insn.instruction.GetO32_rs()), "<", "0");
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bltzl:
-            r_dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), "<", "0");
+            r_dump_cond_branch_likely(i, r_r((int)insn.instruction.GetO32_rs()), "<", "0");
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bne:
-            r_dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                               "!=", r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            r_dump_cond_branch(i, r_r((int)insn.instruction.GetO32_rs()),
+                               "!=", r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bnel:
-            r_dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                                      "!=", r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            r_dump_cond_branch_likely(i, r_r((int)insn.instruction.GetO32_rs()),
+                                      "!=", r_r((int)insn.instruction.GetO32_rt()));
             break;
 
             // // Not emitted by rabbitizer
             // case rabbitizer::InstrId::UniqueId::cpu_bnezl:
-            //     r_dump_cond_branch_likely(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)),
+            //     r_dump_cond_branch_likely(i, r_r((int)insn.instruction.GetO32_rs()),
             //                             "!=", "0");
             //     break;
 
@@ -2366,7 +2377,7 @@ static void r_dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_beqz:
-            r_dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), "==", "0");
+            r_dump_cond_branch(i, r_r((int)insn.instruction.GetO32_rs()), "==", "0");
             break;
 
             /* case rabbitizer::InstrId::UniqueId::cpu_beqzl:
@@ -2375,21 +2386,21 @@ static void r_dump_instr(int i) {
 
         case rabbitizer::InstrId::UniqueId::cpu_b:
             r_dump_instr(i + 1);
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
             printf("goto L%x;\n", imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bc1f:
             printf("if (!cf) {");
             r_dump_instr(i + 1);
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
             printf("goto L%x;}\n", imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bc1t:
             printf("if (cf) {");
             r_dump_instr(i + 1);
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
             printf("goto L%x;}\n", imm);
             break;
 
@@ -2397,7 +2408,7 @@ static void r_dump_instr(int i) {
             uint32_t target = text_vaddr + (i + 2) * sizeof(uint32_t);
             printf("if (!cf) {");
             r_dump_instr(i + 1);
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
             printf("goto L%x;}\n", imm);
             if (!TRACE) {
                 printf("else goto L%x;\n", target);
@@ -2411,7 +2422,7 @@ static void r_dump_instr(int i) {
             uint32_t target = text_vaddr + (i + 2) * sizeof(uint32_t);
             printf("if (cf) {");
             r_dump_instr(i + 1);
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
             printf("goto L%x;}\n", imm);
             if (!TRACE) {
                 printf("else goto L%x;\n", target);
@@ -2422,7 +2433,7 @@ static void r_dump_instr(int i) {
         } break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bnez:
-            r_dump_cond_branch(i, r_r(RAB_INSTR_GET_rs(&insn.instruction)), "!=", "0");
+            r_dump_cond_branch(i, r_r((int)insn.instruction.GetO32_rs()), "!=", "0");
             break;
 
             // // Rabbitizer does not emit this anyway
@@ -2431,63 +2442,63 @@ static void r_dump_instr(int i) {
             //     break;
 
         case rabbitizer::InstrId::UniqueId::cpu_c_lt_s:
-            printf("cf = %s < %s;\n", r_fr(RAB_INSTR_GET_fs(&insn.instruction)),
-                   r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
+            printf("cf = %s < %s;\n", r_fr((int)insn.instruction.GetO32_fs()),
+                   r_fr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_c_le_s:
-            printf("cf = %s <= %s;\n", r_fr(RAB_INSTR_GET_fs(&insn.instruction)),
-                   r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
+            printf("cf = %s <= %s;\n", r_fr((int)insn.instruction.GetO32_fs()),
+                   r_fr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_c_eq_s:
-            printf("cf = %s == %s;\n", r_fr(RAB_INSTR_GET_fs(&insn.instruction)),
-                   r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
+            printf("cf = %s == %s;\n", r_fr((int)insn.instruction.GetO32_fs()),
+                   r_fr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_c_lt_d:
             printf("cf = double_from_FloatReg(%s) < double_from_FloatReg(%s);\n",
-                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)), r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
+                   r_dr((int)insn.instruction.GetO32_fs()), r_dr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_c_le_d:
             printf("cf = double_from_FloatReg(%s) <= double_from_FloatReg(%s);\n",
-                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)), r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
+                   r_dr((int)insn.instruction.GetO32_fs()), r_dr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_c_eq_d:
             printf("cf = double_from_FloatReg(%s) == double_from_FloatReg(%s);\n",
-                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)), r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
+                   r_dr((int)insn.instruction.GetO32_fs()), r_dr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_cvt_s_w:
-            printf("%s = (int)%s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_wr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = (int)%s;\n", r_fr((int)insn.instruction.GetO32_fd()),
+                   r_wr((int)insn.instruction.GetO32_fs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_cvt_d_w:
-            printf("%s = FloatReg_from_double((int)%s);\n", r_dr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_wr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = FloatReg_from_double((int)%s);\n", r_dr((int)insn.instruction.GetO32_fd()),
+                   r_wr((int)insn.instruction.GetO32_fs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_cvt_d_s:
-            printf("%s = FloatReg_from_double(%s);\n", r_dr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = FloatReg_from_double(%s);\n", r_dr((int)insn.instruction.GetO32_fd()),
+                   r_fr((int)insn.instruction.GetO32_fs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_cvt_s_d:
-            printf("%s = double_from_FloatReg(%s);\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = double_from_FloatReg(%s);\n", r_fr((int)insn.instruction.GetO32_fd()),
+                   r_dr((int)insn.instruction.GetO32_fs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_cvt_w_d:
-            printf("%s = cvt_w_d(double_from_FloatReg(%s));\n", r_wr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = cvt_w_d(double_from_FloatReg(%s));\n", r_wr((int)insn.instruction.GetO32_fd()),
+                   r_dr((int)insn.instruction.GetO32_fs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_cvt_w_s:
-            printf("%s = cvt_w_s(%s);\n", r_wr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = cvt_w_s(%s);\n", r_wr((int)insn.instruction.GetO32_fd()),
+                   r_fr((int)insn.instruction.GetO32_fs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_cvt_l_d:
@@ -2497,106 +2508,106 @@ static void r_dump_instr(int i) {
             goto unimplemented;
 
         case rabbitizer::InstrId::UniqueId::cpu_cfc1:
-            assert(RAB_INSTR_GET_cop1cs(&insn.instruction) == RABBITIZER_REG_COP1_CONTROL_FpcCsr);
-            printf("%s = fcsr;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            assert(insn.instruction.Get_cop1cs() == rabbitizer::Registers::Cpu::Cop1Control::COP1_CONTROL_FpcCsr);
+            printf("%s = fcsr;\n", r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_ctc1:
-            assert(RAB_INSTR_GET_cop1cs(&insn.instruction) == RABBITIZER_REG_COP1_CONTROL_FpcCsr);
-            printf("fcsr = %s;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            assert(insn.instruction.Get_cop1cs() == rabbitizer::Registers::Cpu::Cop1Control::COP1_CONTROL_FpcCsr);
+            printf("fcsr = %s;\n", r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_div:
-            printf("lo = (int)%s / (int)%s; ", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
-            printf("hi = (int)%s %% (int)%s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("lo = (int)%s / (int)%s; ", r_r((int)insn.instruction.GetO32_rs()),
+                   r_r((int)insn.instruction.GetO32_rt()));
+            printf("hi = (int)%s %% (int)%s;\n", r_r((int)insn.instruction.GetO32_rs()),
+                   r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_divu:
-            printf("lo = %s / %s; ", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
-            printf("hi = %s %% %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("lo = %s / %s; ", r_r((int)insn.instruction.GetO32_rs()),
+                   r_r((int)insn.instruction.GetO32_rt()));
+            printf("hi = %s %% %s;\n", r_r((int)insn.instruction.GetO32_rs()),
+                   r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_div_s:
-            printf("%s = %s / %s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)), r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
+            printf("%s = %s / %s;\n", r_fr((int)insn.instruction.GetO32_fd()),
+                   r_fr((int)insn.instruction.GetO32_fs()), r_fr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_div_d:
             printf("%s = FloatReg_from_double(double_from_FloatReg(%s) / double_from_FloatReg(%s));\n",
-                   r_dr(RAB_INSTR_GET_fd(&insn.instruction)), r_dr(RAB_INSTR_GET_fs(&insn.instruction)),
-                   r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
+                   r_dr((int)insn.instruction.GetO32_fd()), r_dr((int)insn.instruction.GetO32_fs()),
+                   r_dr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_mov_s:
-            printf("%s = %s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)), r_fr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = %s;\n", r_fr((int)insn.instruction.GetO32_fd()), r_fr((int)insn.instruction.GetO32_fs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_mov_d:
-            printf("%s = %s;\n", r_dr(RAB_INSTR_GET_fd(&insn.instruction)), r_dr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = %s;\n", r_dr((int)insn.instruction.GetO32_fd()), r_dr((int)insn.instruction.GetO32_fs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_mul_s:
-            printf("%s = %s * %s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)), r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
+            printf("%s = %s * %s;\n", r_fr((int)insn.instruction.GetO32_fd()),
+                   r_fr((int)insn.instruction.GetO32_fs()), r_fr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_mul_d:
             printf("%s = FloatReg_from_double(double_from_FloatReg(%s) * double_from_FloatReg(%s));\n",
-                   r_dr(RAB_INSTR_GET_fd(&insn.instruction)), r_dr(RAB_INSTR_GET_fs(&insn.instruction)),
-                   r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
+                   r_dr((int)insn.instruction.GetO32_fd()), r_dr((int)insn.instruction.GetO32_fs()),
+                   r_dr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_negu:
-            printf("%s = -%s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("%s = -%s;\n", r_r((int)insn.instruction.GetO32_rd()), r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_neg_s:
-            printf("%s = -%s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)), r_fr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = -%s;\n", r_fr((int)insn.instruction.GetO32_fd()), r_fr((int)insn.instruction.GetO32_fs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_neg_d:
-            printf("%s = FloatReg_from_double(-double_from_FloatReg(%s));\n", r_dr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = FloatReg_from_double(-double_from_FloatReg(%s));\n", r_dr((int)insn.instruction.GetO32_fd()),
+                   r_dr((int)insn.instruction.GetO32_fs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sub:
             goto unimplemented;
 
         case rabbitizer::InstrId::UniqueId::cpu_sub_s:
-            printf("%s = %s - %s;\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)), r_fr(RAB_INSTR_GET_ft(&insn.instruction)));
+            printf("%s = %s - %s;\n", r_fr((int)insn.instruction.GetO32_fd()),
+                   r_fr((int)insn.instruction.GetO32_fs()), r_fr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sub_d:
             printf("%s = FloatReg_from_double(double_from_FloatReg(%s) - double_from_FloatReg(%s));\n",
-                   r_dr(RAB_INSTR_GET_fd(&insn.instruction)), r_dr(RAB_INSTR_GET_fs(&insn.instruction)),
-                   r_dr(RAB_INSTR_GET_ft(&insn.instruction)));
+                   r_dr((int)insn.instruction.GetO32_fd()), r_dr((int)insn.instruction.GetO32_fs()),
+                   r_dr((int)insn.instruction.GetO32_ft()));
             break;
 
             // Jumps
 
         case rabbitizer::InstrId::UniqueId::cpu_j:
             r_dump_instr(i + 1);
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
             printf("goto L%x;\n", imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_jal:
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
             r_dump_jal(i, imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_jalr:
-            printf("fp_dest = %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)));
+            printf("fp_dest = %s;\n", r_r((int)insn.instruction.GetO32_rs()));
             r_dump_instr(i + 1);
-            printf("temp64 = trampoline(mem, sp, %s, %s, %s, %s, fp_dest);\n", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0),
-                   r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a1), r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a2), r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a3));
-            printf("%s = (uint32_t)(temp64 >> 32);\n", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
-            printf("%s = (uint32_t)temp64;\n", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v1));
+            printf("temp64 = trampoline(mem, sp, %s, %s, %s, %s, fp_dest);\n", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0),
+                   r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a1), r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a2), r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a3));
+            printf("%s = (uint32_t)(temp64 >> 32);\n", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
+            printf("%s = (uint32_t)temp64;\n", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_v1));
             printf("goto L%x;\n", text_vaddr + (i + 2) * 4);
             label_addresses.insert(text_vaddr + (i + 2) * 4);
             break;
@@ -2618,7 +2629,7 @@ static void r_dump_instr(int i) {
                 }
 
                 printf("};\n");
-                printf("dest = Lswitch%x[%s];\n", insn.jtbl_addr, r_r(insn.index_reg));
+                printf("dest = Lswitch%x[%s];\n", insn.jtbl_addr, r_r((int)insn.index_reg));
                 r_dump_instr(i + 1);
                 printf("goto *dest;\n");
 #else
@@ -2634,10 +2645,10 @@ static void r_dump_instr(int i) {
                 printf("}\n");
 #endif
             } else {
-                if (RAB_INSTR_GET_rs(&insn.instruction) != rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra) {
+                if (insn.instruction.GetO32_rs() != rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra) {
                     // TODO: not clear what should go here instead of op_str
-                    // printf("UNSUPPORTED JR %s %s\n", insn.op_str.c_str(), r_r(RAB_INSTR_GET_rs(&insn.instruction)));
-                    printf("UNSUPPORTED JR %s    (no jumptable available)\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)));
+                    // printf("UNSUPPORTED JR %s %s\n", insn.op_str.c_str(), r_r((int)insn.instruction.GetO32_rs()));
+                    printf("UNSUPPORTED JR %s    (no jumptable available)\n", r_r((int)insn.instruction.GetO32_rs()));
                 } else {
                     r_dump_instr(i + 1);
                     switch (find_function(text_vaddr + i * sizeof(uint32_t))->second.nret) {
@@ -2658,61 +2669,61 @@ static void r_dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lb:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("%s = MEM_S8(%s + %d);\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("%s = MEM_S8(%s + %d);\n", r_r((int)insn.instruction.GetO32_rt()),
+                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lbu:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("%s = MEM_U8(%s + %d);\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("%s = MEM_U8(%s + %d);\n", r_r((int)insn.instruction.GetO32_rt()),
+                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lh:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("%s = MEM_S16(%s + %d);\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("%s = MEM_S16(%s + %d);\n", r_r((int)insn.instruction.GetO32_rt()),
+                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lhu:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("%s = MEM_U16(%s + %d);\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("%s = MEM_U16(%s + %d);\n", r_r((int)insn.instruction.GetO32_rt()),
+                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lui:
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("%s = 0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)), imm << 16);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("%s = 0x%x;\n", r_r((int)insn.instruction.GetO32_rt()), imm << 16);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lw:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("%s = MEM_U32(%s + %d);\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("%s = MEM_U32(%s + %d);\n", r_r((int)insn.instruction.GetO32_rt()),
+                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwc1:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("%s = MEM_U32(%s + %d);\n", r_wr(RAB_INSTR_GET_ft(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("%s = MEM_U32(%s + %d);\n", r_wr((int)insn.instruction.GetO32_ft()),
+                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_ldc1:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            assert((RAB_INSTR_GET_ft(&insn.instruction) - RABBITIZER_REG_COP1_O32_fv0) % 2 == 0);
-            printf("%s = MEM_U32(%s + %d);\n", r_wr(RAB_INSTR_GET_ft(&insn.instruction) + 1),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
-            printf("%s = MEM_U32(%s + %d + 4);\n", r_wr(RAB_INSTR_GET_ft(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            assert(((int)insn.instruction.GetO32_ft() - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0) % 2 == 0);
+            printf("%s = MEM_U32(%s + %d);\n", r_wr((int)insn.instruction.GetO32_ft() + 1),
+                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
+            printf("%s = MEM_U32(%s + %d + 4);\n", r_wr((int)insn.instruction.GetO32_ft()),
+                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwl: {
-            const char* reg = r_r(RAB_INSTR_GET_rt(&insn.instruction));
+            const char* reg = r_r((int)insn.instruction.GetO32_rt());
 
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
 
-            printf("%s = %s + %d; ", reg, r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm);
+            printf("%s = %s + %d; ", reg, r_r((int)insn.instruction.GetO32_rs()), s_imm);
             printf("%s = (MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + 3);\n", reg,
                    reg, reg, reg, reg);
         } break;
@@ -2720,7 +2731,7 @@ static void r_dump_instr(int i) {
         case rabbitizer::InstrId::UniqueId::cpu_lwr:
             // TODO: Not sure how to do this
             // s_imm = insn.patched ? insn.patched_addr :
-            // RabbitizerInstruction_getProcessedImmediate(&insn.instruction); printf("//lwr %s\n",
+            // insn.instruction.getProcessedImmediate(); printf("//lwr %s\n",
             // RabbitizerInstruction_disassembleOperands(&insn.instruction, buf, NULL, 0)); printf("//lwr %s\n",
             // insn.op_str.c_str());
             break;
@@ -2728,7 +2739,7 @@ static void r_dump_instr(int i) {
 #if 0
         case MIPS_INS_LI:
             // Not at all clear what to do here
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
             assert(0 && "LI");
 
             if (insn.is_global_got_memop && (text_vaddr <= imm) && (imm < text_vaddr + text_section_len)) {
@@ -2741,43 +2752,43 @@ static void r_dump_instr(int i) {
 #endif
 
         case rabbitizer::InstrId::UniqueId::cpu_mfc1:
-            printf("%s = %s;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)), r_wr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = %s;\n", r_r((int)insn.instruction.GetO32_rt()), r_wr((int)insn.instruction.GetO32_fs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_mfhi:
-            printf("%s = hi;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)));
+            printf("%s = hi;\n", r_r((int)insn.instruction.GetO32_rd()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_mflo:
-            printf("%s = lo;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)));
+            printf("%s = lo;\n", r_r((int)insn.instruction.GetO32_rd()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_move:
-            printf("%s = %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)), r_r(RAB_INSTR_GET_rs(&insn.instruction)));
+            printf("%s = %s;\n", r_r((int)insn.instruction.GetO32_rd()), r_r((int)insn.instruction.GetO32_rs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_mtc1:
-            printf("%s = %s;\n", r_wr(RAB_INSTR_GET_fs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("%s = %s;\n", r_wr((int)insn.instruction.GetO32_fs()), r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_mult:
-            printf("lo = %s * %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("lo = %s * %s;\n", r_r((int)insn.instruction.GetO32_rs()),
+                   r_r((int)insn.instruction.GetO32_rt()));
             printf("hi = (uint32_t)((int64_t)(int)%s * (int64_t)(int)%s >> 32);\n",
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+                   r_r((int)insn.instruction.GetO32_rs()), r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_multu:
-            printf("lo = %s * %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
-            printf("hi = (uint32_t)((uint64_t)%s * (uint64_t)%s >> 32);\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("lo = %s * %s;\n", r_r((int)insn.instruction.GetO32_rs()),
+                   r_r((int)insn.instruction.GetO32_rt()));
+            printf("hi = (uint32_t)((uint64_t)%s * (uint64_t)%s >> 32);\n", r_r((int)insn.instruction.GetO32_rs()),
+                   r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         // case MIPS_INS_SQRT:
         case rabbitizer::InstrId::UniqueId::cpu_sqrt_s:
-            printf("%s = sqrtf(%s);\n", r_fr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = sqrtf(%s);\n", r_fr((int)insn.instruction.GetO32_fd()),
+                   r_fr((int)insn.instruction.GetO32_fs()));
             break;
 
             // case MIPS_INS_FSQRT:
@@ -2786,141 +2797,142 @@ static void r_dump_instr(int i) {
 
             // TODO: covered elsewhere?
             // case rabbitizer::InstrId::UniqueId::cpu_negu:
-            //     printf("%s = -%s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-            //     r_r(RAB_INSTR_GET_rt(&insn.instruction))); break;
+            //     printf("%s = -%s;\n", r_r((int)insn.instruction.GetO32_rd()),
+            //     r_r((int)insn.instruction.GetO32_rt())); break;
 
         case rabbitizer::InstrId::UniqueId::cpu_nor:
-            printf("%s = ~(%s | %s);\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("%s = ~(%s | %s);\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rs()), r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_not:
-            printf("%s = ~%s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)), r_r(RAB_INSTR_GET_rs(&insn.instruction)));
+            printf("%s = ~%s;\n", r_r((int)insn.instruction.GetO32_rd()), r_r((int)insn.instruction.GetO32_rs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_or:
-            printf("%s = %s | %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("%s = %s | %s;\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rs()), r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_ori:
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("%s = %s | 0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), imm);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("%s = %s | 0x%x;\n", r_r((int)insn.instruction.GetO32_rt()),
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sb:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("MEM_U8(%s + %d) = (uint8_t)%s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("MEM_U8(%s + %d) = (uint8_t)%s;\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+                   r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sh:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("MEM_U16(%s + %d) = (uint16_t)%s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("MEM_U16(%s + %d) = (uint16_t)%s;\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+                   r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sll:
-            printf("%s = %s << %d;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), RAB_INSTR_GET_sa(&insn.instruction));
+            printf("%s = %s << %d;\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rt()), insn.instruction.Get_sa());
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sllv:
-            printf("%s = %s << (%s & 0x1f);\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), r_r(RAB_INSTR_GET_rs(&insn.instruction)));
+            printf("%s = %s << (%s & 0x1f);\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rt()), r_r((int)insn.instruction.GetO32_rs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_slt:
-            printf("%s = (int)%s < (int)%s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("%s = (int)%s < (int)%s;\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rs()), r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_slti:
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("%s = (int)%s < (int)0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), imm);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("%s = (int)%s < (int)0x%x;\n", r_r((int)insn.instruction.GetO32_rt()),
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sltiu:
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("%s = %s < 0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), imm);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("%s = %s < 0x%x;\n", r_r((int)insn.instruction.GetO32_rt()),
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sltu:
-            printf("%s = %s < %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("%s = %s < %s;\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rs()), r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sra:
-            printf("%s = (int)%s >> %d;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), RAB_INSTR_GET_sa(&insn.instruction));
+            printf("%s = (int)%s >> %d;\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rt()), insn.instruction.Get_sa());
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_srav:
-            printf("%s = (int)%s >> (%s & 0x1f);\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), r_r(RAB_INSTR_GET_rs(&insn.instruction)));
+            printf("%s = (int)%s >> (%s & 0x1f);\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rt()), r_r((int)insn.instruction.GetO32_rs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_srl:
-            printf("%s = %s >> %d;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), RAB_INSTR_GET_sa(&insn.instruction));
+            printf("%s = %s >> %d;\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rt()), insn.instruction.Get_sa());
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_srlv:
-            printf("%s = %s >> (%s & 0x1f);\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), r_r(RAB_INSTR_GET_rs(&insn.instruction)));
+            printf("%s = %s >> (%s & 0x1f);\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rt()), r_r((int)insn.instruction.GetO32_rs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_subu:
-            printf("%s = %s - %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("%s = %s - %s;\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rs()), r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sw:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("MEM_U32(%s + %d) = %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("MEM_U32(%s + %d) = %s;\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+                   r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_swc1:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("MEM_U32(%s + %d) = %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
-                   r_wr(RAB_INSTR_GET_rt(&insn.instruction)));
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("MEM_U32(%s + %d) = %s;\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+                   r_wr((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sdc1:
-            assert((RAB_INSTR_GET_ft(&insn.instruction) - RABBITIZER_REG_COP1_O32_fv0) % 2 == 0);
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("MEM_U32(%s + %d) = %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
-                   r_wr(RAB_INSTR_GET_ft(&insn.instruction) + 1));
-            printf("MEM_U32(%s + %d + 4) = %s;\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
-                   r_wr(RAB_INSTR_GET_ft(&insn.instruction)));
+            assert(((int)insn.instruction.GetO32_ft() - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0) % 2 == 0);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("MEM_U32(%s + %d) = %s;\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+                   r_wr((int)insn.instruction.GetO32_ft() + 1));
+            printf("MEM_U32(%s + %d + 4) = %s;\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+                   r_wr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_swl:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
             for (int i = 0; i < 4; i++) {
-                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)), s_imm,
-                       i, r_r(RAB_INSTR_GET_rt(&insn.instruction)), (3 - i) * 8);
+                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+                       i, r_r((int)insn.instruction.GetO32_rt()), (3 - i) * 8);
             }
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_swr:
             // TODO: Fix this
-            RabbitizerInstruction_disassembleOperands(&insn.instruction, buf, NULL, 0);
-            printf("//swr %s\n", buf);
+            //RabbitizerInstruction_disassembleOperands(&insn.instruction, buf, NULL, 0);
+            //printf("//swr %s\n", buf);
+            printf("// %s\n", insn.instruction.disassemble(false, "", 0).c_str());
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_trunc_w_s:
-            printf("%s = (int)%s;\n", r_wr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_fr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = (int)%s;\n", r_wr((int)insn.instruction.GetO32_fd()),
+                   r_fr((int)insn.instruction.GetO32_fs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_trunc_w_d:
-            printf("%s = (int)double_from_FloatReg(%s);\n", r_wr(RAB_INSTR_GET_fd(&insn.instruction)),
-                   r_dr(RAB_INSTR_GET_fs(&insn.instruction)));
+            printf("%s = (int)double_from_FloatReg(%s);\n", r_wr((int)insn.instruction.GetO32_fd()),
+                   r_dr((int)insn.instruction.GetO32_fs()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_trunc_l_d:
@@ -2928,44 +2940,44 @@ static void r_dump_instr(int i) {
             goto unimplemented;
 
         case rabbitizer::InstrId::UniqueId::cpu_xor:
-            printf("%s = %s ^ %s;\n", r_r(RAB_INSTR_GET_rd(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), r_r(RAB_INSTR_GET_rt(&insn.instruction)));
+            printf("%s = %s ^ %s;\n", r_r((int)insn.instruction.GetO32_rd()),
+                   r_r((int)insn.instruction.GetO32_rs()), r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_xori:
-            imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("%s = %s ^ 0x%x;\n", r_r(RAB_INSTR_GET_rt(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rs(&insn.instruction)), imm);
+            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("%s = %s ^ 0x%x;\n", r_r((int)insn.instruction.GetO32_rt()),
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tne:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("assert(%s == %s && \"tne %d\");\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), s_imm);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("assert(%s == %s && \"tne %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
+                   r_r((int)insn.instruction.GetO32_rt()), s_imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_teq:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("assert(%s != %s && \"teq %d\");\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), s_imm);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("assert(%s != %s && \"teq %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
+                   r_r((int)insn.instruction.GetO32_rt()), s_imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tge:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("assert((int)%s < (int)%s && \"tge %d\");\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), s_imm);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("assert((int)%s < (int)%s && \"tge %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
+                   r_r((int)insn.instruction.GetO32_rt()), s_imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tgeu:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("assert(%s < %s && \"tgeu %d\");\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), s_imm);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("assert(%s < %s && \"tgeu %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
+                   r_r((int)insn.instruction.GetO32_rt()), s_imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tlt:
-            s_imm = insn.patched ? insn.patched_addr : RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
-            printf("assert((int)%s >= (int)%s && \"tlt %d\");\n", r_r(RAB_INSTR_GET_rs(&insn.instruction)),
-                   r_r(RAB_INSTR_GET_rt(&insn.instruction)), s_imm);
+            s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            printf("assert((int)%s >= (int)%s && \"tlt %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
+                   r_r((int)insn.instruction.GetO32_rt()), s_imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_nop:
@@ -2974,8 +2986,7 @@ static void r_dump_instr(int i) {
 
         default:
         unimplemented:
-            RabbitizerInstruction_disassemble(&insn.instruction, buf, NULL, 0, 0);
-            printf("UNIMPLEMENTED 0x%X : %s\n", insn.instruction.word, buf);
+            printf("UNIMPLEMENTED 0x%X : %s\n", insn.instruction.getRaw(), insn.instruction.disassemble(false, "", 0).c_str());
             break;
     }
 }
@@ -3039,11 +3050,11 @@ static void r_dump_function_signature(Function& f, uint32_t vaddr) {
     printf("(uint8_t *mem, uint32_t sp");
 
     if (f.v0_in) {
-        printf(", uint32_t %s", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
+        printf(", uint32_t %s", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
     }
 
     for (uint32_t i = 0; i < f.nargs; i++) {
-        printf(", uint32_t %s", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + i));
+        printf(", uint32_t %s", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + i));
     }
 
     printf(")");
@@ -3267,7 +3278,7 @@ static void r_dump_c(void) {
         }
 
         for (uint32_t j = f.nargs; j < 4; j++) {
-            printf("uint32_t %s = 0;\n", r_r(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + j));
+            printf("uint32_t %s = 0;\n", r_r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + j));
         }
 
         for (size_t i = addr_to_i(start_addr), end_i = addr_to_i(end_addr); i < end_i; i++) {
