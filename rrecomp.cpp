@@ -386,7 +386,7 @@ static void r_link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, 
                 if (reg == get_dest_reg(rinsns[search].instruction)) {
                     if ((rinsns[search].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_lw) &&
                         rinsns[search].instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) {
-                        int mem_imm0 = RabbitizerInstruction_getProcessedImmediate(&rinsns[search].instruction);
+                        int mem_imm0 = rinsns[search].instruction.getProcessedImmediate();
                         uint32_t got_entry = (mem_imm0 + gp_value_adj) / sizeof(uint32_t);
 
                         if (got_entry < got_locals.size()) {
@@ -558,7 +558,7 @@ static void r_pass1(void) {
         if (insn.instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_bgezal &&
             insn.instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero) {
             insn.patched = true;
-            insn.patched_addr = RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            insn.patched_addr = insn.instruction.getProcessedImmediate();
             insn.instruction.uniqueId = rabbitizer::InstrId::UniqueId::cpu_jal;
             insn.instruction.descriptor = &RabbitizerInstrDescriptor_Descriptors[insn.instruction.uniqueId];
         }
@@ -658,7 +658,7 @@ static void r_pass1(void) {
 
                         for (int j = 5; j <= end; j++) {
                             if ((rinsns[lw - has_extra - j].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_sltiu) &&
-                                (&rinsns[lw - has_extra - j].instruction.GetO32_rt() ==
+                                (rinsns[lw - has_extra - j].instruction.GetO32_rt() ==
                                  rabbitizer::Registers::Cpu::GprO32::GPR_O32_at)) {
                                 sltiu_index = j;
                                 break;
@@ -884,7 +884,7 @@ static void r_pass1(void) {
             } break;
 
             case rabbitizer::InstrId::UniqueId::cpu_jalr: {
-                RabbitizerRegister_GprO32 rs = (RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(&insn.instruction);
+                rabbitizer::Registers::Cpu::GprO32 rs = insn.instruction.GetO32_rs();
 
                 if (rs == rabbitizer::Registers::Cpu::GprO32::GPR_O32_t9) {
                     r_link_with_jalr(i);
@@ -905,9 +905,9 @@ static void r_pass1(void) {
         }
 
         if ((insn.instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_addu) &&
-            (RAB_INSTR_GET_rd(&insn.instruction) == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) &&
-            (RAB_INSTR_GET_rs(&insn.instruction) == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) &&
-            (RAB_INSTR_GET_rt(&insn.instruction) == rabbitizer::Registers::Cpu::GprO32::GPR_O32_t9) && i >= 2) {
+            (insn.instruction.GetO32_rd() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) &&
+            (insn.instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) &&
+            (insn.instruction.GetO32_rt() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_t9) && i >= 2) {
             // state->function_entry_points.insert(vaddr + (i - 2) * 4);
             for (size_t j = i - 2; j <= i; j++) {
                 rinsns[j].patched = true;
@@ -930,7 +930,7 @@ static void r_pass2(void) {
         RInsn& insn = rinsns[i];
 
         if ((insn.instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_jr) &&
-            (RAB_INSTR_GET_rs(&insn.instruction) == rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra)) {
+            (insn.instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra)) {
             auto it = find_function(addr);
             assert(it != functions.end());
 
@@ -938,9 +938,9 @@ static void r_pass2(void) {
         }
 
         if (insn.is_global_got_memop &&
-            (text_vaddr <= RabbitizerInstruction_getProcessedImmediate(&insn.instruction)) &&
-            (RabbitizerInstruction_getProcessedImmediate(&insn.instruction) < text_vaddr + text_section_len)) {
-            uint32_t faddr = RabbitizerInstruction_getProcessedImmediate(&insn.instruction);
+            (text_vaddr <= insn.instruction.getProcessedImmediate()) &&
+            (insn.instruction.getProcessedImmediate() < text_vaddr + text_section_len)) {
+            uint32_t faddr = insn.instruction.getProcessedImmediate();
 
             li_function_pointers.insert(faddr);
             functions[faddr].referenced_by_function_pointer = true;
@@ -998,16 +998,18 @@ static void r_pass2(void) {
 
                 // JR $RA
                 rinsns[i].patched = true;
-                RabbitizerInstruction_init(&rinsns[i].instruction, 0x03E00008, rinsns[i].instruction.vram);
-                RabbitizerInstruction_processUniqueId(&rinsns[i].instruction);
+                //RabbitizerInstruction_init(&rinsns[i].instruction, 0x03E00008, rinsns[i].instruction.vram);
+                //RabbitizerInstruction_processUniqueId(&rinsns[i].instruction);
+                rinsns[i].instruction = rabbitizer::InstructionCpu(0x03E00008, rinsns[i].instruction.getVram());
                 it->second.returns.push_back(text_vaddr + i * 4 + 4);
                 i++;
 
                 for (uint32_t j = 0; j < 4; j++) {
                     // NOP
                     rinsns[i].patched = true;
-                    RabbitizerInstruction_init(&rinsns[i].instruction, 0, rinsns[i].instruction.vram);
-                    RabbitizerInstruction_processUniqueId(&rinsns[i].instruction);
+                    //RabbitizerInstruction_init(&rinsns[i].instruction, 0, rinsns[i].instruction.vram);
+                    //RabbitizerInstruction_processUniqueId(&rinsns[i].instruction);
+                    rinsns[i].instruction = rabbitizer::InstructionCpu(0, rinsns[i].instruction.getVram());
                     i++;
                 }
             } else if (str_it != symbol_names.end() && str_it->second == "xfree") {
@@ -1036,15 +1038,17 @@ static void r_pass2(void) {
 
                 // JR $RA
                 rinsns[i].patched = true;
-                RabbitizerInstruction_init(&rinsns[i].instruction, 0x03E00008, rinsns[i].instruction.vram);
-                RabbitizerInstruction_processUniqueId(&rinsns[i].instruction);
+                //RabbitizerInstruction_init(&rinsns[i].instruction, 0x03E00008, rinsns[i].instruction.vram);
+                //RabbitizerInstruction_processUniqueId(&rinsns[i].instruction);
+                rinsns[i].instruction = rabbitizer::InstructionCpu(0x03E00008, rinsns[i].instruction.getVram());
                 it->second.returns.push_back(text_vaddr + i * 4 + 4);
                 i++;
 
                 // NOP
                 rinsns[i].patched = true;
-                RabbitizerInstruction_init(&rinsns[i].instruction, 0, rinsns[i].instruction.vram);
-                RabbitizerInstruction_processUniqueId(&rinsns[i].instruction);
+                //RabbitizerInstruction_init(&rinsns[i].instruction, 0, rinsns[i].instruction.vram);
+                //RabbitizerInstruction_processUniqueId(&rinsns[i].instruction);
+                rinsns[i].instruction = rabbitizer::InstructionCpu(0, rinsns[i].instruction.getVram());
             } else if ((rinsns[i].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_lw) &&
                        (rinsns[i + 1].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_move) &&
                        (rinsns[i + 2].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_jalr)) {
@@ -1112,8 +1116,8 @@ static void r_pass3(void) {
                 r_add_edge(i, i + 1);
                 r_add_edge(i + 1,
                            addr_to_i(insn.patched ? insn.patched_addr
-                                                  : insn.instruction.vram +
-                                                        RabbitizerInstruction_getBranchOffset(&insn.instruction)));
+                                                  : insn.instruction.getVram() +
+                                                        insn.instruction.getBranchOffset()));
                 break;
 
             case rabbitizer::InstrId::UniqueId::cpu_beql:
@@ -1128,8 +1132,8 @@ static void r_pass3(void) {
                 r_add_edge(i, i + 2);
                 r_add_edge(i + 1,
                            addr_to_i(insn.patched ? insn.patched_addr
-                                                  : insn.instruction.vram +
-                                                        RabbitizerInstruction_getBranchOffset(&insn.instruction)));
+                                                  : insn.instruction.getVram() +
+                                                        insn.instruction.getBranchOffset()));
                 rinsns[i + 1].no_following_successor = true; // don't inspect delay slot
                 break;
 
@@ -1138,8 +1142,8 @@ static void r_pass3(void) {
                 r_add_edge(i, i + 1);
                 r_add_edge(i + 1,
                            addr_to_i(insn.patched ? insn.patched_addr
-                                                  : insn.instruction.vram +
-                                                        RabbitizerInstruction_getBranchOffset(&insn.instruction)));
+                                                  : insn.instruction.getVram() +
+                                                        insn.instruction.getGenericBranchOffset(insn.instruction.getVram())));
                 rinsns[i + 1].no_following_successor = true; // don't inspect delay slot
                 break;
 
@@ -1158,7 +1162,7 @@ static void r_pass3(void) {
                         r_add_edge(i + 1, addr_to_i(dest_addr));
                     }
                 } else {
-                    assert(RAB_INSTR_GET_rs(&insn.instruction) == rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra &&
+                    assert(insn.instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra &&
                            "jump to address in register not supported");
                 }
 
@@ -1170,8 +1174,8 @@ static void r_pass3(void) {
                 r_add_edge(i, i + 1);
 
                 uint32_t dest =
-                    insn.patched ? insn.patched_addr : RabbitizerInstruction_getInstrIndexAsVram(&insn.instruction);
-                fprintf(stderr, "%d: %X: %X\n", i, insn.instruction.word, dest);
+                    insn.patched ? insn.patched_addr : insn.instruction.getInstrIndexAsVram();
+                fprintf(stderr, "%d: %X: %X\n", i, insn.instruction.getRaw(), dest);
 
                 if (dest > mcount_addr && dest >= text_vaddr && dest < text_vaddr + text_section_len) {
                     r_add_edge(i + 1, addr_to_i(dest), true);
@@ -1204,11 +1208,11 @@ static void r_pass3(void) {
     }
 }
 
-#define rabbitizer::Registers::Cpu::GprO32::GPR_O32_hi (RabbitizerRegister_GprO32)(rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra + 1)
-#define rabbitizer::Registers::Cpu::GprO32::GPR_O32_lo (RabbitizerRegister_GprO32)(rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra + 2)
+#define GPR_O32_hi static_cast<rabbitizer::Registers::Cpu::GprO32>((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra + 1)
+#define GPR_O32_lo static_cast<rabbitizer::Registers::Cpu::GprO32>((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra + 2)
 
-static uint64_t r_map_reg(RabbitizerRegister_GprO32 reg) {
-    return (uint64_t)1 << (reg - rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero + 1);
+static uint64_t r_map_reg(rabbitizer::Registers::Cpu::GprO32 reg) {
+    return (uint64_t)1 << ((int)reg - (int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero + 1);
 }
 
 static uint64_t r_temporary_regs(void) {
@@ -1370,11 +1374,11 @@ static TYPE r_insn_to_type(RInsn& insn) {
     }
 }
 
-static uint64_t get_dest_reg_mask(const RabbitizerInstruction* instr) {
-    if (RabbitizerInstrDescriptor_modifiesRt(instr->descriptor)) {
-        return r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(instr));
-    } else if (RabbitizerInstrDescriptor_modifiesRd(instr->descriptor)) {
-        return r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rd(instr));
+static uint64_t get_dest_reg_mask(const rabbitizer::InstructionCpu &instr) {
+    if (instr.modifiesRt()) {
+        return r_map_reg(instr.GetO32_rt());
+    } else if (instr.modifiesRd()) {
+        return r_map_reg(instr.GetO32_rd());
     } else {
         // assert(!"No destination registers");
         // Fine since we want to add nothing
@@ -1382,11 +1386,11 @@ static uint64_t get_dest_reg_mask(const RabbitizerInstruction* instr) {
     }
 }
 
-static uint64_t get_single_source_reg_mask(const RabbitizerInstruction* instr) {
-    if (RabbitizerInstruction_hasOperandAlias(instr, RAB_OPERAND_cpu_rs)) {
-        return r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(instr));
-    } else if (RabbitizerInstruction_hasOperandAlias(instr, RAB_OPERAND_cpu_rt)) {
-        return r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(instr));
+static uint64_t get_single_source_reg_mask(const rabbitizer::InstructionCpu &instr) {
+    if (instr.hasOperandAlias(rabbitizer::OperandType::cpu_rs)) {
+        return r_map_reg(instr.GetO32_rs());
+    } else if (instr.hasOperandAlias(rabbitizer::OperandType::cpu_rt)) {
+        return r_map_reg(instr.GetO32_rt());
     } else {
         // assert(!"No source registers");
         // Fine since we want to add nothing
@@ -1394,15 +1398,15 @@ static uint64_t get_single_source_reg_mask(const RabbitizerInstruction* instr) {
     }
 }
 
-static uint64_t get_all_source_reg_mask(const RabbitizerInstruction* instr) {
+static uint64_t get_all_source_reg_mask(const rabbitizer::InstructionCpu &instr) {
     uint64_t ret = 0;
 
-    if (RabbitizerInstruction_hasOperandAlias(instr, RAB_OPERAND_cpu_rs)) {
-        ret |= r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rs(instr));
+    if (instr.hasOperandAlias(rabbitizer::OperandType::cpu_rs)) {
+        ret |= r_map_reg(instr.GetO32_rs());
     }
-    if (RabbitizerInstruction_hasOperandAlias(instr, RAB_OPERAND_cpu_rt) &&
-        !RabbitizerInstrDescriptor_modifiesRt(instr->descriptor)) {
-        ret |= r_map_reg((RabbitizerRegister_GprO32)RAB_INSTR_GET_rt(instr));
+    if (instr.hasOperandAlias(rabbitizer::OperandType::cpu_rt) &&
+        !instr.modifiesRt()) {
+        ret |= r_map_reg(instr.GetO32_rt());
     }
     return ret;
 }
@@ -1437,28 +1441,28 @@ static void r_pass4(void) {
 
         switch (r_insn_to_type(insn)) {
             case TYPE_1D:
-                live |= get_dest_reg_mask(&insn.instruction);
+                live |= get_dest_reg_mask(insn.instruction);
                 break;
 
             case TYPE_1D_1S:
-                src_regs_map = get_single_source_reg_mask(&insn.instruction);
+                src_regs_map = get_single_source_reg_mask(insn.instruction);
                 if (live & src_regs_map) {
-                    live |= get_dest_reg_mask(&insn.instruction);
+                    live |= get_dest_reg_mask(insn.instruction);
                 }
                 break;
 
             case TYPE_1D_2S:
-                src_regs_map = get_all_source_reg_mask(&insn.instruction);
+                src_regs_map = get_all_source_reg_mask(insn.instruction);
                 if ((live & src_regs_map) == src_regs_map) {
-                    live |= get_dest_reg_mask(&insn.instruction);
+                    live |= get_dest_reg_mask(insn.instruction);
                 }
                 break;
 
             case TYPE_D_LO_HI_2S:
-                src_regs_map = get_all_source_reg_mask(&insn.instruction);
+                src_regs_map = get_all_source_reg_mask(insn.instruction);
                 if ((live & src_regs_map) == src_regs_map) {
-                    live |= r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_lo);
-                    live |= r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_hi);
+                    live |= r_map_reg(GPR_O32_lo);
+                    live |= r_map_reg(GPR_O32_hi);
                 }
                 break;
 
@@ -1644,40 +1648,40 @@ static void r_pass5(void) {
 
         switch (r_insn_to_type(insn)) {
             case TYPE_1S:
-                live |= get_single_source_reg_mask(&insn.instruction);
+                live |= get_single_source_reg_mask(insn.instruction);
                 break;
 
             case TYPE_1S_POS1:
-                live |= get_single_source_reg_mask(&insn.instruction);
+                live |= get_single_source_reg_mask(insn.instruction);
                 break;
 
             case TYPE_2S:
-                live |= get_all_source_reg_mask(&insn.instruction);
+                live |= get_all_source_reg_mask(insn.instruction);
                 break;
 
             case TYPE_1D:
-                live &= ~get_dest_reg_mask(&insn.instruction);
+                live &= ~get_dest_reg_mask(insn.instruction);
                 break;
 
             case TYPE_1D_1S:
-                if (live & get_dest_reg_mask(&insn.instruction)) {
-                    live &= ~get_dest_reg_mask(&insn.instruction);
-                    live |= get_single_source_reg_mask(&insn.instruction);
+                if (live & get_dest_reg_mask(insn.instruction)) {
+                    live &= ~get_dest_reg_mask(insn.instruction);
+                    live |= get_single_source_reg_mask(insn.instruction);
                 }
                 break;
 
             case TYPE_1D_2S:
-                if (live & get_dest_reg_mask(&insn.instruction)) {
-                    live &= ~get_dest_reg_mask(&insn.instruction);
-                    live |= get_all_source_reg_mask(&insn.instruction);
+                if (live & get_dest_reg_mask(insn.instruction)) {
+                    live &= ~get_dest_reg_mask(insn.instruction);
+                    live |= get_all_source_reg_mask(insn.instruction);
                 }
                 break;
 
             case TYPE_D_LO_HI_2S: {
-                bool used = (live & (r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_lo) | r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_hi)));
-                live &= ~(r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_lo) | r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_hi));
+                bool used = (live & (r_map_reg(GPR_O32_lo) | r_map_reg(GPR_O32_hi)));
+                live &= ~(r_map_reg(GPR_O32_lo) | r_map_reg(GPR_O32_hi));
                 if (used) {
-                    live |= get_all_source_reg_mask(&insn.instruction);
+                    live |= get_all_source_reg_mask(insn.instruction);
                 }
             } break;
 
@@ -1733,7 +1737,7 @@ static void r_pass5(void) {
                 if (found_fn->flags & FLAG_VARARG) {
                     // Assume the worst, that all four registers are used
                     for (int j = 0; j < 4; j++) {
-                        args |= r_map_reg((RabbitizerRegister_GprO32)(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + j));
+                        args |= r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + j));
                     }
                 }
 
@@ -1749,7 +1753,7 @@ static void r_pass5(void) {
                         case 't':
                             only_floats_so_far = false;
                             if (pos < 4) {
-                                args |= r_map_reg((RabbitizerRegister_GprO32)(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos));
+                                args |= r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos));
                             }
                             ++pos;
                             break;
@@ -1758,7 +1762,7 @@ static void r_pass5(void) {
                             if (only_floats_so_far && pos_float < 4) {
                                 pos_float += 2;
                             } else if (pos < 4) {
-                                args |= r_map_reg((RabbitizerRegister_GprO32)(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos));
+                                args |= r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos));
                             }
                             ++pos;
                             break;
@@ -1771,8 +1775,8 @@ static void r_pass5(void) {
                             if (only_floats_so_far && pos_float < 4) {
                                 pos_float += 2;
                             } else if (pos < 4) {
-                                args |= r_map_reg((RabbitizerRegister_GprO32)(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos)) |
-                                        r_map_reg((RabbitizerRegister_GprO32)(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos + 1));
+                                args |= r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos)) |
+                                        r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos + 1));
                             }
                             pos += 2;
                             break;
@@ -1784,8 +1788,8 @@ static void r_pass5(void) {
                             }
                             only_floats_so_far = false;
                             if (pos < 4) {
-                                args |= r_map_reg((RabbitizerRegister_GprO32)(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos)) |
-                                        r_map_reg((RabbitizerRegister_GprO32)(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos + 1));
+                                args |= r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos)) |
+                                        r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos + 1));
                             }
                             pos += 2;
                             break;
@@ -1844,7 +1848,7 @@ static void r_pass6(void) {
         RInsn& insn = rinsns.at(addr_to_i(addr));
 
         for (int i = 0; i < 4; i++) {
-            if (insn.f_livein & insn.b_livein & r_map_reg((RabbitizerRegister_GprO32)(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + i))) {
+            if (insn.f_livein & insn.b_livein & r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + i))) {
                 f.nargs = 1 + i;
             }
         }
@@ -1854,8 +1858,6 @@ static void r_pass6(void) {
 }
 
 static void r_dump(void) {
-    char buf[0x100] = { 0 };
-
     for (size_t i = 0; i < rinsns.size(); i++) {
         RInsn& insn = rinsns[i];
         uint32_t vaddr = text_vaddr + i * sizeof(uint32_t);
@@ -1868,8 +1870,7 @@ static void r_dump(void) {
         }
 
         // TODO: construct an immediate override for the instructions
-        RabbitizerInstruction_disassemble(&insn.instruction, buf, NULL, 0, 0);
-        printf("\t%s", buf);
+        printf("\t%s", insn.instruction.disassemble(false, "", 0).c_str());
         if (insn.patched) {
             printf("\t[patched, immediate now 0x%X]", insn.patched_addr);
         }
@@ -1910,7 +1911,7 @@ static const char* r_wr(uint32_t reg) {
     };
     // clang-format on
 
-    return regs[reg - RABBITIZER_REG_COP1_O32_fv0];
+    return regs[reg - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0];
 }
 
 static const char* r_fr(uint32_t reg) {
@@ -2210,19 +2211,19 @@ static void r_dump_instr(int i) {
     if (!insn.instruction.descriptor->isJump && !conservative) {
         switch (r_insn_to_type(insn)) {
             case TYPE_1S:
-                if (!(insn.f_livein & get_single_source_reg_mask(&insn.instruction))) {
+                if (!(insn.f_livein & get_single_source_reg_mask(insn.instruction))) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                 }
                 break;
 
             case TYPE_1S_POS1:
-                if (!(insn.f_livein & get_single_source_reg_mask(&insn.instruction))) {
+                if (!(insn.f_livein & get_single_source_reg_mask(insn.instruction))) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                 }
                 break;
 
             case TYPE_2S:
-                src_regs_map = src_regs_map = get_all_source_reg_mask(&insn.instruction);
+                src_regs_map = src_regs_map = get_all_source_reg_mask(insn.instruction);
                 if (!((insn.f_livein & src_regs_map) == src_regs_map)) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                 }
@@ -2235,25 +2236,25 @@ static void r_dump_instr(int i) {
                 }
                 // fallthrough
             case TYPE_1D_1S:
-                if (!(insn.f_livein & get_single_source_reg_mask(&insn.instruction))) {
+                if (!(insn.f_livein & get_single_source_reg_mask(insn.instruction))) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                     break;
                 }
                 // fallthrough
             case TYPE_1D:
-                if (!(insn.b_liveout & get_dest_reg_mask(&insn.instruction))) {
+                if (!(insn.b_liveout & get_dest_reg_mask(insn.instruction))) {
                     printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
                 }
                 break;
 
             case TYPE_D_LO_HI_2S:
-                src_regs_map = src_regs_map = get_all_source_reg_mask(&insn.instruction);
+                src_regs_map = src_regs_map = get_all_source_reg_mask(insn.instruction);
                 if (!((insn.f_livein & src_regs_map) == src_regs_map)) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                     break;
                 }
 
-                if (!(insn.b_liveout & (r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_lo) | r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_hi)))) {
+                if (!(insn.b_liveout & (r_map_reg(GPR_O32_lo) | r_map_reg(GPR_O32_hi)))) {
                     printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
                 }
                 break;
