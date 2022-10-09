@@ -6,14 +6,21 @@
 #pragma once
 
 
+#include "common/RabbitizerVersion.h"
+#include "common/RabbitizerConfig.h"
+
 #include "instructions/OperandType.hpp"
 #include "instructions/InstrId.hpp"
 //#include "instructions/InstrSuffix.hpp"
 //#include "instructions/InstrDescriptor.hpp"
 #include "instructions/Registers.hpp"
-#include "instructions/Instruction.hpp"
-//#include "instructions/InstructionRsp.hpp"
-//#include "instructions/InstructionR5900.hpp"
+#include "instructions/InstructionBase.hpp"
+#include "instructions/InstructionCpu.hpp"
+#include "instructions/InstructionRsp.hpp"
+#include "instructions/InstructionR5900.hpp"
+
+#include "analysis/LoPairingInfo.hpp"
+#include "analysis/RegistersTracker.hpp"
 
 
 #endif

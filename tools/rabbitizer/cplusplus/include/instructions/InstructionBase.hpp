@@ -1,8 +1,8 @@
 /* SPDX-FileCopyrightText: © 2022 Decompollaborate */
 /* SPDX-License-Identifier: MIT */
 
-#ifndef RABBITIZER_INSTRUCTION_HPP
-#define RABBITIZER_INSTRUCTION_HPP
+#ifndef RABBITIZER_INSTRUCTION_BASE_HPP
+#define RABBITIZER_INSTRUCTION_BASE_HPP
 #pragma once
 
 #include <string>
@@ -20,15 +20,16 @@ namespace rabbitizer {
     protected:
         RabbitizerInstruction instr;
 
-        InstructionBase();
-        virtual ~InstructionBase();
+        InstructionBase() = default;
+        virtual ~InstructionBase() = default;
 
     public:
         /**
-         * Returns a reference to the inner RabbitizerInstruction.
+         * Returns a pointer to the inner RabbitizerInstruction.
          * It is recommended to not mess with it unless you know what you are doing.
          */
-        RabbitizerInstruction &getCInstr();
+        RabbitizerInstruction *getCPtr();
+        const RabbitizerInstruction *getCPtr() const;
 
         /* getters */
 
@@ -63,6 +64,8 @@ namespace rabbitizer {
 
         Registers::Cpu::Cop1Control Get_cop1cs() const;
 
+        Registers::Cpu::Cop2 Get_cop2t() const;
+
         uint8_t Get_op() const;
 
         uint32_t Get_code() const;
@@ -75,8 +78,6 @@ namespace rabbitizer {
         uint8_t Get_fc() const;
         uint8_t Get_cond() const;
 
-        Registers::Cpu::Cop2 Get_cop2t() const;
-
         uint8_t Get_tf() const;
         uint8_t Get_nd() const;
         uint8_t Get_bc_fmt() const;
@@ -84,6 +85,60 @@ namespace rabbitizer {
         uint8_t Get_stype() const;
 
         /* getters */
+
+
+        /* setters */
+
+        void Set_opcode(uint8_t val);
+        void Set_sa(uint8_t val);
+        void Set_function(uint8_t val);
+
+        void Set_rs(Registers::Cpu::GprO32 val);
+        void Set_rt(Registers::Cpu::GprO32 val);
+        void Set_rd(Registers::Cpu::GprO32 val);
+
+        void Set_rs(Registers::Cpu::GprN32 val);
+        void Set_rt(Registers::Cpu::GprN32 val);
+        void Set_rd(Registers::Cpu::GprN32 val);
+
+        void Set_cop0d(Registers::Cpu::Cop0 val);
+
+        void Set_instr_index(uint32_t val);
+        void Set_immediate(uint16_t val);
+
+        void Set_fs(Registers::Cpu::Cop1O32 val);
+        void Set_ft(Registers::Cpu::Cop1O32 val);
+        void Set_fd(Registers::Cpu::Cop1O32 val);
+
+        void Set_fs(Registers::Cpu::Cop1N32 val);
+        void Set_ft(Registers::Cpu::Cop1N32 val);
+        void Set_fd(Registers::Cpu::Cop1N32 val);
+
+        void Set_fs(Registers::Cpu::Cop1N64 val);
+        void Set_ft(Registers::Cpu::Cop1N64 val);
+        void Set_fd(Registers::Cpu::Cop1N64 val);
+
+        void Set_cop1cs(Registers::Cpu::Cop1Control val);
+
+        void Set_cop2t(Registers::Cpu::Cop2 val);
+
+        void Set_op(uint8_t val);
+
+        void Set_code(uint32_t val);
+
+        void Set_copraw(uint32_t val);
+
+        void Set_fmt(uint8_t val);
+        void Set_fc(uint8_t val);
+        void Set_cond(uint8_t val);
+
+        void Set_tf(uint8_t val);
+        void Set_nd(uint8_t val);
+        void Set_bc_fmt(uint8_t val);
+
+        void Set_stype(uint8_t val);
+
+        /* setters */
 
 
         /* more getters */
@@ -178,40 +233,18 @@ namespace rabbitizer {
 
         bool mustDisasmAsData() const;
 
-        #if 0
-        size_t RabbitizerInstruction_disassembleOperands(char *dst, const char *immOverride, size_t immOverrideLength) const;
+        std::string disassembleOperands() const;
+        std::string disassembleOperands(std::string_view immOverride) const;
 
-        size_t RabbitizerInstruction_disassembleInstruction(char *dst, const char *immOverride, size_t immOverrideLength, int extraLJust) const;
+        std::string disassembleInstruction(int extraLJust) const;
+        std::string disassembleInstruction(int extraLJust, std::string_view immOverride) const;
 
-        size_t RabbitizerInstruction_disassembleAsData(char *dst, int extraLJust) const;
-        #endif
+        std::string disassembleAsData(int extraLJust) const;
 
-        std::string disassemble(bool useImmOverride, std::string_view immOverride, int extraLJust) const;
+        std::string disassemble(int extraLJust) const;
+        std::string disassemble(int extraLJust, std::string_view immOverride) const;
 
         /* Disassembly */
-    };
-
-
-    class InstructionCpu : public InstructionBase {
-    public:
-        InstructionCpu(uint32_t word, uint32_t vram);
-        virtual ~InstructionCpu();
-    };
-
-    class InstructionRsp : public InstructionBase {
-    public:
-        InstructionRsp(uint32_t word, uint32_t vram);
-        virtual ~InstructionRsp();
-
-        // TODO: more methods
-    };
-
-    class InstructionR5900 : public InstructionBase {
-    public:
-        InstructionR5900(uint32_t word, uint32_t vram);
-        virtual ~InstructionR5900();
-
-        // TODO: more methods
     };
 };
 
