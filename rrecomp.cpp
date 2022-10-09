@@ -120,39 +120,39 @@ struct Function {
     bool referenced_by_function_pointer;
 };
 
-static bool conservative;
+bool conservative;
 
-static const uint8_t* text_section;
-static uint32_t text_section_len;
-static uint32_t text_vaddr;
+const uint8_t* text_section;
+uint32_t text_section_len;
+uint32_t text_vaddr;
 
-static const uint8_t* rodata_section;
-static uint32_t rodata_section_len;
-static uint32_t rodata_vaddr;
+const uint8_t* rodata_section;
+uint32_t rodata_section_len;
+uint32_t rodata_vaddr;
 
-static const uint8_t* data_section;
-static uint32_t data_section_len;
-static uint32_t data_vaddr;
+const uint8_t* data_section;
+uint32_t data_section_len;
+uint32_t data_vaddr;
 
-static uint32_t bss_section_len;
-static uint32_t bss_vaddr;
+uint32_t bss_section_len;
+uint32_t bss_vaddr;
 
-static vector<RInsn> rinsns;
-static set<uint32_t> label_addresses;
-static vector<uint32_t> got_globals;
-static vector<uint32_t> got_locals;
-static uint32_t gp_value;
-static uint32_t gp_value_adj;
+vector<RInsn> rinsns;
+set<uint32_t> label_addresses;
+vector<uint32_t> got_globals;
+vector<uint32_t> got_locals;
+uint32_t gp_value;
+uint32_t gp_value_adj;
 
-static map<uint32_t, string> symbol_names;
+map<uint32_t, string> symbol_names;
 
-static vector<pair<uint32_t, uint32_t>> data_function_pointers;
-static set<uint32_t> li_function_pointers;
-static map<uint32_t, Function> functions;
-static uint32_t main_addr;
-static uint32_t mcount_addr;
-static uint32_t procedure_table_start;
-static uint32_t procedure_table_len;
+vector<pair<uint32_t, uint32_t>> data_function_pointers;
+set<uint32_t> li_function_pointers;
+map<uint32_t, Function> functions;
+uint32_t main_addr;
+uint32_t mcount_addr;
+uint32_t procedure_table_start;
+uint32_t procedure_table_len;
 
 #define FLAG_NO_MEM 1
 #define FLAG_VARARG 2
@@ -174,7 +174,7 @@ static uint32_t procedure_table_len;
  *
  * flags:   use defines above
  */
-static const struct ExternFunction {
+const struct ExternFunction {
     const char* name;
     const char* params;
     int flags;
@@ -341,7 +341,7 @@ static const struct ExternFunction {
     { "__assert", "vppi", 0 },
 };
 
-static void r_disassemble(void) {
+void r_disassemble(void) {
     uint32_t i;
     for (i = 0; i < text_section_len; i += 4) {
         uint32_t word = read_u32_be(&text_section[i]);
@@ -362,13 +362,13 @@ static void r_disassemble(void) {
     }
 }
 
-static void add_function(uint32_t addr) {
+void add_function(uint32_t addr) {
     if (addr >= text_vaddr && addr < text_vaddr + text_section_len) {
         functions[addr];
     }
 }
 
-static map<uint32_t, Function>::iterator find_function(uint32_t addr) {
+map<uint32_t, Function>::iterator find_function(uint32_t addr) {
     if (functions.size() == 0) {
         return functions.end();
     }
@@ -383,7 +383,7 @@ static map<uint32_t, Function>::iterator find_function(uint32_t addr) {
     return it;
 }
 
-static rabbitizer::Registers::Cpu::GprO32 get_dest_reg(const rabbitizer::InstructionCpu& instr) {
+rabbitizer::Registers::Cpu::GprO32 get_dest_reg(const rabbitizer::InstructionCpu& instr) {
     if (instr.modifiesRt()) {
         return instr.GetO32_rt();
     } else if (instr.modifiesRd()) {
@@ -396,7 +396,7 @@ static rabbitizer::Registers::Cpu::GprO32 get_dest_reg(const rabbitizer::Instruc
 }
 
 // try to find a matching LUI for a given register
-static void r_link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, int mem_imm) {
+void r_link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, int mem_imm) {
 #define MAX_LOOKBACK 128
     // don't attempt to compute addresses for zero offset
     // end search after some sane max number of instructions
@@ -508,7 +508,7 @@ end:;
 }
 
 // for a given `jalr t9`, find the matching t9 load
-static void r_link_with_jalr(int offset) {
+void r_link_with_jalr(int offset) {
     // end search after some sane max number of instructions
     int end_search = std::max(0, offset - MAX_LOOKBACK);
 
@@ -601,9 +601,11 @@ end:;
 }
 
 // TODO: uniformise use of insn vs rinsns[i]
-static void r_pass1(void) {
+void r_pass1(void) {
     for (size_t i = 0; i < rinsns.size(); i++) {
         RInsn& insn = rinsns[i];
+
+        insn.instruction.GetO32_rs();
 
         // TODO: replace with BAL. Or just fix properly
         if ((insn.instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_bgezal &&
@@ -1017,11 +1019,11 @@ static void r_pass1(void) {
     }
 }
 
-static uint32_t addr_to_i(uint32_t addr) {
+uint32_t addr_to_i(uint32_t addr) {
     return (addr - text_vaddr) / 4;
 }
 
-static void r_pass2(void) {
+void r_pass2(void) {
     // Find returns in each function
     for (size_t i = 0; i < rinsns.size(); i++) {
         uint32_t addr = text_vaddr + i * 4;
@@ -1184,7 +1186,7 @@ static void r_pass2(void) {
     }
 }
 
-static void r_add_edge(uint32_t from, uint32_t to, bool function_entry = false, bool function_exit = false,
+void r_add_edge(uint32_t from, uint32_t to, bool function_entry = false, bool function_exit = false,
                        bool extern_function = false, bool function_pointer = false) {
     Edge fe = Edge(), be = Edge();
 
@@ -1202,7 +1204,7 @@ static void r_add_edge(uint32_t from, uint32_t to, bool function_entry = false, 
     rinsns[to].predecessors.push_back(be);
 }
 
-static void r_pass3(void) {
+void r_pass3(void) {
     // Build graph
     for (size_t i = 0; i < rinsns.size(); i++) {
         uint32_t addr = text_vaddr + i * 4;
@@ -1320,11 +1322,11 @@ static void r_pass3(void) {
 #define GPR_O32_lo \
     static_cast<rabbitizer::Registers::Cpu::GprO32>((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra + 2)
 
-static uint64_t r_map_reg(rabbitizer::Registers::Cpu::GprO32 reg) {
+uint64_t r_map_reg(rabbitizer::Registers::Cpu::GprO32 reg) {
     return (uint64_t)1 << ((int)reg - (int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero + 1);
 }
 
-static uint64_t r_temporary_regs(void) {
+uint64_t r_temporary_regs(void) {
     // clang-format off
     return
         r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_t0) |
@@ -1351,7 +1353,7 @@ typedef enum {
     TYPE_1S_POS1     // ?, 1 in
 } TYPE;
 
-static TYPE r_insn_to_type(RInsn& insn) {
+TYPE r_insn_to_type(RInsn& insn) {
     switch (insn.instruction.getUniqueId()) {
 
         case rabbitizer::InstrId::UniqueId::cpu_add_s:
@@ -1485,7 +1487,7 @@ static TYPE r_insn_to_type(RInsn& insn) {
     }
 }
 
-static uint64_t get_dest_reg_mask(const rabbitizer::InstructionCpu& instr) {
+uint64_t get_dest_reg_mask(const rabbitizer::InstructionCpu& instr) {
     if (instr.modifiesRt()) {
         return r_map_reg(instr.GetO32_rt());
     } else if (instr.modifiesRd()) {
@@ -1497,7 +1499,7 @@ static uint64_t get_dest_reg_mask(const rabbitizer::InstructionCpu& instr) {
     }
 }
 
-static uint64_t get_single_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
+uint64_t get_single_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
     if (instr.hasOperandAlias(rabbitizer::OperandType::cpu_rs)) {
         return r_map_reg(instr.GetO32_rs());
     } else if (instr.hasOperandAlias(rabbitizer::OperandType::cpu_rt)) {
@@ -1509,7 +1511,7 @@ static uint64_t get_single_source_reg_mask(const rabbitizer::InstructionCpu& ins
     }
 }
 
-static uint64_t get_all_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
+uint64_t get_all_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
     uint64_t ret = 0;
 
     if (instr.hasOperandAlias(rabbitizer::OperandType::cpu_rs)) {
@@ -1521,7 +1523,7 @@ static uint64_t get_all_source_reg_mask(const rabbitizer::InstructionCpu& instr)
     return ret;
 }
 
-static void r_pass4(void) {
+void r_pass4(void) {
     vector<uint32_t> q; // Why is this called q?
     uint64_t livein_func_start = 1U | r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0) |
                                  r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a1) |
@@ -1731,7 +1733,7 @@ static void r_pass4(void) {
     }
 }
 
-static void r_pass5(void) {
+void r_pass5(void) {
     vector<uint32_t> q;
 
     assert(functions.count(main_addr));
@@ -1976,7 +1978,7 @@ static void r_pass5(void) {
     }
 }
 
-static void r_pass6(void) {
+void r_pass6(void) {
     for (auto& it : functions) {
         uint32_t addr = it.first;
         Function& f = it.second;
@@ -2006,7 +2008,7 @@ static void r_pass6(void) {
     }
 }
 
-static void r_dump(void) {
+void r_dump(void) {
     for (size_t i = 0; i < rinsns.size(); i++) {
         RInsn& insn = rinsns[i];
         uint32_t vaddr = text_vaddr + i * sizeof(uint32_t);
@@ -2027,7 +2029,7 @@ static void r_dump(void) {
     }
 }
 
-static const char* r_r(uint32_t reg) {
+const char* r_r(uint32_t reg) {
     static const char* regs[] = {
         /*  */ "zero", "at", "v0", "v1",
         /*  */ "a0",   "a1", "a2", "a3",
@@ -2040,7 +2042,7 @@ static const char* r_r(uint32_t reg) {
     return regs[reg];
 }
 
-static const char* r_wr(uint32_t reg) {
+const char* r_wr(uint32_t reg) {
     // clang-format off
     static const char *regs[] = {
         "f0.w[0]", "f0.w[1]",
@@ -2068,7 +2070,7 @@ static const char* r_wr(uint32_t reg) {
     return regs[index];
 }
 
-static const char* r_fr(uint32_t reg) {
+const char* r_fr(uint32_t reg) {
     // clang-format off
     static const char *regs[] = {
         "f0.f[0]", "f0.f[1]",
@@ -2096,7 +2098,7 @@ static const char* r_fr(uint32_t reg) {
     return regs[index];
 }
 
-static const char* r_dr(uint32_t reg) {
+const char* r_dr(uint32_t reg) {
     // clang-format off
     static const char *regs[] = {
         "f0",
@@ -2126,9 +2128,9 @@ static const char* r_dr(uint32_t reg) {
     return regs[index];
 }
 
-static void r_dump_instr(int i);
+void r_dump_instr(int i);
 
-static void r_dump_cond_branch(int i, const char* lhs, const char* op, const char* rhs) {
+void r_dump_cond_branch(int i, const char* lhs, const char* op, const char* rhs) {
     RInsn& insn = rinsns[i];
     const char* cast1 = "";
     const char* cast2 = "";
@@ -2147,7 +2149,7 @@ static void r_dump_cond_branch(int i, const char* lhs, const char* op, const cha
     printf("goto L%x;}\n", addr);
 }
 
-static void r_dump_cond_branch_likely(int i, const char* lhs, const char* op, const char* rhs) {
+void r_dump_cond_branch_likely(int i, const char* lhs, const char* op, const char* rhs) {
     uint32_t target = text_vaddr + (i + 2) * sizeof(uint32_t);
 
     r_dump_cond_branch(i, lhs, op, rhs);
@@ -2159,7 +2161,7 @@ static void r_dump_cond_branch_likely(int i, const char* lhs, const char* op, co
     label_addresses.insert(target);
 }
 
-static void r_dump_jal(int i, uint32_t imm) {
+void r_dump_jal(int i, uint32_t imm) {
     string_view name;
     auto it = symbol_names.find(imm);
     const ExternFunction* found_fn = nullptr;
@@ -2361,7 +2363,7 @@ static void r_dump_jal(int i, uint32_t imm) {
     label_addresses.insert(text_vaddr + (i + 2) * 4);
 }
 
-static void r_dump_instr(int i) {
+void r_dump_instr(int i) {
     RInsn& insn = rinsns[i];
 
     const char* symbol_name = NULL;
@@ -3145,7 +3147,7 @@ static void r_dump_instr(int i) {
     }
 }
 
-static void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const uint8_t* section,
+void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const uint8_t* section,
                                            uint32_t section_vaddr, uint32_t len) {
     for (uint32_t i = 0; i < len; i += 4) {
         uint32_t addr = read_u32_be(section + i);
@@ -3177,7 +3179,7 @@ static void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret
     }
 }
 
-static void r_dump_function_signature(Function& f, uint32_t vaddr) {
+void r_dump_function_signature(Function& f, uint32_t vaddr) {
     printf("static ");
     switch (f.nret) {
         case 0:
@@ -3214,7 +3216,7 @@ static void r_dump_function_signature(Function& f, uint32_t vaddr) {
     printf(")");
 }
 
-static void r_dump_c(void) {
+void r_dump_c(void) {
     map<string, uint32_t> symbol_names_inv;
 
     for (auto& it : symbol_names) {
@@ -3513,7 +3515,7 @@ static void r_dump_c(void) {
     } */
 }
 
-static void parse_elf(const uint8_t* data, size_t file_len) {
+void parse_elf(const uint8_t* data, size_t file_len) {
     Elf32_Ehdr* ehdr;
     Elf32_Shdr *shdr, *str_shdr, *sym_shdr = NULL, *dynsym_shdr, *dynamic_shdr, *reginfo_shdr, *got_shdr,
                                  *sym_strtab = NULL, *sym_dynstr;
