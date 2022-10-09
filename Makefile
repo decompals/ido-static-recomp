@@ -13,6 +13,8 @@ WERROR ?= 0
 RELEASE ?= 0
 # Disables/Enables optimizations to make debugging easier
 DEBUG ?= 1
+ASAN ?= 0
+
 # Can be set to `universal` to build universal binaries on Mac
 TARGET ?= native
 
@@ -77,6 +79,11 @@ ifeq ($(DEBUG),0)
 	OPTFLAGS     ?= -Os
 else
 	OPTFLAGS     ?= -O0 -g3
+endif
+
+ifneq ($(ASAN),0)
+	CFLAGS      += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined
+	CXXFLAGS    += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined
 endif
 
 ifeq ($(DETECTED_OS),windows)

@@ -1008,23 +1008,24 @@ static void r_pass2(void) {
             it->second.returns.push_back(addr + 4);
         }
 
-        if (insn.is_global_got_memop &&
-            (text_vaddr <= insn.instruction.getProcessedImmediate()) &&
-            (insn.instruction.getProcessedImmediate() < text_vaddr + text_section_len)) {
-            uint32_t faddr = insn.instruction.getProcessedImmediate();
+        if (insn.is_global_got_memop && insn.instruction.hasOperandAlias(rabbitizer::OperandType::cpu_immediate)) {
+            if ((text_vaddr <= insn.instruction.getProcessedImmediate()) &&
+                (insn.instruction.getProcessedImmediate() < text_vaddr + text_section_len)) {
+                uint32_t faddr = insn.instruction.getProcessedImmediate();
 
-            li_function_pointers.insert(faddr);
-            functions[faddr].referenced_by_function_pointer = true;
+                li_function_pointers.insert(faddr);
+                functions[faddr].referenced_by_function_pointer = true;
 #if INSPECT_FUNCTION_POINTERS
-            fprintf(stderr, "li function pointer: 0x%x at 0x%x\n", faddr, addr);
+                fprintf(stderr, "li function pointer: 0x%x at 0x%x\n", faddr, addr);
 #endif
+            }
         }
     }
 
-    for (auto& sym : symbol_names) {
-        fprintf(stderr, "%X : ", sym.first);
-        fprintf(stderr, "%s\n", sym.second.c_str());
-    }
+    // for (auto& sym : symbol_names) {
+    //     fprintf(stderr, "%X : ", sym.first);
+    //     fprintf(stderr, "%s\n", sym.second.c_str());
+    // }
 
     for (auto it = functions.begin(); it != functions.end(); ++it) {
         if (it->second.returns.size() == 0) {
@@ -2982,7 +2983,7 @@ static void r_dump_instr(int i) {
         case rabbitizer::InstrId::UniqueId::cpu_swc1:
             s_imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
             printf("MEM_U32(%s + %d) = %s;\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
-                   r_wr((int)insn.instruction.GetO32_rt()));
+                   r_wr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sdc1:
