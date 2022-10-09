@@ -615,7 +615,8 @@ void r_pass1(void) {
             insn.instruction.uniqueId = rabbitizer::InstrId::UniqueId::cpu_jal;
             insn.instruction.descriptor = &RabbitizerInstrDescriptor_Descriptors[insn.instruction.uniqueId];
             */
-            insn.patchAddress(rabbitizer::InstrId::UniqueId::cpu_jal, insn.instruction.getVram() + insn.instruction.getProcessedImmediate());
+            insn.patchAddress(rabbitizer::InstrId::UniqueId::cpu_jal,
+                              insn.instruction.getVram() + insn.instruction.getProcessedImmediate());
         }
 
         if (insn.instruction.isJump()) {
@@ -1188,7 +1189,7 @@ void r_pass2(void) {
 }
 
 void r_add_edge(uint32_t from, uint32_t to, bool function_entry = false, bool function_exit = false,
-                       bool extern_function = false, bool function_pointer = false) {
+                bool extern_function = false, bool function_pointer = false) {
     Edge fe = Edge(), be = Edge();
 
     fe.i = to;
@@ -1318,10 +1319,8 @@ void r_pass3(void) {
     }
 }
 
-#define GPR_O32_hi \
-    (rabbitizer::Registers::Cpu::GprO32)((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra + 1)
-#define GPR_O32_lo \
-    (rabbitizer::Registers::Cpu::GprO32)((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra + 2)
+#define GPR_O32_hi (rabbitizer::Registers::Cpu::GprO32)((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra + 1)
+#define GPR_O32_lo (rabbitizer::Registers::Cpu::GprO32)((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra + 2)
 
 uint64_t r_map_reg(rabbitizer::Registers::Cpu::GprO32 reg) {
     return (uint64_t)1 << ((int)reg - (int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero + 1);
@@ -1994,8 +1993,8 @@ void r_pass6(void) {
 
         for (int i = 0; i < 4; i++) {
             if (insn.f_livein & insn.b_livein &
-                r_map_reg((rabbitizer::Registers::Cpu::GprO32)(
-                    (int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + i))) {
+                r_map_reg(
+                    (rabbitizer::Registers::Cpu::GprO32)((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + i))) {
                 f.nargs = 1 + i;
             }
         }
@@ -2140,7 +2139,10 @@ void r_dump_cond_branch(int i, const char* lhs, const char* op, const char* rhs)
     printf("if (%s%s %s %s%s) {", cast1, lhs, op, cast2, rhs);
     r_dump_instr(i + 1);
 
-    uint32_t addr = insn.patched ? insn.patched_addr : (insn.instruction.getVram() + insn.instruction.getGenericBranchOffset(insn.instruction.getVram()));
+    uint32_t addr =
+        insn.patched
+            ? insn.patched_addr
+            : (insn.instruction.getVram() + insn.instruction.getGenericBranchOffset(insn.instruction.getVram()));
 
     printf("goto L%x;}\n", addr);
 }
@@ -2454,8 +2456,12 @@ void r_dump_instr(int i) {
         case rabbitizer::InstrId::UniqueId::cpu_addi:
         case rabbitizer::InstrId::UniqueId::cpu_addiu:
             imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
-            printf("%s = %s + 0x%x;\n", r_r((int)insn.instruction.GetO32_rt()), r_r((int)insn.instruction.GetO32_rs()),
-                   imm);
+            if (insn.instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero) {
+                printf("%s = 0x%x;\n", r_r((int)insn.instruction.GetO32_rt()), imm);
+            } else {
+                printf("%s = %s + 0x%x;\n", r_r((int)insn.instruction.GetO32_rt()),
+                       r_r((int)insn.instruction.GetO32_rs()), imm);
+            }
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_and:
@@ -3144,7 +3150,7 @@ void r_dump_instr(int i) {
 }
 
 void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const uint8_t* section,
-                                           uint32_t section_vaddr, uint32_t len) {
+                                    uint32_t section_vaddr, uint32_t len) {
     for (uint32_t i = 0; i < len; i += 4) {
         uint32_t addr = read_u32_be(section + i);
 
@@ -3285,7 +3291,7 @@ void r_dump_c(void) {
 
     for (auto& f_it : functions) {
         uint32_t addr = f_it.first;
-        auto &ins = rinsns.at(addr_to_i(addr));
+        auto& ins = rinsns.at(addr_to_i(addr));
 
         if (ins.f_livein != 0) {
             // Function is used
