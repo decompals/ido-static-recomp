@@ -34,8 +34,13 @@
 #include <unistd.h>
 #endif
 
-#define INSPECT_FUNCTION_POINTERS \
-    0 // set this to 1 when testing a new program, to verify that no false function pointers are found
+#ifndef FULL_TRACEBACK
+// Change to non-zero to have full traceback, including names not exported
+#define FULL_TRACEBACK 0
+#endif
+
+// set this to 1 when testing a new program, to verify that no false function pointers are found
+#define INSPECT_FUNCTION_POINTERS 0
 
 #ifndef TRACE
 #define TRACE 0
@@ -3906,8 +3911,22 @@ void crashHandler(int sig) {
 
     // Feel free to add more crash messages.
     const char* crashEasterEgg[] = {
+        "\tIT'S A SECRET TO EVERYBODY. \n\tBut it shouldn't be, you'd better ask about it!",
+        "\tI AM ERROR.",
+        "\tGRUMBLE,GRUMBLE...",
+        "\tDODONGO DISLIKES SMOKE \n\tAnd recomp dislikes whatever you fed it.",
+        "\tMay the way of the Hero lead \n\tto the debugger.",
+        "\tTHE WIND FISH SLUMBERS LONG... \n\tTHE HERO'S LIFE GONE... ",
+        "\tSEA BEARS FOAM, SLEEP BEARS DREAMS. \n\tBOTH END IN THE SAME WAY CRASSSH!",
         "\tYou've met with a terrible fate, haven't you?",
-        "\tSEA BEARS FOAM. SLEEP BEARS DREAMS. \n\tBOTH END IN THE SAME WAY: CRASSSH!",
+        "\tMaster, I calculate a 100% probability that recomp has crashed. \n\tAdditionally, the "
+        "batteries in your Wii Remote are nearly depleted.",
+        "\t    CONGRATURATIONS!    \n"
+        "\tAll Pages are displayed.\n"
+        "\t       THANK YOU!       \n"
+        "\t You are great debugger!",
+        "\tRCP is HUNG UP!!\n"
+        "\tOh! MY GOD!!",
     };
 
     srand(time(nullptr));
@@ -3938,9 +3957,15 @@ void crashHandler(int sig) {
                 functionName = auxBuffer;
             }
             free(demangled);
+
+#if FULL_TRACEBACK == 0
+            fprintf(stderr, "%-3zd %s\n", i, functionName.c_str());
+#endif
         }
 
+#if FULL_TRACEBACK != 0
         fprintf(stderr, "%-3zd %s\n", i, functionName.c_str());
+#endif
     }
 
     fprintf(stderr, "\n");
