@@ -109,6 +109,22 @@ struct RInsn {
         this->patchInstruction(instructionId);
         this->patched_addr = newAddress;
     }
+
+    uint32_t getAddress() const {
+        if (this->patched && this->patched_addr != 0) {
+            return this->patched_addr;
+        }
+
+        if (this->instruction.hasOperandAlias(rabbitizer::OperandType::cpu_label)) {
+            return this->instruction.getInstrIndexAsVram();
+        }
+
+        if (this->instruction.isBranch()) {
+            return this->instruction.getVram() + this->instruction.getBranchOffset();
+        }
+
+        assert(!"unreachable code");
+    }
 };
 
 struct Function {
@@ -622,7 +638,7 @@ void r_pass1(void) {
         if (insn.instruction.isJump()) {
             if (insn.instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_jal ||
                 insn.instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_j) {
-                uint32_t target = insn.patched ? insn.patched_addr : insn.instruction.getInstrIndexAsVram();
+                uint32_t target = insn.getAddress();
 
                 label_addresses.insert(target);
                 add_function(target);
@@ -830,7 +846,8 @@ void r_pass1(void) {
                 assert(!"Unreachable code");
             }
         } else if (insn.instruction.isBranch()) {
-            uint32_t target = insn.instruction.getVram() + insn.instruction.getBranchOffset();
+            uint32_t target = insn.getAddress();
+
             label_addresses.insert(target);
         }
 
@@ -1229,8 +1246,7 @@ void r_pass3(void) {
             case rabbitizer::InstrId::UniqueId::cpu_bc1t:
                 r_add_edge(i, i + 1);
                 r_add_edge(i + 1,
-                           addr_to_i(insn.patched ? insn.patched_addr
-                                                  : insn.instruction.getVram() + insn.instruction.getBranchOffset()));
+                           addr_to_i(insn.getAddress()));
                 break;
 
             case rabbitizer::InstrId::UniqueId::cpu_beql:
@@ -1244,8 +1260,7 @@ void r_pass3(void) {
                 r_add_edge(i, i + 1);
                 r_add_edge(i, i + 2);
                 r_add_edge(i + 1,
-                           addr_to_i(insn.patched ? insn.patched_addr
-                                                  : insn.instruction.getVram() + insn.instruction.getBranchOffset()));
+                           addr_to_i(insn.getAddress()));
                 rinsns[i + 1].no_following_successor = true; // don't inspect delay slot
                 break;
 
@@ -1285,7 +1300,7 @@ void r_pass3(void) {
             case rabbitizer::InstrId::UniqueId::cpu_jal: {
                 r_add_edge(i, i + 1);
 
-                uint32_t dest = insn.patched ? insn.patched_addr : insn.instruction.getInstrIndexAsVram();
+                uint32_t dest = insn.getAddress();
                 // fprintf(stderr, "%ld: %X: %X\n", i, insn.instruction.getRaw(), dest);
 
                 if (dest > mcount_addr && dest >= text_vaddr && dest < text_vaddr + text_section_len) {
@@ -1616,8 +1631,7 @@ void r_pass4(void) {
                 string_view name;
                 // bool is_extern_function = false;
                 size_t extern_function_id;
-                uint32_t address = rinsns[i - 1].patched ? rinsns[i - 1].patched_addr
-                                                         : rinsns[i - 1].instruction.getInstrIndexAsVram();
+                uint32_t address = rinsns[i - 1].getAddress();
                 // fprintf(stderr, "%X\n", address);
 
                 // TODO: Can this only ever be a J-type instruction?
@@ -1842,8 +1856,7 @@ void r_pass5(void) {
                 bool is_extern_function = false;
                 size_t extern_function_id;
                 const ExternFunction* found_fn = nullptr;
-                uint32_t address = rinsns[i - 2].patched ? rinsns[i - 2].patched_addr
-                                                         : rinsns[i - 2].instruction.getInstrIndexAsVram();
+                uint32_t address = rinsns[i - 2].getAddress();
                 // TODO: Can this only ever be a J-type instruction?
                 auto it = symbol_names.find(address);
 
