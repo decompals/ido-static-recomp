@@ -2450,8 +2450,12 @@ void r_dump_instr(int i) {
                 // fallthrough
             case TYPE_1D:
                 if (!(insn.b_liveout & get_dest_reg_mask(insn))) {
+                    #if 0
                     printf("// bdead %llx %llx ", (unsigned long long)insn.b_liveout,
                            (unsigned long long)get_dest_reg_mask(insn));
+                    #else
+                    printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
+                    #endif
                 }
                 break;
 
@@ -2945,7 +2949,7 @@ void r_dump_instr(int i) {
             imm = insn.getImmediate();
 
             if (imm > 0) {
-                printf("%s = 0x%X;\n", r_r((int)insn.lila_dst_reg), imm);
+                printf("%s = 0x%x;\n", r_r((int)insn.lila_dst_reg), imm);
             } else {
                 printf("%s = %i;\n", r_r((int)insn.lila_dst_reg), imm);
             }
