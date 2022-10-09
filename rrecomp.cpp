@@ -443,7 +443,6 @@ rabbitizer::Registers::Cpu::GprO32 get_dest_reg(const RInsn& insn) {
     // assert(!"No destination registers");
     // This should be okay...
     return rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero;
-
 }
 
 // try to find a matching LUI for a given register
@@ -1029,7 +1028,7 @@ void r_pass1(void) {
                     // sprintf(buf, "$%s, %" PRIi64, cs_reg_name(handle, rt), imm);
                     // rinsns[i].op_str = buf;
 
-                    //rinsns[i].patchAddress(UniqueId_cpu_li, imm);
+                    // rinsns[i].patchAddress(UniqueId_cpu_li, imm);
                     rinsns[i].lila_dst_reg = get_dest_reg(rinsns[i]);
                     rinsns[i].patchInstruction(UniqueId_cpu_li);
                     rinsns[i].patchImmediate(imm);
@@ -1540,16 +1539,8 @@ TYPE r_insn_to_type(RInsn& insn) {
     }
 }
 
-uint64_t get_dest_reg_mask(const rabbitizer::InstructionCpu& instr) {
-    if (instr.modifiesRt()) {
-        return r_map_reg(instr.GetO32_rt());
-    } else if (instr.modifiesRd()) {
-        return r_map_reg(instr.GetO32_rd());
-    } else {
-        // assert(!"No destination registers");
-        // Fine since we want to add nothing
-        return 0;
-    }
+uint64_t get_dest_reg_mask(const RInsn& insn) {
+    return r_map_reg(get_dest_reg(insn));
 }
 
 uint64_t get_single_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
@@ -1610,20 +1601,20 @@ void r_pass4(void) {
 
         switch (r_insn_to_type(insn)) {
             case TYPE_1D:
-                live |= get_dest_reg_mask(insn.instruction);
+                live |= get_dest_reg_mask(insn);
                 break;
 
             case TYPE_1D_1S:
                 src_regs_map = get_single_source_reg_mask(insn.instruction);
                 if (live & src_regs_map) {
-                    live |= get_dest_reg_mask(insn.instruction);
+                    live |= get_dest_reg_mask(insn);
                 }
                 break;
 
             case TYPE_1D_2S:
                 src_regs_map = get_all_source_reg_mask(insn.instruction);
                 if ((live & src_regs_map) == src_regs_map) {
-                    live |= get_dest_reg_mask(insn.instruction);
+                    live |= get_dest_reg_mask(insn);
                 }
                 break;
 
@@ -1836,19 +1827,19 @@ void r_pass5(void) {
                 break;
 
             case TYPE_1D:
-                live &= ~get_dest_reg_mask(insn.instruction);
+                live &= ~get_dest_reg_mask(insn);
                 break;
 
             case TYPE_1D_1S:
-                if (live & get_dest_reg_mask(insn.instruction)) {
-                    live &= ~get_dest_reg_mask(insn.instruction);
+                if (live & get_dest_reg_mask(insn)) {
+                    live &= ~get_dest_reg_mask(insn);
                     live |= get_single_source_reg_mask(insn.instruction);
                 }
                 break;
 
             case TYPE_1D_2S:
-                if (live & get_dest_reg_mask(insn.instruction)) {
-                    live &= ~get_dest_reg_mask(insn.instruction);
+                if (live & get_dest_reg_mask(insn)) {
+                    live &= ~get_dest_reg_mask(insn);
                     live |= get_all_source_reg_mask(insn.instruction);
                 }
                 break;
@@ -2458,8 +2449,9 @@ void r_dump_instr(int i) {
                 }
                 // fallthrough
             case TYPE_1D:
-                if (!(insn.b_liveout & get_dest_reg_mask(insn.instruction))) {
-                    printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
+                if (!(insn.b_liveout & get_dest_reg_mask(insn))) {
+                    printf("// bdead %llx %llx ", (unsigned long long)insn.b_liveout,
+                           (unsigned long long)get_dest_reg_mask(insn));
                 }
                 break;
 
@@ -2947,8 +2939,7 @@ void r_dump_instr(int i) {
                 label_addresses.insert(addr);
             }
             printf("\n");
-        }
-            break;
+        } break;
 
         case UniqueId_cpu_li:
             imm = insn.getImmediate();
@@ -3121,8 +3112,8 @@ void r_dump_instr(int i) {
         case rabbitizer::InstrId::UniqueId::cpu_swl:
             imm = insn.getImmediate();
             for (int i = 0; i < 4; i++) {
-                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r_r((int)insn.instruction.GetO32_rs()), imm,
-                       i, r_r((int)insn.instruction.GetO32_rt()), (3 - i) * 8);
+                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r_r((int)insn.instruction.GetO32_rs()), imm, i,
+                       r_r((int)insn.instruction.GetO32_rt()), (3 - i) * 8);
             }
             break;
 
@@ -3193,8 +3184,7 @@ void r_dump_instr(int i) {
 
         default:
         unimplemented:
-            printf("UNIMPLEMENTED 0x%X : %s\n", insn.instruction.getRaw(),
-                   insn.instruction.disassemble(0).c_str());
+            printf("UNIMPLEMENTED 0x%X : %s\n", insn.instruction.getRaw(), insn.instruction.disassemble(0).c_str());
             break;
     }
 }
