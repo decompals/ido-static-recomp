@@ -605,8 +605,6 @@ void r_pass1(void) {
     for (size_t i = 0; i < rinsns.size(); i++) {
         RInsn& insn = rinsns[i];
 
-        insn.instruction.GetO32_rs();
-
         // TODO: replace with BAL. Or just fix properly
         if ((insn.instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_bgezal &&
              insn.instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero) ||
@@ -1598,11 +1596,6 @@ void r_pass4(void) {
 
         for (Edge& e : insn.successors) {
             uint64_t new_live = live;
-
-            if (i == 8444) {
-                fprintf(stderr, "%X, %X, %X, %X\n", e.function_entry, e.function_exit, e.extern_function,
-                        e.function_pointer);
-            }
 
             if (e.function_exit) {
                 new_live &= 1U | r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0) |
