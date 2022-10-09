@@ -2909,11 +2909,7 @@ void r_dump_instr(int i) {
         } break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwr:
-            // TODO: Not sure how to do this
-            // imm = insn.patched ? insn.patched_addr :
-            // insn.instruction.getProcessedImmediate(); printf("//lwr %s\n",
-            // RabbitizerInstruction_disassembleOperands(&insn.instruction, buf, NULL, 0)); printf("//lwr %s\n",
-            // insn.op_str.c_str());
+            printf("// %s\n", insn.instruction.disassemble(false, "", 0).c_str());
             break;
 
 #if 0
