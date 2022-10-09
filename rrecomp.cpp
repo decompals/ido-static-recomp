@@ -99,7 +99,7 @@ struct RInsn {
 
         this->patched = true;
         RabbitizerInstruction& innerInstr = this->instruction.getCInstr();
-        innerInstr.uniqueId = static_cast<RabbitizerInstrId>(instructionId);
+        innerInstr.uniqueId = (RabbitizerInstrId)(instructionId);
         innerInstr.descriptor = &RabbitizerInstrDescriptor_Descriptors[innerInstr.uniqueId];
     }
 
@@ -1316,9 +1316,9 @@ void r_pass3(void) {
 }
 
 #define GPR_O32_hi \
-    static_cast<rabbitizer::Registers::Cpu::GprO32>((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra + 1)
+    (rabbitizer::Registers::Cpu::GprO32)((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra + 1)
 #define GPR_O32_lo \
-    static_cast<rabbitizer::Registers::Cpu::GprO32>((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra + 2)
+    (rabbitizer::Registers::Cpu::GprO32)((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra + 2)
 
 uint64_t r_map_reg(rabbitizer::Registers::Cpu::GprO32 reg) {
     return (uint64_t)1 << ((int)reg - (int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero + 1);
@@ -1862,7 +1862,7 @@ void r_pass5(void) {
                 if (found_fn->flags & FLAG_VARARG) {
                     // Assume the worst, that all four registers are used
                     for (int j = 0; j < 4; j++) {
-                        args |= r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>(
+                        args |= r_map_reg((rabbitizer::Registers::Cpu::GprO32)(
                             (int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + j));
                     }
                 }
@@ -1879,7 +1879,7 @@ void r_pass5(void) {
                         case 't':
                             only_floats_so_far = false;
                             if (pos < 4) {
-                                args |= r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>(
+                                args |= r_map_reg((rabbitizer::Registers::Cpu::GprO32)(
                                     (int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos));
                             }
                             ++pos;
@@ -1889,7 +1889,7 @@ void r_pass5(void) {
                             if (only_floats_so_far && pos_float < 4) {
                                 pos_float += 2;
                             } else if (pos < 4) {
-                                args |= r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>(
+                                args |= r_map_reg((rabbitizer::Registers::Cpu::GprO32)(
                                     (int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos));
                             }
                             ++pos;
@@ -1903,9 +1903,9 @@ void r_pass5(void) {
                             if (only_floats_so_far && pos_float < 4) {
                                 pos_float += 2;
                             } else if (pos < 4) {
-                                args |= r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>(
+                                args |= r_map_reg((rabbitizer::Registers::Cpu::GprO32)(
                                             (int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos)) |
-                                        r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>(
+                                        r_map_reg((rabbitizer::Registers::Cpu::GprO32)(
                                             (int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos + 1));
                             }
                             pos += 2;
@@ -1918,9 +1918,9 @@ void r_pass5(void) {
                             }
                             only_floats_so_far = false;
                             if (pos < 4) {
-                                args |= r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>(
+                                args |= r_map_reg((rabbitizer::Registers::Cpu::GprO32)(
                                             (int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos)) |
-                                        r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>(
+                                        r_map_reg((rabbitizer::Registers::Cpu::GprO32)(
                                             (int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + pos + 1));
                             }
                             pos += 2;
@@ -1991,7 +1991,7 @@ void r_pass6(void) {
 
         for (int i = 0; i < 4; i++) {
             if (insn.f_livein & insn.b_livein &
-                r_map_reg(static_cast<rabbitizer::Registers::Cpu::GprO32>(
+                r_map_reg((rabbitizer::Registers::Cpu::GprO32)(
                     (int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + i))) {
                 f.nargs = 1 + i;
             }
