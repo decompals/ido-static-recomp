@@ -2140,7 +2140,7 @@ void r_dump_cond_branch(int i, const char* lhs, const char* op, const char* rhs)
     printf("if (%s%s %s %s%s) {", cast1, lhs, op, cast2, rhs);
     r_dump_instr(i + 1);
 
-    uint32_t addr = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+    uint32_t addr = insn.patched ? insn.patched_addr : (insn.instruction.getVram() + insn.instruction.getGenericBranchOffset(insn.instruction.getVram()));
 
     printf("goto L%x;}\n", addr);
 }
