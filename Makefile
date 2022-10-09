@@ -88,7 +88,9 @@ endif
 
 ifeq ($(DETECTED_OS),windows)
 	CXXFLAGS     += -static
-else
+endif
+
+ifneq ($(DETECTED_OS),macos)
 # For traceback
 	LDFLAGS      += -Wl,-export-dynamic
 endif
