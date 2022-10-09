@@ -615,7 +615,7 @@ void r_pass1(void) {
             insn.instruction.uniqueId = rabbitizer::InstrId::UniqueId::cpu_jal;
             insn.instruction.descriptor = &RabbitizerInstrDescriptor_Descriptors[insn.instruction.uniqueId];
             */
-            insn.patchAddress(rabbitizer::InstrId::UniqueId::cpu_jal, insn.instruction.getProcessedImmediate());
+            insn.patchAddress(rabbitizer::InstrId::UniqueId::cpu_jal, insn.instruction.getVram() + insn.instruction.getProcessedImmediate());
         }
 
         if (insn.instruction.isJump()) {
@@ -823,11 +823,14 @@ void r_pass1(void) {
                     skip:;
                     }
                 }
-            } else if (insn.instruction.isIType()) {
-                // both J-type instructions checked above
-                uint32_t target = insn.instruction.getProcessedImmediate();
-                label_addresses.insert(target);
+            } else if (insn.instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_jalr) {
+                // empty
+            } else {
+                assert(!"Unreachable code");
             }
+        } else if (insn.instruction.isBranch()) {
+            uint32_t target = insn.instruction.getVram() + insn.instruction.getBranchOffset();
+            label_addresses.insert(target);
         }
 
         switch (rinsns[i].instruction.getUniqueId()) {
@@ -3281,9 +3284,12 @@ void r_dump_c(void) {
     }
 
     for (auto& f_it : functions) {
-        if (rinsns[addr_to_i(f_it.first)].f_livein != 0) {
+        uint32_t addr = f_it.first;
+        auto &ins = rinsns.at(addr_to_i(addr));
+
+        if (ins.f_livein != 0) {
             // Function is used
-            r_dump_function_signature(f_it.second, f_it.first);
+            r_dump_function_signature(f_it.second, addr);
             printf(";\n");
         }
     }
