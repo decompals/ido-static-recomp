@@ -13,7 +13,7 @@ WERROR ?= 0
 RELEASE ?= 0
 # Disables/Enables optimizations to make debugging easier
 DEBUG ?= 1
-ASAN ?= 0
+ASAN ?= 1
 
 # Can be set to `universal` to build universal binaries on Mac
 TARGET ?= native
@@ -82,8 +82,8 @@ else
 endif
 
 ifneq ($(ASAN),0)
-	CFLAGS      += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined
-	CXXFLAGS    += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined
+	CFLAGS      += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fno-sanitize-recover=all
+	CXXFLAGS    += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fno-sanitize-recover=all
 endif
 
 ifeq ($(DETECTED_OS),windows)
