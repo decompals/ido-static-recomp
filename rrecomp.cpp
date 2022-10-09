@@ -2454,8 +2454,7 @@ void r_dump_instr(int i) {
         }
     }
 
-    uint32_t imm;
-    int32_t s_imm;
+    int32_t imm;
     char buf[0x100];
     switch (insn.instruction.getUniqueId()) {
         case rabbitizer::InstrId::UniqueId::cpu_add:
@@ -2849,27 +2848,27 @@ void r_dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lb:
-            s_imm = insn.getImmediate();
+            imm = insn.getImmediate();
             printf("%s = MEM_S8(%s + %d);\n", r_r((int)insn.instruction.GetO32_rt()),
-                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lbu:
-            s_imm = insn.getImmediate();
+            imm = insn.getImmediate();
             printf("%s = MEM_U8(%s + %d);\n", r_r((int)insn.instruction.GetO32_rt()),
-                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lh:
-            s_imm = insn.getImmediate();
+            imm = insn.getImmediate();
             printf("%s = MEM_S16(%s + %d);\n", r_r((int)insn.instruction.GetO32_rt()),
-                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lhu:
-            s_imm = insn.getImmediate();
+            imm = insn.getImmediate();
             printf("%s = MEM_U16(%s + %d);\n", r_r((int)insn.instruction.GetO32_rt()),
-                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lui:
@@ -2878,40 +2877,40 @@ void r_dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lw:
-            s_imm = insn.getImmediate();
+            imm = insn.getImmediate();
             printf("%s = MEM_U32(%s + %d);\n", r_r((int)insn.instruction.GetO32_rt()),
-                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwc1:
-            s_imm = insn.getImmediate();
+            imm = insn.getImmediate();
             printf("%s = MEM_U32(%s + %d);\n", r_wr((int)insn.instruction.GetO32_ft()),
-                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_ldc1:
-            s_imm = insn.getImmediate();
+            imm = insn.getImmediate();
             assert(((int)insn.instruction.GetO32_ft() - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0) % 2 ==
                    0);
             printf("%s = MEM_U32(%s + %d);\n", r_wr((int)insn.instruction.GetO32_ft() + 1),
-                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             printf("%s = MEM_U32(%s + %d + 4);\n", r_wr((int)insn.instruction.GetO32_ft()),
-                   r_r((int)insn.instruction.GetO32_rs()), s_imm);
+                   r_r((int)insn.instruction.GetO32_rs()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwl: {
             const char* reg = r_r((int)insn.instruction.GetO32_rt());
 
-            s_imm = insn.getImmediate();
+            imm = insn.getImmediate();
 
-            printf("%s = %s + %d; ", reg, r_r((int)insn.instruction.GetO32_rs()), s_imm);
+            printf("%s = %s + %d; ", reg, r_r((int)insn.instruction.GetO32_rs()), imm);
             printf("%s = (MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + 3);\n", reg,
                    reg, reg, reg, reg);
         } break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwr:
             // TODO: Not sure how to do this
-            // s_imm = insn.patched ? insn.patched_addr :
+            // imm = insn.patched ? insn.patched_addr :
             // insn.instruction.getProcessedImmediate(); printf("//lwr %s\n",
             // RabbitizerInstruction_disassembleOperands(&insn.instruction, buf, NULL, 0)); printf("//lwr %s\n",
             // insn.op_str.c_str());
@@ -3000,14 +2999,14 @@ void r_dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sb:
-            s_imm = insn.getImmediate();
-            printf("MEM_U8(%s + %d) = (uint8_t)%s;\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+            imm = insn.getImmediate();
+            printf("MEM_U8(%s + %d) = (uint8_t)%s;\n", r_r((int)insn.instruction.GetO32_rs()), imm,
                    r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sh:
-            s_imm = insn.getImmediate();
-            printf("MEM_U16(%s + %d) = (uint16_t)%s;\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+            imm = insn.getImmediate();
+            printf("MEM_U16(%s + %d) = (uint16_t)%s;\n", r_r((int)insn.instruction.GetO32_rs()), imm,
                    r_r((int)insn.instruction.GetO32_rt()));
             break;
 
@@ -3069,31 +3068,31 @@ void r_dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sw:
-            s_imm = insn.getImmediate();
-            printf("MEM_U32(%s + %d) = %s;\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+            imm = insn.getImmediate();
+            printf("MEM_U32(%s + %d) = %s;\n", r_r((int)insn.instruction.GetO32_rs()), imm,
                    r_r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_swc1:
-            s_imm = insn.getImmediate();
-            printf("MEM_U32(%s + %d) = %s;\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+            imm = insn.getImmediate();
+            printf("MEM_U32(%s + %d) = %s;\n", r_r((int)insn.instruction.GetO32_rs()), imm,
                    r_wr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sdc1:
             assert(((int)insn.instruction.GetO32_ft() - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0) % 2 ==
                    0);
-            s_imm = insn.getImmediate();
-            printf("MEM_U32(%s + %d) = %s;\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+            imm = insn.getImmediate();
+            printf("MEM_U32(%s + %d) = %s;\n", r_r((int)insn.instruction.GetO32_rs()), imm,
                    r_wr((int)insn.instruction.GetO32_ft() + 1));
-            printf("MEM_U32(%s + %d + 4) = %s;\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+            printf("MEM_U32(%s + %d + 4) = %s;\n", r_r((int)insn.instruction.GetO32_rs()), imm,
                    r_wr((int)insn.instruction.GetO32_ft()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_swl:
-            s_imm = insn.getImmediate();
+            imm = insn.getImmediate();
             for (int i = 0; i < 4; i++) {
-                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r_r((int)insn.instruction.GetO32_rs()), s_imm,
+                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r_r((int)insn.instruction.GetO32_rs()), imm,
                        i, r_r((int)insn.instruction.GetO32_rt()), (3 - i) * 8);
             }
             break;
@@ -3130,33 +3129,33 @@ void r_dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tne:
-            s_imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
+            imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
             printf("assert(%s == %s && \"tne %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
-                   r_r((int)insn.instruction.GetO32_rt()), s_imm);
+                   r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_teq:
-            s_imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
+            imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
             printf("assert(%s != %s && \"teq %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
-                   r_r((int)insn.instruction.GetO32_rt()), s_imm);
+                   r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tge:
-            s_imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
+            imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
             printf("assert((int)%s < (int)%s && \"tge %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
-                   r_r((int)insn.instruction.GetO32_rt()), s_imm);
+                   r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tgeu:
-            s_imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
+            imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
             printf("assert(%s < %s && \"tgeu %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
-                   r_r((int)insn.instruction.GetO32_rt()), s_imm);
+                   r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tlt:
-            s_imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
+            imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
             printf("assert((int)%s >= (int)%s && \"tlt %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
-                   r_r((int)insn.instruction.GetO32_rt()), s_imm);
+                   r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_nop:
