@@ -6,7 +6,7 @@
 [subrepo]
 	remote = git@github.com:Decompollaborate/rabbitizer.git
 	branch = develop
-	commit = acee14457839d56923216eea7fc615ed525b1a4c
-	parent = c534515fb566db6cbc0b52d22b78598aae68139d
+	commit = 4ebd49711b1f2260c722cffb9d7e0b719d306f65
+	parent = 4583643c3e0cbbc30f4f71a37a1d443c99268cc0
 	method = merge
 	cmdver = 0.4.3
