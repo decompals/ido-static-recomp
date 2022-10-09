@@ -20,6 +20,20 @@
 #include <windows.h>
 #endif /* _WIN32 && !__CYGWIN__ */
 
+#if !defined(_MSC_VER) && !defined(__CYGWIN__)
+#define UNIX_PLATFORM
+#endif
+
+#ifdef UNIX_PLATFORM
+// TODO: determine if any of those headers are not required
+#include <csignal>
+#include <ctime>
+#include <cxxabi.h> // for __cxa_demangle
+#include <dlfcn.h>  // for dladdr
+#include <execinfo.h>
+#include <unistd.h>
+#endif
+
 #define INSPECT_FUNCTION_POINTERS \
     0 // set this to 1 when testing a new program, to verify that no false function pointers are found
 
@@ -3881,6 +3895,61 @@ size_t read_file(const char* file_name, uint8_t** data) {
     return bytes_read;
 }
 
+#ifdef UNIX_PLATFORM
+void crashHandler(int sig) {
+    void* array[4096];
+    const size_t nMaxFrames = std::size(array);
+    size_t size = backtrace(array, nMaxFrames);
+    char** symbols = backtrace_symbols(array, nMaxFrames);
+
+    fprintf(stderr, "\n recomp crashed. (Signal: %i)\n", sig);
+
+    // Feel free to add more crash messages.
+    const char* crashEasterEgg[] = {
+        "\tYou've met with a terrible fate, haven't you?",
+        "\tSEA BEARS FOAM. SLEEP BEARS DREAMS. \n\tBOTH END IN THE SAME WAY: CRASSSH!",
+    };
+
+    srand(time(nullptr));
+    auto easterIndex = rand() % std::size(crashEasterEgg);
+
+    fprintf(stderr, "\n%s\n\n", crashEasterEgg[easterIndex]);
+
+    fprintf(stderr, "Traceback:\n");
+    for (size_t i = 1; i < size; i++) {
+        Dl_info info;
+        uint32_t gotAddress = dladdr(array[i], &info);
+        std::string functionName(symbols[i]);
+
+        if (gotAddress != 0 && info.dli_sname != nullptr) {
+            int32_t status;
+            char* demangled = abi::__cxa_demangle(info.dli_sname, nullptr, nullptr, &status);
+            const char* nameFound = info.dli_sname;
+
+            if (status == 0) {
+                nameFound = demangled;
+            }
+
+            {
+                char auxBuffer[0x8000];
+
+                snprintf(auxBuffer, std::size(auxBuffer), "%s (+0x%lX)", nameFound,
+                         (char*)array[i] - (char*)info.dli_saddr);
+                functionName = auxBuffer;
+            }
+            free(demangled);
+        }
+
+        fprintf(stderr, "%-3zd %s\n", i, functionName.c_str());
+    }
+
+    fprintf(stderr, "\n");
+
+    free(symbols);
+    exit(1);
+}
+#endif
+
 int main(int argc, char* argv[]) {
     const char* filename = argv[1];
 
@@ -3888,6 +3957,11 @@ int main(int argc, char* argv[]) {
         conservative = true;
         filename = argv[2];
     }
+
+#ifdef UNIX_PLATFORM
+    signal(SIGSEGV, crashHandler);
+    signal(SIGABRT, crashHandler);
+#endif
 
     uint8_t* data;
     size_t len = read_file(filename, &data);
@@ -3905,4 +3979,6 @@ int main(int argc, char* argv[]) {
     // dump();
     r_dump_c();
     free(data);
+
+    return 0;
 }

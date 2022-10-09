@@ -88,6 +88,9 @@ endif
 
 ifeq ($(DETECTED_OS),windows)
 	CXXFLAGS     += -static
+else
+# For traceback
+	LDFLAGS      += -Wl,-export-dynamic
 endif
 
 # -- Build Directories
