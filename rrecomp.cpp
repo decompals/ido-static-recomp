@@ -78,9 +78,9 @@ struct RInsn {
     }
 
     void patchInstruction(rabbitizer::InstrId::UniqueId instructionId) {
-        if (instructionId != rabbitizer::InstrId::UniqueId::cpu_nop) {
-            assert(!this->patched);
-        }
+        // if (instructionId != rabbitizer::InstrId::UniqueId::cpu_nop) {
+        //     assert(!this->patched);
+        // }
 
         this->patched = true;
         RabbitizerInstruction &innerInstr = this->instruction.getCInstr();
@@ -89,7 +89,7 @@ struct RInsn {
     }
 
     void patchAddress(rabbitizer::InstrId::UniqueId instructionId, uint32_t newAddress) {
-        assert(!this->patched);
+        // assert(!this->patched);
 
         this->patchInstruction(instructionId);
         this->patched_addr = newAddress;
@@ -840,6 +840,11 @@ static void r_pass1(void) {
                         case rabbitizer::InstrId::UniqueId::cpu_lb:
                         case rabbitizer::InstrId::UniqueId::cpu_lbu:
                         case rabbitizer::InstrId::UniqueId::cpu_addiu:
+                            if (rt == rinsns[s].instruction.GetO32_rt()) {
+                                goto loop_end;
+                            }
+                            continue;
+
                         case rabbitizer::InstrId::UniqueId::cpu_add:
                         case rabbitizer::InstrId::UniqueId::cpu_sub:
                         case rabbitizer::InstrId::UniqueId::cpu_subu:
@@ -1014,6 +1019,11 @@ static void r_pass2(void) {
             fprintf(stderr, "li function pointer: 0x%x at 0x%x\n", faddr, addr);
 #endif
         }
+    }
+
+    for (auto& sym : symbol_names) {
+        fprintf(stderr, "%X : ", sym.first);
+        fprintf(stderr, "%s\n", sym.second.c_str());
     }
 
     for (auto it = functions.begin(); it != functions.end(); ++it) {
@@ -1432,7 +1442,7 @@ static TYPE r_insn_to_type(RInsn& insn) {
                 RabbitizerInstruction &innerInstr = insn.instruction.getCInstr();
                 innerInstr.word = RAB_INSTR_PACK_rs(innerInstr.word, (int)insn.index_reg);
             }
-            if (insn.instruction.GetO32_rt() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra) {
+            if (insn.instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra) {
                 return TYPE_NOP;
             }
             return TYPE_1S;
