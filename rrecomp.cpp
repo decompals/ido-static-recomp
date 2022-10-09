@@ -1797,10 +1797,9 @@ void r_pass5(void) {
         }
     }
 
-    for (size_t i = 0; i < rinsns.size(); i++) {
-        if (rinsns[i].f_livein != 0) {
-            // Instruction is reachable
-            q.push_back(text_vaddr + i * sizeof(uint32_t));
+    for (auto& insn : rinsns) {
+        if (insn.f_livein != 0) {
+            q.push_back(insn.instruction.getVram());
         }
     }
 
