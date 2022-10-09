@@ -3124,31 +3124,31 @@ void r_dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tne:
-            imm = insn.patched ? insn.patched_addr : insn.instruction.Get_code();
+            imm = insn.instruction.Get_code_lower();
             printf("assert(%s == %s && \"tne %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
                    r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_teq:
-            imm = insn.patched ? insn.patched_addr : insn.instruction.Get_code();
+            imm = insn.instruction.Get_code_lower();
             printf("assert(%s != %s && \"teq %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
                    r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tge:
-            imm = insn.patched ? insn.patched_addr : insn.instruction.Get_code();
+            imm = insn.instruction.Get_code_lower();
             printf("assert((int)%s < (int)%s && \"tge %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
                    r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tgeu:
-            imm = insn.patched ? insn.patched_addr : insn.instruction.Get_code();
+            imm = insn.instruction.Get_code_lower();
             printf("assert(%s < %s && \"tgeu %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
                    r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tlt:
-            imm = insn.patched ? insn.patched_addr : insn.instruction.Get_code();
+            imm = insn.instruction.Get_code_lower();
             printf("assert((int)%s >= (int)%s && \"tlt %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
                    r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
