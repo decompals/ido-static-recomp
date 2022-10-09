@@ -52,6 +52,9 @@
 #define u16be(x) (uint16_t)(((x & 0xff) << 8) + ((x & 0xff00) >> 8))
 #define read_u32_be(buf) (uint32_t)(((buf)[0] << 24) + ((buf)[1] << 16) + ((buf)[2] << 8) + ((buf)[3]))
 
+#define UniqueId_cpu_li rabbitizer::InstrId::UniqueId::cpu_USERDEF_00
+#define UniqueId_cpu_la rabbitizer::InstrId::UniqueId::cpu_USERDEF_01
+
 using namespace std;
 
 struct Edge {
@@ -77,6 +80,7 @@ struct RInsn {
     // immediates are 16 bits wide, but they can be either signed or unsigned
     // a 32 bits signed member can hold all those possible values
     int32_t patched_imms;
+    rabbitizer::Registers::Cpu::GprO32 lila_dst_reg;
     int linked_insn;
     union {
         uint32_t linked_value;
@@ -417,16 +421,29 @@ map<uint32_t, Function>::iterator find_function(uint32_t addr) {
     return it;
 }
 
-rabbitizer::Registers::Cpu::GprO32 get_dest_reg(const rabbitizer::InstructionCpu& instr) {
-    if (instr.modifiesRt()) {
-        return instr.GetO32_rt();
-    } else if (instr.modifiesRd()) {
-        return instr.GetO32_rd();
-    } else {
-        // assert(!"No destination registers");
-        // This should be okay...
-        return rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero;
+rabbitizer::Registers::Cpu::GprO32 get_dest_reg(const RInsn& insn) {
+    switch (insn.instruction.getUniqueId()) {
+        case rabbitizer::InstrId::UniqueId::cpu_jalr:
+            // jalr technically modifies rd, so an empty case is here to avoid crashing
+            break;
+
+        case UniqueId_cpu_li:
+        case UniqueId_cpu_la:
+            return insn.lila_dst_reg;
+
+        default:
+            if (insn.instruction.modifiesRt()) {
+                return insn.instruction.GetO32_rt();
+            } else if (insn.instruction.modifiesRd()) {
+                return insn.instruction.GetO32_rd();
+            }
+            break;
     }
+
+    // assert(!"No destination registers");
+    // This should be okay...
+    return rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero;
+
 }
 
 // try to find a matching LUI for a given register
@@ -453,7 +470,7 @@ void r_link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, int mem
             case rabbitizer::InstrId::UniqueId::cpu_add:
             case rabbitizer::InstrId::UniqueId::cpu_sub:
             case rabbitizer::InstrId::UniqueId::cpu_subu:
-                if (reg == get_dest_reg(rinsns[search].instruction)) {
+                if (reg == get_dest_reg(rinsns[search])) {
                     if ((rinsns[search].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_lw) &&
                         rinsns[search].instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) {
                         int mem_imm0 = rinsns[search].instruction.getProcessedImmediate();
@@ -478,7 +495,9 @@ void r_link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, int mem
                                 &RabbitizerInstrDescriptor_Descriptors[rinsns[search].instruction.uniqueId];
                             rinsns[search].patched_addr = addr;
                             */
-                            rinsns[search].patchAddress(rabbitizer::InstrId::UniqueId::cpu_ori, addr);
+
+                            rinsns[search].lila_dst_reg = get_dest_reg(rinsns[search]);
+                            rinsns[search].patchAddress(UniqueId_cpu_la, addr);
                             // TODO: handle printing separately for patched instructions
 
                             // Patch instruction to have offset 0
@@ -546,13 +565,13 @@ void r_link_with_jalr(int offset) {
     int end_search = std::max(0, offset - MAX_LOOKBACK);
 
     for (int search = offset - 1; search >= end_search; search--) {
-        if (get_dest_reg(rinsns[search].instruction) == rabbitizer::Registers::Cpu::GprO32::GPR_O32_t9) {
+        if (get_dest_reg(rinsns[search]) == rabbitizer::Registers::Cpu::GprO32::GPR_O32_t9) {
             // should be a switch with returns
             switch (rinsns[search].instruction.getUniqueId()) {
                 case rabbitizer::InstrId::UniqueId::cpu_lw:
-                case rabbitizer::InstrId::UniqueId::cpu_ori: // LI
+                case UniqueId_cpu_la:
                     if (rinsns[search].is_global_got_memop ||
-                        (rinsns[search].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_ori)) {
+                        (rinsns[search].instruction.getUniqueId() == UniqueId_cpu_la)) {
                         rinsns[search].linked_insn = offset;
                         rinsns[offset].linked_insn = search;
                         rinsns[offset].linked_value = rinsns[search].linked_value;
@@ -598,7 +617,7 @@ void r_link_with_jalr(int offset) {
                     goto end;
 
                     //! @bug repeated case
-                    // case rabbitizer::InstrId::UniqueId::cpu_ori:
+                    // case UniqueId_cpu_li:
                     //     if (rinsns[search].linked_insn != -1) {
                     //         // function_entry_points.insert(rinsns[search].linked_value);
                     //         uint32_t first = rinsns[search].linked_insn;
@@ -734,7 +753,7 @@ void r_pass1(void) {
                             goto skip;
                         }
 
-                        if (get_dest_reg(rinsns[addu_index - 1].instruction) != insn.instruction.GetO32_rs()) {
+                        if (get_dest_reg(rinsns[addu_index - 1]) != insn.instruction.GetO32_rs()) {
                             goto skip;
                         }
 
@@ -893,7 +912,9 @@ void r_pass1(void) {
                                     &RabbitizerInstrDescriptor_Descriptors[rinsns[s].instruction.uniqueId];
                                 */
                                 // LI
-                                rinsns[s].patchAddress(rabbitizer::InstrId::UniqueId::cpu_ori, lui_imm);
+                                rinsns[s].lila_dst_reg = get_dest_reg(rinsns[s]);
+                                rinsns[s].patchInstruction(UniqueId_cpu_li);
+                                rinsns[s].patchImmediate(lui_imm);
                             }
                             goto loop_end;
 
@@ -981,7 +1002,8 @@ void r_pass1(void) {
                                 rinsns[i].patched_addr = dest_vaddr;
                                 */
                                 // LI
-                                rinsns[i].patchAddress(rabbitizer::InstrId::UniqueId::cpu_ori, dest_vaddr);
+                                rinsns[i].lila_dst_reg = get_dest_reg(rinsns[i]);
+                                rinsns[i].patchAddress(UniqueId_cpu_la, dest_vaddr);
                             }
                         }
                     } else {
@@ -1006,6 +1028,11 @@ void r_pass1(void) {
                     // rinsns[i].mnemonic = "li";
                     // sprintf(buf, "$%s, %" PRIi64, cs_reg_name(handle, rt), imm);
                     // rinsns[i].op_str = buf;
+
+                    //rinsns[i].patchAddress(UniqueId_cpu_li, imm);
+                    rinsns[i].lila_dst_reg = get_dest_reg(rinsns[i]);
+                    rinsns[i].patchInstruction(UniqueId_cpu_li);
+                    rinsns[i].patchImmediate(imm);
                 } else if (/*rt == rs &&*/ rt !=
                            rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) { // only look for LUI if rt and rs are the
                                                                              // same
@@ -1131,8 +1158,7 @@ void r_pass2(void) {
                 i++;
 
                 // LI
-                if ((rinsns[i + 5].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_ori) ||
-                    (rinsns[i + 5].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_addiu)) {
+                if (rinsns[i + 5].instruction.getUniqueId() == UniqueId_cpu_li) {
                     // 7.1
                     rinsns[i] = rinsns[i + 5];
                 } else {
@@ -1436,7 +1462,8 @@ TYPE r_insn_to_type(RInsn& insn) {
 
         case rabbitizer::InstrId::UniqueId::cpu_cfc1:
         case rabbitizer::InstrId::UniqueId::cpu_mfc1:
-        // case rabbitizer::InstrId::UniqueId::cpu_li: // LI
+        case UniqueId_cpu_li:
+        case UniqueId_cpu_la:
         case rabbitizer::InstrId::UniqueId::cpu_lui:
             return TYPE_1D;
 
@@ -2911,20 +2938,27 @@ void r_dump_instr(int i) {
             printf("// %s\n", insn.instruction.disassemble(0).c_str());
             break;
 
-#if 0
-        case MIPS_INS_LI:
-            // Not at all clear what to do here
-            imm = insn.getImmediate();
-            assert(0 && "LI");
+        case UniqueId_cpu_la: {
+            uint32_t addr = insn.getAddress();
 
-            if (insn.is_global_got_memop && (text_vaddr <= imm) && (imm < text_vaddr + text_section_len)) {
-                printf("%s = 0x%x; // function pointer\n", r_r(insn.operands[0].reg), (uint32_t)insn.operands[1].imm);
-                label_addresses.insert((uint32_t)insn.operands[1].imm);
+            printf("%s = 0x%x;", r_r((int)insn.lila_dst_reg), addr);
+            if (insn.is_global_got_memop && (text_vaddr <= addr) && (addr < text_vaddr + text_section_len)) {
+                printf(" // function pointer");
+                label_addresses.insert(addr);
+            }
+            printf("\n");
+        }
+            break;
+
+        case UniqueId_cpu_li:
+            imm = insn.getImmediate();
+
+            if (imm > 0) {
+                printf("%s = 0x%X;\n", r_r((int)insn.lila_dst_reg), imm);
             } else {
-                printf("%s = 0x%x;\n", r_r(insn.operands[0].reg), (uint32_t)insn.operands[1].imm);
+                printf("%s = %i;\n", r_r((int)insn.lila_dst_reg), imm);
             }
             break;
-#endif
 
         case rabbitizer::InstrId::UniqueId::cpu_mfc1:
             printf("%s = %s;\n", r_r((int)insn.instruction.GetO32_rt()), r_wr((int)insn.instruction.GetO32_fs()));
