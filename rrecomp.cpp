@@ -101,9 +101,9 @@ struct RInsn {
         // }
 
         this->patched = true;
-        RabbitizerInstruction& innerInstr = this->instruction.getCInstr();
-        innerInstr.uniqueId = (RabbitizerInstrId)(instructionId);
-        innerInstr.descriptor = &RabbitizerInstrDescriptor_Descriptors[innerInstr.uniqueId];
+        RabbitizerInstruction* innerInstr = this->instruction.getCPtr();
+        innerInstr->uniqueId = (RabbitizerInstrId)(instructionId);
+        innerInstr->descriptor = &RabbitizerInstrDescriptor_Descriptors[innerInstr->uniqueId];
     }
 
     void patchAddress(rabbitizer::InstrId::UniqueId instructionId, uint32_t newAddress) {
@@ -1495,8 +1495,7 @@ TYPE r_insn_to_type(RInsn& insn) {
         case rabbitizer::InstrId::UniqueId::cpu_jr:
             if (insn.jtbl_addr != 0) {
                 // insn.instruction.word = RAB_INSTR_PACK_rs(insn.instruction.word, insn.index_reg);
-                RabbitizerInstruction& innerInstr = insn.instruction.getCInstr();
-                innerInstr.word = RAB_INSTR_PACK_rs(innerInstr.word, (int)insn.index_reg);
+                insn.instruction.Set_rs(insn.index_reg);
             }
             if (insn.instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra) {
                 return TYPE_NOP;
@@ -2041,7 +2040,7 @@ void r_dump(void) {
         }
 
         // TODO: construct an immediate override for the instructions
-        printf("\t%s", insn.instruction.disassemble(false, "", 0).c_str());
+        printf("\t%s", insn.instruction.disassemble(0).c_str());
         if (insn.patched) {
             printf("\t[patched, immediate now 0x%X]", insn.patched_addr);
         }
@@ -2909,7 +2908,7 @@ void r_dump_instr(int i) {
         } break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwr:
-            printf("// %s\n", insn.instruction.disassemble(false, "", 0).c_str());
+            printf("// %s\n", insn.instruction.disassemble(0).c_str());
             break;
 
 #if 0
@@ -3097,7 +3096,7 @@ void r_dump_instr(int i) {
             // TODO: Fix this
             // RabbitizerInstruction_disassembleOperands(&insn.instruction, buf, NULL, 0);
             // printf("//swr %s\n", buf);
-            printf("// %s\n", insn.instruction.disassemble(false, "", 0).c_str());
+            printf("// %s\n", insn.instruction.disassemble(0).c_str());
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_trunc_w_s:
@@ -3125,31 +3124,31 @@ void r_dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tne:
-            imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
+            imm = insn.patched ? insn.patched_addr : insn.instruction.Get_code();
             printf("assert(%s == %s && \"tne %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
                    r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_teq:
-            imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
+            imm = insn.patched ? insn.patched_addr : insn.instruction.Get_code();
             printf("assert(%s != %s && \"teq %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
                    r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tge:
-            imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
+            imm = insn.patched ? insn.patched_addr : insn.instruction.Get_code();
             printf("assert((int)%s < (int)%s && \"tge %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
                    r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tgeu:
-            imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
+            imm = insn.patched ? insn.patched_addr : insn.instruction.Get_code();
             printf("assert(%s < %s && \"tgeu %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
                    r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_tlt:
-            imm = insn.patched ? insn.patched_addr : RAB_INSTR_GET_code(&insn.instruction.getCInstr());
+            imm = insn.patched ? insn.patched_addr : insn.instruction.Get_code();
             printf("assert((int)%s >= (int)%s && \"tlt %d\");\n", r_r((int)insn.instruction.GetO32_rs()),
                    r_r((int)insn.instruction.GetO32_rt()), imm);
             break;
@@ -3161,7 +3160,7 @@ void r_dump_instr(int i) {
         default:
         unimplemented:
             printf("UNIMPLEMENTED 0x%X : %s\n", insn.instruction.getRaw(),
-                   insn.instruction.disassemble(false, "", 0).c_str());
+                   insn.instruction.disassemble(0).c_str());
             break;
     }
 }
