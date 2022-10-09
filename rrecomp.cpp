@@ -2558,21 +2558,21 @@ void r_dump_instr(int i) {
 
         case rabbitizer::InstrId::UniqueId::cpu_b:
             r_dump_instr(i + 1);
-            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            imm = insn.getAddress();
             printf("goto L%x;\n", imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bc1f:
             printf("if (!cf) {");
             r_dump_instr(i + 1);
-            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            imm = insn.getAddress();
             printf("goto L%x;}\n", imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bc1t:
             printf("if (cf) {");
             r_dump_instr(i + 1);
-            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            imm = insn.getAddress();
             printf("goto L%x;}\n", imm);
             break;
 
@@ -2580,7 +2580,7 @@ void r_dump_instr(int i) {
             uint32_t target = text_vaddr + (i + 2) * sizeof(uint32_t);
             printf("if (!cf) {");
             r_dump_instr(i + 1);
-            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            imm = insn.getAddress();
             printf("goto L%x;}\n", imm);
             if (!TRACE) {
                 printf("else goto L%x;\n", target);
@@ -2594,7 +2594,7 @@ void r_dump_instr(int i) {
             uint32_t target = text_vaddr + (i + 2) * sizeof(uint32_t);
             printf("if (cf) {");
             r_dump_instr(i + 1);
-            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            imm = insn.getAddress();
             printf("goto L%x;}\n", imm);
             if (!TRACE) {
                 printf("else goto L%x;\n", target);
@@ -2760,12 +2760,12 @@ void r_dump_instr(int i) {
 
         case rabbitizer::InstrId::UniqueId::cpu_j:
             r_dump_instr(i + 1);
-            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            imm = insn.getAddress();
             printf("goto L%x;\n", imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_jal:
-            imm = insn.patched ? insn.patched_addr : insn.instruction.getProcessedImmediate();
+            imm = insn.getAddress();
             r_dump_jal(i, imm);
             break;
 
