@@ -1245,8 +1245,7 @@ void r_pass3(void) {
             case rabbitizer::InstrId::UniqueId::cpu_bc1f:
             case rabbitizer::InstrId::UniqueId::cpu_bc1t:
                 r_add_edge(i, i + 1);
-                r_add_edge(i + 1,
-                           addr_to_i(insn.getAddress()));
+                r_add_edge(i + 1, addr_to_i(insn.getAddress()));
                 break;
 
             case rabbitizer::InstrId::UniqueId::cpu_beql:
@@ -1259,8 +1258,7 @@ void r_pass3(void) {
             case rabbitizer::InstrId::UniqueId::cpu_bc1tl:
                 r_add_edge(i, i + 1);
                 r_add_edge(i, i + 2);
-                r_add_edge(i + 1,
-                           addr_to_i(insn.getAddress()));
+                r_add_edge(i + 1, addr_to_i(insn.getAddress()));
                 rinsns[i + 1].no_following_successor = true; // don't inspect delay slot
                 break;
 
