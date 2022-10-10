@@ -37,11 +37,21 @@ jobs:
             pkg-config
             make
 
-      - name: Build recomp binary (Windows-only)
+      - name: Build recomp binary (Ubuntu)
+        shell: bash
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          make -j $(nproc) RELEASE=1 DEBUG=0 setup
+      - name: Build recomp binary (MacOS)
+        shell: bash
+        if: matrix.os == 'macos-latest'
+        run: |
+          make -j $(nproc) RELEASE=1 DEBUG=0 setup
+      - name: Build recomp binary (Windows)
         shell: msys2 {0}
         if: matrix.os == 'windows-latest'
         run: |-
-          make RELEASE=1 DEBUG=0 setup
+          make --jobs RELEASE=1 DEBUG=0 setup
 
       - name: Run the build script (Ubuntu)
         shell: bash
@@ -58,7 +68,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |-
           set MSYSTEM=MSYS
-          msys2 -c 'make RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }}'
+          msys2 -c 'make --jobs RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }}'
 
       - name: Create release archive
         shell: bash
