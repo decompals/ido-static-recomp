@@ -2998,7 +2998,7 @@ void r_dump_instr(int i) {
         } break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwr:
-            printf("// %s\n", insn.disassemble().c_str());
+            printf("//%s\n", insn.disassemble().c_str());
             break;
 
         case UniqueId_cpu_la: {
@@ -3190,7 +3190,7 @@ void r_dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_swr:
-            printf("// %s\n", insn.disassemble().c_str());
+            printf("//%s\n", insn.disassemble().c_str());
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_trunc_w_s:
@@ -4107,6 +4107,9 @@ int main(int argc, char* argv[]) {
 
     uint8_t* data;
     size_t len = read_file(filename, &data);
+
+    RabbitizerConfig_Cfg.misc.omit0XOnSmallImm = true;
+    RabbitizerConfig_Cfg.misc.opcodeLJust -= 8;
 
     parse_elf(data, len);
     r_disassemble();
