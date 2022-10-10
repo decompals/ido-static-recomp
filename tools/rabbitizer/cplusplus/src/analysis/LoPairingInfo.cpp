@@ -5,18 +5,15 @@
 
 using namespace rabbitizer;
 
-
-LoPairingInfo::LoPairingInfo() {
-
+LoPairingInfo::LoPairingInfo() : pairingInfo{} {
 }
-LoPairingInfo::LoPairingInfo(const RabbitizerLoPairingInfo &pairingInfo) {
-    this->pairingInfo = pairingInfo;
+LoPairingInfo::LoPairingInfo(const RabbitizerLoPairingInfo &newPairingInfo) : pairingInfo{ newPairingInfo } {
 }
 
 RabbitizerLoPairingInfo *LoPairingInfo::getCPtr() {
     return &this->pairingInfo;
 }
-const RabbitizerLoPairingInfo *LoPairingInfo::getCPtr() const{
+const RabbitizerLoPairingInfo *LoPairingInfo::getCPtr() const {
     return &this->pairingInfo;
 }
 
