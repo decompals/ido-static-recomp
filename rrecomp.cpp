@@ -2464,7 +2464,7 @@ void r_dump_instr(int i) {
                 break;
 
             case TYPE_D_LO_HI_2S:
-                src_regs_map = src_regs_map = get_all_source_reg_mask(insn.instruction);
+                src_regs_map = get_all_source_reg_mask(insn.instruction);
                 if (!((insn.f_livein & src_regs_map) == src_regs_map)) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                     break;
