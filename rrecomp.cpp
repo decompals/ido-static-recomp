@@ -1189,7 +1189,7 @@ void r_pass2(void) {
                 i++;
 
                 // LI
-                if (rinsns[i + 5].instruction.getUniqueId() == UniqueId_cpu_li) {
+                if (rinsns[i + 5].instruction.getUniqueId() == UniqueId_cpu_la) {
                     // 7.1
                     rinsns[i] = rinsns[i + 5];
                 } else {
