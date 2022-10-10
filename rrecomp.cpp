@@ -13,6 +13,7 @@
 #include <string_view>
 
 #include "rabbitizer.hpp"
+#include "rabbitizer.h"
 
 #include "elf.h"
 
@@ -146,6 +147,29 @@ struct RInsn {
         return this->instruction.getProcessedImmediate();
 
         // assert(!"unreachable code");
+    }
+
+    std::string disassemble() const {
+        char buffer[0x1000];
+        int32_t imm;
+
+        switch (this->instruction.getUniqueId()) {
+            case UniqueId_cpu_li:
+                imm = this->getImmediate();
+                if (imm >= 0) {
+                    sprintf(buffer, "li          %s, 0x%X", RabbitizerRegister_getNameGpr((int)this->lila_dst_reg), imm);
+                } else {
+                    sprintf(buffer, "li          %s, %i", RabbitizerRegister_getNameGpr((int)this->lila_dst_reg), imm);
+                }
+                return buffer;
+
+            case UniqueId_cpu_la:
+                sprintf(buffer, "la          %s, 0x%X", RabbitizerRegister_getNameGpr((int)this->lila_dst_reg), this->getAddress());
+                return buffer;
+
+            default:
+                return this->instruction.disassembleInstruction(0);
+        }
     }
 };
 
@@ -2062,7 +2086,7 @@ void r_dump(void) {
         }
 
         // TODO: construct an immediate override for the instructions
-        printf("\t%s", insn.instruction.disassemble(0).c_str());
+        printf("\t%s", insn.disassemble().c_str());
         if (insn.patched) {
             printf("\t[patched, immediate now 0x%X]", insn.patched_addr);
         }
@@ -2940,7 +2964,7 @@ void r_dump_instr(int i) {
         } break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwr:
-            printf("// %s\n", insn.instruction.disassemble(0).c_str());
+            printf("// %s\n", insn.disassemble().c_str());
             break;
 
         case UniqueId_cpu_la: {
@@ -3131,10 +3155,7 @@ void r_dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_swr:
-            // TODO: Fix this
-            // RabbitizerInstruction_disassembleOperands(&insn.instruction, buf, NULL, 0);
-            // printf("//swr %s\n", buf);
-            printf("// %s\n", insn.instruction.disassemble(0).c_str());
+            printf("// %s\n", insn.disassemble().c_str());
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_trunc_w_s:
@@ -3197,7 +3218,7 @@ void r_dump_instr(int i) {
 
         default:
         unimplemented:
-            printf("UNIMPLEMENTED 0x%X : %s\n", insn.instruction.getRaw(), insn.instruction.disassemble(0).c_str());
+            printf("UNIMPLEMENTED 0x%X : %s\n", insn.instruction.getRaw(), insn.disassemble().c_str());
             break;
     }
 }
@@ -3501,7 +3522,7 @@ void r_dump_c(void) {
             if (label_addresses.count(vaddr)) {
                 printf("L%x:\n", vaddr);
             }
-            //printf("// %s:\n", insn.instruction.disassembleInstruction(0).c_str());
+            // printf("// %s:\n", insn.disassemble().c_str());
             r_dump_instr(i);
         }
 
