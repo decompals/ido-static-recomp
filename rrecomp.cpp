@@ -2466,7 +2466,7 @@ void r_dump_instr(int i) {
     //        r_insn_to_type(insn), insn.instruction.getOpcodeName().c_str());
 
     uint64_t src_regs_map;
-    if (!insn.instruction.isJump() && !conservative) {
+    if (!insn.instruction.isJump() && !insn.instruction.isBranch() && !conservative) {
         switch (r_insn_to_type(insn)) {
             case TYPE_1S:
                 if (!(insn.f_livein & get_single_source_reg_mask(insn.instruction))) {
