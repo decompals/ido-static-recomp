@@ -1434,8 +1434,7 @@ typedef enum {
     /* 0 */ TYPE_NOP,        // No arguments
     /* 1 */ TYPE_S,          // in
     /* 2 */ TYPE_1D,         // 1 out
-    /* 3 */ TYPE_1D_1S,      // 1 out, 1 in
-    /* 4 */ TYPE_1D_2S,      // 1 out, 2 in
+    /* 3 */ TYPE_D_S,        // out, in
 } TYPE;
 
 TYPE r_insn_to_type(RInsn& insn) {
@@ -1447,7 +1446,7 @@ TYPE r_insn_to_type(RInsn& insn) {
 
         case rabbitizer::InstrId::UniqueId::cpu_add:
         case rabbitizer::InstrId::UniqueId::cpu_addu:
-            return TYPE_1D_2S;
+            return TYPE_D_S;
 
         case rabbitizer::InstrId::UniqueId::cpu_addi:
         case rabbitizer::InstrId::UniqueId::cpu_addiu:
@@ -1469,17 +1468,13 @@ TYPE r_insn_to_type(RInsn& insn) {
         case rabbitizer::InstrId::UniqueId::cpu_sra:
         case rabbitizer::InstrId::UniqueId::cpu_srl:
         case rabbitizer::InstrId::UniqueId::cpu_xori:
-            return TYPE_1D_1S;
+            return TYPE_D_S;
 
         case rabbitizer::InstrId::UniqueId::cpu_mfhi:
-            // TODO: track this properly
-            // i.operands[1].reg = MIPS_REG_HI;
-            return TYPE_1D_1S;
+            return TYPE_D_S;
 
         case rabbitizer::InstrId::UniqueId::cpu_mflo:
-            // TODO: track this properly
-            // i.operands[1].reg = MIPS_REG_LO;
-            return TYPE_1D_1S;
+            return TYPE_D_S;
 
         case rabbitizer::InstrId::UniqueId::cpu_and:
         case rabbitizer::InstrId::UniqueId::cpu_or:
@@ -1491,7 +1486,7 @@ TYPE r_insn_to_type(RInsn& insn) {
         case rabbitizer::InstrId::UniqueId::cpu_srlv:
         case rabbitizer::InstrId::UniqueId::cpu_subu:
         case rabbitizer::InstrId::UniqueId::cpu_xor:
-            return TYPE_1D_2S;
+            return TYPE_D_S;
 
         case rabbitizer::InstrId::UniqueId::cpu_cfc1:
         case rabbitizer::InstrId::UniqueId::cpu_mfc1:
@@ -1531,7 +1526,7 @@ TYPE r_insn_to_type(RInsn& insn) {
             return TYPE_S;
 
         case rabbitizer::InstrId::UniqueId::cpu_div:
-            return TYPE_1D_2S;
+            return TYPE_D_S;
 
         case rabbitizer::InstrId::UniqueId::cpu_div_s:
         case rabbitizer::InstrId::UniqueId::cpu_div_d:
@@ -1540,7 +1535,7 @@ TYPE r_insn_to_type(RInsn& insn) {
         case rabbitizer::InstrId::UniqueId::cpu_divu:
         case rabbitizer::InstrId::UniqueId::cpu_mult:
         case rabbitizer::InstrId::UniqueId::cpu_multu:
-            return TYPE_1D_2S;
+            return TYPE_D_S;
 
         case rabbitizer::InstrId::UniqueId::cpu_neg_s:
         case rabbitizer::InstrId::UniqueId::cpu_neg_d:
@@ -1663,14 +1658,7 @@ void r_pass4(void) {
                 live |= get_dest_reg_mask(insn);
                 break;
 
-            case TYPE_1D_1S:
-                src_regs_map = get_single_source_reg_mask(insn.instruction);
-                if (live & src_regs_map) {
-                    live |= get_dest_reg_mask(insn);
-                }
-                break;
-
-            case TYPE_1D_2S:
+            case TYPE_D_S:
                 src_regs_map = get_all_source_reg_mask(insn.instruction);
                 if ((live & src_regs_map) == src_regs_map) {
                     live |= get_dest_reg_mask(insn);
@@ -1872,14 +1860,7 @@ void r_pass5(void) {
                 live &= ~get_dest_reg_mask(insn);
                 break;
 
-            case TYPE_1D_1S:
-                if (live & get_dest_reg_mask(insn)) {
-                    live &= ~get_dest_reg_mask(insn);
-                    live |= get_single_source_reg_mask(insn.instruction);
-                }
-                break;
-
-            case TYPE_1D_2S:
+            case TYPE_D_S:
                 if (live & get_dest_reg_mask(insn)) {
                     live &= ~get_dest_reg_mask(insn);
                     live |= get_all_source_reg_mask(insn.instruction);
@@ -2461,17 +2442,14 @@ void r_dump_instr(int i) {
                 }
                 break;
 
-            case TYPE_1D_2S:
-                if (!(insn.f_livein & r_map_reg(insn.instruction.GetO32_rt()))) {
+            case TYPE_D_S: {
+                uint64_t reg_mask = get_all_source_reg_mask(insn.instruction);
+
+                if ((insn.f_livein & reg_mask) != reg_mask) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                     break;
                 }
-                // fallthrough
-            case TYPE_1D_1S:
-                if (!(insn.f_livein & get_single_source_reg_mask(insn.instruction))) {
-                    printf("// fdead %llx ", (unsigned long long)insn.f_livein);
-                    break;
-                }
+            }
                 // fallthrough
             case TYPE_1D:
                 if (!(insn.b_liveout & get_dest_reg_mask(insn))) {
