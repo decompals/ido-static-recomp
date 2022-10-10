@@ -743,6 +743,9 @@ void r_pass1(void) {
                 // addu    t3,t3,gp
                 // jr      t3
                 if (i >= 7 && rodata_section != NULL) {
+                    if (i == 224) {
+                        int dog = 5;
+                    }
                     bool is_pic =
                         (rinsns[i - 1].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_addu) &&
                         (rinsns[i - 1].instruction.GetO32_rt() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp);
@@ -770,10 +773,10 @@ void r_pass1(void) {
                             --addu_index;
                         }
 
-                        assert(rinsns[addu_index - 1].instruction.getUniqueId() ==
-                               rabbitizer::InstrId::UniqueId::cpu_sll);
-                        // operands[1]
-                        rabbitizer::Registers::Cpu::GprO32 index_reg = rinsns[addu_index - 1].instruction.GetO32_rt();
+                        // assert(rinsns[addu_index - 1].instruction.getUniqueId() ==
+                        //        rabbitizer::InstrId::UniqueId::cpu_sll);
+                        // // operands[1]
+                        // rabbitizer::Registers::Cpu::GprO32 index_reg = rinsns[addu_index - 1].instruction.GetO32_rt();
 
                         if (rinsns[addu_index].instruction.getUniqueId() != rabbitizer::InstrId::UniqueId::cpu_addu) {
                             goto skip;
@@ -854,7 +857,8 @@ void r_pass1(void) {
                             // printf("jump table at %08x, size %u\n", jtbl_addr, num_cases);
                             insn.jtbl_addr = jtbl_addr;
                             insn.num_cases = num_cases;
-                            insn.index_reg = index_reg;
+                            //insn.index_reg = index_reg;
+                            insn.index_reg = rinsns[addu_index - 1].instruction.GetO32_rt();
                             /*
                             rinsns[lw].patched = true;
                             rinsns[lw].instruction.uniqueId = rabbitizer::InstrId::UniqueId::cpu_nop;
@@ -4110,6 +4114,7 @@ int main(int argc, char* argv[]) {
 
     RabbitizerConfig_Cfg.misc.omit0XOnSmallImm = true;
     RabbitizerConfig_Cfg.misc.opcodeLJust -= 8;
+    RabbitizerConfig_Cfg.misc.upperCaseImm = false;
 
     parse_elf(data, len);
     r_disassemble();
