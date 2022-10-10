@@ -776,7 +776,8 @@ void r_pass1(void) {
                         // assert(rinsns[addu_index - 1].instruction.getUniqueId() ==
                         //        rabbitizer::InstrId::UniqueId::cpu_sll);
                         // // operands[1]
-                        // rabbitizer::Registers::Cpu::GprO32 index_reg = rinsns[addu_index - 1].instruction.GetO32_rt();
+                        // rabbitizer::Registers::Cpu::GprO32 index_reg = rinsns[addu_index -
+                        // 1].instruction.GetO32_rt();
 
                         if (rinsns[addu_index].instruction.getUniqueId() != rabbitizer::InstrId::UniqueId::cpu_addu) {
                             goto skip;
@@ -857,7 +858,7 @@ void r_pass1(void) {
                             // printf("jump table at %08x, size %u\n", jtbl_addr, num_cases);
                             insn.jtbl_addr = jtbl_addr;
                             insn.num_cases = num_cases;
-                            //insn.index_reg = index_reg;
+                            // insn.index_reg = index_reg;
                             insn.index_reg = rinsns[addu_index - 1].instruction.GetO32_rt();
                             /*
                             rinsns[lw].patched = true;
@@ -1431,13 +1432,11 @@ uint64_t r_temporary_regs(void) {
 
 typedef enum {
     /* 0 */ TYPE_NOP,        // No arguments
-    /* 1 */ TYPE_1S,         // 1 in
-    /* 2 */ TYPE_2S,         // 2 in
-    /* 3 */ TYPE_1D,         // 1 out
-    /* 4 */ TYPE_1D_1S,      // 1 out, 1 in
-    /* 5 */ TYPE_1D_2S,      // 1 out, 2 in
-    /* 6 */ TYPE_D_LO_HI_2S, // HI/LO out, 2 in
-    /* 7 */ TYPE_1S_POS1     // ?, 1 in
+    /* 1 */ TYPE_S,          // in
+    /* 2 */ TYPE_1D,         // 1 out
+    /* 3 */ TYPE_1D_1S,      // 1 out, 1 in
+    /* 4 */ TYPE_1D_2S,      // 1 out, 2 in
+    /* 5 */ TYPE_D_LO_HI_2S, // HI/LO out, 2 in
 } TYPE;
 
 TYPE r_insn_to_type(RInsn& insn) {
@@ -1514,7 +1513,7 @@ TYPE r_insn_to_type(RInsn& insn) {
         case rabbitizer::InstrId::UniqueId::cpu_beqz:
         case rabbitizer::InstrId::UniqueId::cpu_bnez:
         case rabbitizer::InstrId::UniqueId::cpu_mtc1:
-            return TYPE_1S;
+            return TYPE_S;
 
         case rabbitizer::InstrId::UniqueId::cpu_beq:
         case rabbitizer::InstrId::UniqueId::cpu_beql:
@@ -1530,7 +1529,7 @@ TYPE r_insn_to_type(RInsn& insn) {
         case rabbitizer::InstrId::UniqueId::cpu_tge:
         case rabbitizer::InstrId::UniqueId::cpu_tgeu:
         case rabbitizer::InstrId::UniqueId::cpu_tlt:
-            return TYPE_2S;
+            return TYPE_S;
 
         case rabbitizer::InstrId::UniqueId::cpu_div:
             return TYPE_D_LO_HI_2S;
@@ -1549,7 +1548,7 @@ TYPE r_insn_to_type(RInsn& insn) {
             return TYPE_NOP;
 
         case rabbitizer::InstrId::UniqueId::cpu_jalr:
-            return TYPE_1S;
+            return TYPE_S;
 
         case rabbitizer::InstrId::UniqueId::cpu_jr:
             if (insn.jtbl_addr != 0) {
@@ -1559,13 +1558,13 @@ TYPE r_insn_to_type(RInsn& insn) {
             if (insn.instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra) {
                 return TYPE_NOP;
             }
-            return TYPE_1S;
+            return TYPE_S;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwc1:
         case rabbitizer::InstrId::UniqueId::cpu_ldc1:
         case rabbitizer::InstrId::UniqueId::cpu_swc1:
         case rabbitizer::InstrId::UniqueId::cpu_sdc1:
-            return TYPE_1S_POS1;
+            return TYPE_S;
 
         default:
             return TYPE_NOP;
@@ -1865,15 +1864,7 @@ void r_pass5(void) {
         uint64_t live = insn.b_liveout | 1;
 
         switch (r_insn_to_type(insn)) {
-            case TYPE_1S:
-                live |= get_single_source_reg_mask(insn.instruction);
-                break;
-
-            case TYPE_1S_POS1:
-                live |= get_single_source_reg_mask(insn.instruction);
-                break;
-
-            case TYPE_2S:
+            case TYPE_S:
                 live |= get_all_source_reg_mask(insn.instruction);
                 break;
 
@@ -2471,20 +2462,8 @@ void r_dump_instr(int i) {
     uint64_t src_regs_map;
     if (!insn.instruction.isJump() && !insn.instruction.isBranch() && !conservative) {
         switch (r_insn_to_type(insn)) {
-            case TYPE_1S:
-                if (!(insn.f_livein & get_single_source_reg_mask(insn.instruction))) {
-                    printf("// fdead %llx ", (unsigned long long)insn.f_livein);
-                }
-                break;
-
-            case TYPE_1S_POS1:
-                if (!(insn.f_livein & get_single_source_reg_mask(insn.instruction))) {
-                    printf("// fdead %llx ", (unsigned long long)insn.f_livein);
-                }
-                break;
-
-            case TYPE_2S:
-                src_regs_map = src_regs_map = get_all_source_reg_mask(insn.instruction);
+            case TYPE_S:
+                src_regs_map = get_all_source_reg_mask(insn.instruction);
                 if (!((insn.f_livein & src_regs_map) == src_regs_map)) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                 }
@@ -2518,15 +2497,6 @@ void r_dump_instr(int i) {
                 if (!((insn.f_livein & src_regs_map) == src_regs_map)) {
                     printf("// fdead %llx ", (unsigned long long)insn.f_livein);
                     break;
-                }
-
-                if (!(insn.b_liveout & (r_map_reg(GPR_O32_lo) | r_map_reg(GPR_O32_hi)))) {
-#if 0
-                    printf("// bdead %llx %llx ", (unsigned long long)insn.b_liveout,
-                           (unsigned long long)(r_map_reg(GPR_O32_lo) | r_map_reg(GPR_O32_hi)));
-#else
-                    printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
-#endif
                 }
                 break;
 

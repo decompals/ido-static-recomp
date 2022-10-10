@@ -152,6 +152,8 @@ distclean: clean
 	$(RM) -r $(BUILD_BASE)
 	$(MAKE) -C $(RABBITIZER) distclean
 
+c_files: $(C_FILES)
+
 
 .PHONY: all clean distclean setup
 .DEFAULT_GOAL := all
