@@ -699,7 +699,7 @@ void r_pass1(void) {
             insn.instruction.descriptor = &RabbitizerInstrDescriptor_Descriptors[insn.instruction.uniqueId];
             */
             insn.patchAddress(rabbitizer::InstrId::UniqueId::cpu_jal,
-                              insn.instruction.getVram() + insn.instruction.getProcessedImmediate());
+                              insn.instruction.getVram() + insn.instruction.getBranchOffset());
         }
 
         if (insn.instruction.isJump()) {
@@ -1083,7 +1083,7 @@ void r_pass1(void) {
                         insn.instruction.uniqueId = rabbitizer::InstrId::UniqueId::cpu_jal;
                         insn.instruction.descriptor = &RabbitizerInstrDescriptor_Descriptors[insn.instruction.uniqueId];
                         */
-                        // insn.patchAddress(rabbitizer::InstrId::UniqueId::cpu_jal, insn.linked_value);
+                        insn.patchAddress(rabbitizer::InstrId::UniqueId::cpu_jal, insn.linked_value);
 
                         label_addresses.insert(insn.linked_value);
                         add_function(insn.linked_value);
