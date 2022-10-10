@@ -1436,7 +1436,6 @@ typedef enum {
     /* 2 */ TYPE_1D,         // 1 out
     /* 3 */ TYPE_1D_1S,      // 1 out, 1 in
     /* 4 */ TYPE_1D_2S,      // 1 out, 2 in
-    /* 5 */ TYPE_D_LO_HI_2S, // HI/LO out, 2 in
 } TYPE;
 
 TYPE r_insn_to_type(RInsn& insn) {
@@ -1532,7 +1531,7 @@ TYPE r_insn_to_type(RInsn& insn) {
             return TYPE_S;
 
         case rabbitizer::InstrId::UniqueId::cpu_div:
-            return TYPE_D_LO_HI_2S;
+            return TYPE_1D_2S;
 
         case rabbitizer::InstrId::UniqueId::cpu_div_s:
         case rabbitizer::InstrId::UniqueId::cpu_div_d:
@@ -1541,7 +1540,7 @@ TYPE r_insn_to_type(RInsn& insn) {
         case rabbitizer::InstrId::UniqueId::cpu_divu:
         case rabbitizer::InstrId::UniqueId::cpu_mult:
         case rabbitizer::InstrId::UniqueId::cpu_multu:
-            return TYPE_D_LO_HI_2S;
+            return TYPE_1D_2S;
 
         case rabbitizer::InstrId::UniqueId::cpu_neg_s:
         case rabbitizer::InstrId::UniqueId::cpu_neg_d:
@@ -1572,7 +1571,16 @@ TYPE r_insn_to_type(RInsn& insn) {
 }
 
 uint64_t get_dest_reg_mask(const RInsn& insn) {
-    return r_map_reg(get_dest_reg(insn));
+    switch (insn.instruction.getUniqueId()) {
+        case rabbitizer::InstrId::UniqueId::cpu_div:
+        case rabbitizer::InstrId::UniqueId::cpu_divu:
+        case rabbitizer::InstrId::UniqueId::cpu_mult:
+        case rabbitizer::InstrId::UniqueId::cpu_multu:
+            return r_map_reg(GPR_O32_lo) | r_map_reg(GPR_O32_hi);
+
+        default:
+            return r_map_reg(get_dest_reg(insn));
+    }
 }
 
 uint64_t get_single_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
@@ -1666,14 +1674,6 @@ void r_pass4(void) {
                 src_regs_map = get_all_source_reg_mask(insn.instruction);
                 if ((live & src_regs_map) == src_regs_map) {
                     live |= get_dest_reg_mask(insn);
-                }
-                break;
-
-            case TYPE_D_LO_HI_2S:
-                src_regs_map = get_all_source_reg_mask(insn.instruction);
-                if ((live & src_regs_map) == src_regs_map) {
-                    live |= r_map_reg(GPR_O32_lo);
-                    live |= r_map_reg(GPR_O32_hi);
                 }
                 break;
 
@@ -1885,14 +1885,6 @@ void r_pass5(void) {
                     live |= get_all_source_reg_mask(insn.instruction);
                 }
                 break;
-
-            case TYPE_D_LO_HI_2S: {
-                bool used = (live & (r_map_reg(GPR_O32_lo) | r_map_reg(GPR_O32_hi)));
-                live &= ~(r_map_reg(GPR_O32_lo) | r_map_reg(GPR_O32_hi));
-                if (used) {
-                    live |= get_all_source_reg_mask(insn.instruction);
-                }
-            } break;
 
             case TYPE_NOP:
                 break;
@@ -2489,14 +2481,6 @@ void r_dump_instr(int i) {
 #else
                     printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
 #endif
-                }
-                break;
-
-            case TYPE_D_LO_HI_2S:
-                src_regs_map = get_all_source_reg_mask(insn.instruction);
-                if (!((insn.f_livein & src_regs_map) == src_regs_map)) {
-                    printf("// fdead %llx ", (unsigned long long)insn.f_livein);
-                    break;
                 }
                 break;
 
