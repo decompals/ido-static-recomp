@@ -64,7 +64,7 @@ CFLAGS       ?= -MMD -I.
 CXXSTD       ?= -std=c++17
 CXXFLAGS     ?= -MMD -I$(RABBITIZER)/include -I$(RABBITIZER)/cplusplus/include
 WARNINGS     ?= -Wall -Wextra
-LDFLAGS      ?= -lm -Ltools/rabbitizer/build -lrabbitizerpp
+LDFLAGS      ?= -lm
 RECOMP_FLAGS ?=
 
 ifneq ($(WERROR),0)
@@ -129,7 +129,11 @@ $(shell mkdir -p $(BUILT_BIN))
 $(BUILD_BASE)/5.3/ugen.c: RECOMP_FLAGS := --conservative
 
 $(RECOMP_ELF): CXXFLAGS  += $(shell pkg-config --cflags capstone)
-$(RECOMP_ELF): LDFLAGS   += $(shell pkg-config --libs capstone)
+$(RECOMP_ELF): LDFLAGS   += $(shell pkg-config --libs capstone) -Ltools/rabbitizer/build -lrabbitizerpp
+ifneq ($(DETECTED_OS),windows)
+# For traceback
+	LDFLAGS              += -ldl
+endif
 # Too many warnings, disable everything for now...
 $(RECOMP_ELF): WARNINGS  += -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-function
 # Do we really need no-strict-aliasing?
