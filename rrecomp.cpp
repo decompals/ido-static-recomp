@@ -157,14 +157,16 @@ struct RInsn {
             case UniqueId_cpu_li:
                 imm = this->getImmediate();
                 if (imm >= 0) {
-                    sprintf(buffer, "li          %s, 0x%X", RabbitizerRegister_getNameGpr((int)this->lila_dst_reg), imm);
+                    sprintf(buffer, "li          %s, 0x%X", RabbitizerRegister_getNameGpr((int)this->lila_dst_reg),
+                            imm);
                 } else {
                     sprintf(buffer, "li          %s, %i", RabbitizerRegister_getNameGpr((int)this->lila_dst_reg), imm);
                 }
                 return buffer;
 
             case UniqueId_cpu_la:
-                sprintf(buffer, "la          %s, 0x%X", RabbitizerRegister_getNameGpr((int)this->lila_dst_reg), this->getAddress());
+                sprintf(buffer, "la          %s, 0x%X", RabbitizerRegister_getNameGpr((int)this->lila_dst_reg),
+                        this->getAddress());
                 return buffer;
 
             default:
@@ -533,7 +535,8 @@ void r_link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, int mem
                                         &RabbitizerInstrDescriptor_Descriptors[rinsns[search].instruction.uniqueId];
                                     */
                                     {
-                                        rabbitizer::Registers::Cpu::GprO32 dst_reg = rinsns[offset].instruction.GetO32_rt();
+                                        rabbitizer::Registers::Cpu::GprO32 dst_reg =
+                                            rinsns[offset].instruction.GetO32_rt();
                                         rinsns[offset].patchInstruction(rabbitizer::InstrId::UniqueId::cpu_move);
                                         // Patch the destination register too
                                         rinsns[offset].instruction.Set_rd(dst_reg);
@@ -1424,14 +1427,14 @@ uint64_t r_temporary_regs(void) {
 }
 
 typedef enum {
-    TYPE_NOP,        // No arguments
-    TYPE_1S,         // 1 in
-    TYPE_2S,         // 2 in
-    TYPE_1D,         // 1 out
-    TYPE_1D_1S,      // 1 out, 1 in
-    TYPE_1D_2S,      // 1 out, 2 in
-    TYPE_D_LO_HI_2S, // HI/LO out, 2 in
-    TYPE_1S_POS1     // ?, 1 in
+    /* 0 */ TYPE_NOP,        // No arguments
+    /* 1 */ TYPE_1S,         // 1 in
+    /* 2 */ TYPE_2S,         // 2 in
+    /* 3 */ TYPE_1D,         // 1 out
+    /* 4 */ TYPE_1D_1S,      // 1 out, 1 in
+    /* 5 */ TYPE_1D_2S,      // 1 out, 2 in
+    /* 6 */ TYPE_D_LO_HI_2S, // HI/LO out, 2 in
+    /* 7 */ TYPE_1S_POS1     // ?, 1 in
 } TYPE;
 
 TYPE r_insn_to_type(RInsn& insn) {
@@ -1440,10 +1443,11 @@ TYPE r_insn_to_type(RInsn& insn) {
         case rabbitizer::InstrId::UniqueId::cpu_add_s:
         case rabbitizer::InstrId::UniqueId::cpu_add_d:
             return TYPE_NOP;
-            return TYPE_1D_2S;
 
         case rabbitizer::InstrId::UniqueId::cpu_add:
         case rabbitizer::InstrId::UniqueId::cpu_addu:
+            return TYPE_1D_2S;
+
         case rabbitizer::InstrId::UniqueId::cpu_addi:
         case rabbitizer::InstrId::UniqueId::cpu_addiu:
         case rabbitizer::InstrId::UniqueId::cpu_andi:
@@ -2442,6 +2446,9 @@ void r_dump_instr(int i) {
                symbol_name ? symbol_name : "");
     }
 
+    // printf("// %llx, %llx, %llx, %llx : %d : %s\n", insn.b_livein, insn.b_liveout, insn.f_livein, insn.f_liveout,
+    //        r_insn_to_type(insn), insn.instruction.getOpcodeName().c_str());
+
     uint64_t src_regs_map;
     if (!insn.instruction.isJump() && !conservative) {
         switch (r_insn_to_type(insn)) {
@@ -2478,12 +2485,12 @@ void r_dump_instr(int i) {
                 // fallthrough
             case TYPE_1D:
                 if (!(insn.b_liveout & get_dest_reg_mask(insn))) {
-                    #if 0
+#if 0
                     printf("// %i bdead %llx %llx ", i, (unsigned long long)insn.b_liveout,
                            (unsigned long long)get_dest_reg_mask(insn));
-                    #else
+#else
                     printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
-                    #endif
+#endif
                 }
                 break;
 
@@ -2495,12 +2502,12 @@ void r_dump_instr(int i) {
                 }
 
                 if (!(insn.b_liveout & (r_map_reg(GPR_O32_lo) | r_map_reg(GPR_O32_hi)))) {
-                    #if 0
+#if 0
                     printf("// bdead %llx %llx ", (unsigned long long)insn.b_liveout,
                            (unsigned long long)(r_map_reg(GPR_O32_lo) | r_map_reg(GPR_O32_hi)));
-                    #else
+#else
                     printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
-                    #endif
+#endif
                 }
                 break;
 
@@ -2514,8 +2521,14 @@ void r_dump_instr(int i) {
     switch (insn.instruction.getUniqueId()) {
         case rabbitizer::InstrId::UniqueId::cpu_add:
         case rabbitizer::InstrId::UniqueId::cpu_addu:
-            printf("%s = %s + %s;\n", r_r((int)insn.instruction.GetO32_rd()), r_r((int)insn.instruction.GetO32_rs()),
-                   r_r((int)insn.instruction.GetO32_rt()));
+            if (insn.instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero) {
+                printf("%s = %s;\n", r_r((int)insn.instruction.GetO32_rd()), r_r((int)insn.instruction.GetO32_rt()));
+            } else if (insn.instruction.GetO32_rt() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero) {
+                printf("%s = %s;\n", r_r((int)insn.instruction.GetO32_rd()), r_r((int)insn.instruction.GetO32_rs()));
+            } else {
+                printf("%s = %s + %s;\n", r_r((int)insn.instruction.GetO32_rd()),
+                       r_r((int)insn.instruction.GetO32_rs()), r_r((int)insn.instruction.GetO32_rt()));
+            }
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_add_s:
@@ -2806,7 +2819,12 @@ void r_dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_sub:
-            goto unimplemented;
+            if (insn.instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero) {
+                printf("%s = -%s;\n", r_r((int)insn.instruction.GetO32_rd()), r_r((int)insn.instruction.GetO32_rt()));
+                break;
+            } else {
+                goto unimplemented;
+            }
 
         case rabbitizer::InstrId::UniqueId::cpu_sub_s:
             printf("%s = %s - %s;\n", r_fr((int)insn.instruction.GetO32_fd()), r_fr((int)insn.instruction.GetO32_fs()),
@@ -2981,11 +2999,12 @@ void r_dump_instr(int i) {
         case UniqueId_cpu_li:
             imm = insn.getImmediate();
 
-            if (imm > 0) {
-                printf("%s = 0x%x;\n", r_r((int)insn.lila_dst_reg), imm);
-            } else {
-                printf("%s = %i;\n", r_r((int)insn.lila_dst_reg), imm);
-            }
+            printf("%s = 0x%x;\n", r_r((int)insn.lila_dst_reg), imm);
+            // if (imm > 0) {
+            //     printf("%s = 0x%x;\n", r_r((int)insn.lila_dst_reg), imm);
+            // } else {
+            //     printf("%s = %i;\n", r_r((int)insn.lila_dst_reg), imm);
+            // }
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_mfc1:
