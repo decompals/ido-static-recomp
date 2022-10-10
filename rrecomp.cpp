@@ -211,7 +211,7 @@ uint32_t gp_value_adj;
 map<uint32_t, string> symbol_names;
 
 vector<pair<uint32_t, uint32_t>> data_function_pointers;
-set<uint32_t> li_function_pointers;
+set<uint32_t> la_function_pointers;
 map<uint32_t, Function> functions;
 uint32_t main_addr;
 uint32_t mcount_addr;
@@ -1131,15 +1131,14 @@ void r_pass2(void) {
             it->second.returns.push_back(addr + 4);
         }
 
-        if (insn.is_global_got_memop && insn.instruction.hasOperandAlias(rabbitizer::OperandType::cpu_immediate)) {
-            if ((text_vaddr <= insn.instruction.getProcessedImmediate()) &&
-                (insn.instruction.getProcessedImmediate() < text_vaddr + text_section_len)) {
-                uint32_t faddr = insn.instruction.getProcessedImmediate();
+        if (insn.is_global_got_memop && insn.instruction.getUniqueId() == UniqueId_cpu_la) {
+            uint32_t faddr = insn.getAddress();
 
-                li_function_pointers.insert(faddr);
+            if ((text_vaddr <= faddr) && (faddr < text_vaddr + text_section_len)) {
+                la_function_pointers.insert(faddr);
                 functions[faddr].referenced_by_function_pointer = true;
 #if INSPECT_FUNCTION_POINTERS
-                fprintf(stderr, "li function pointer: 0x%x at 0x%x\n", faddr, addr);
+                fprintf(stderr, "la function pointer: 0x%x at 0x%x\n", faddr, addr);
 #endif
             }
         }
@@ -1633,7 +1632,7 @@ void r_pass4(void) {
                                                 r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a3);
     }
 
-    for (auto& addr : li_function_pointers) {
+    for (auto& addr : la_function_pointers) {
         q.push_back(addr);
         rinsns[addr_to_i(addr)].f_livein = livein_func_start |
                                            r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a2) |
@@ -1838,7 +1837,7 @@ void r_pass5(void) {
         }
     }
 
-    for (auto& func_addr : li_function_pointers) {
+    for (auto& func_addr : la_function_pointers) {
         for (auto addr : functions[func_addr].returns) {
             q.push_back(addr);
             rinsns[addr_to_i(addr)].b_liveout = 1U | r_map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0) |
@@ -3409,7 +3408,7 @@ void r_dump_c(void) {
         }
     }
 
-    if (!data_function_pointers.empty() || !li_function_pointers.empty()) {
+    if (!data_function_pointers.empty() || !la_function_pointers.empty()) {
         printf("uint64_t trampoline(uint8_t *mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, "
                "uint32_t fp_dest) {\n");
         printf("switch (fp_dest) {\n");
@@ -3915,6 +3914,7 @@ void parse_elf(const uint8_t* data, size_t file_len) {
 
         // out_range.common_start = common_start;
         // out_range.common_order.swap(common_order);
+        free(local_entries);
     }
 
     // add relocations
