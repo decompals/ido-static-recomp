@@ -508,7 +508,12 @@ void r_link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, int mem
                                     rinsns[offset].instruction.descriptor =
                                         &RabbitizerInstrDescriptor_Descriptors[rinsns[search].instruction.uniqueId];
                                     */
-                                    rinsns[offset].patchInstruction(rabbitizer::InstrId::UniqueId::cpu_move);
+                                    {
+                                        rabbitizer::Registers::Cpu::GprO32 dst_reg = rinsns[offset].instruction.GetO32_rt();
+                                        rinsns[offset].patchInstruction(rabbitizer::InstrId::UniqueId::cpu_move);
+                                        // Patch the destination register too
+                                        rinsns[offset].instruction.Set_rd(dst_reg);
+                                    }
 
                                     if (addr >= text_vaddr && addr < text_vaddr + text_section_len) {
                                         add_function(addr);
@@ -2450,7 +2455,7 @@ void r_dump_instr(int i) {
             case TYPE_1D:
                 if (!(insn.b_liveout & get_dest_reg_mask(insn))) {
                     #if 0
-                    printf("// bdead %llx %llx ", (unsigned long long)insn.b_liveout,
+                    printf("// %i bdead %llx %llx ", i, (unsigned long long)insn.b_liveout,
                            (unsigned long long)get_dest_reg_mask(insn));
                     #else
                     printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
@@ -2466,7 +2471,12 @@ void r_dump_instr(int i) {
                 }
 
                 if (!(insn.b_liveout & (r_map_reg(GPR_O32_lo) | r_map_reg(GPR_O32_hi)))) {
+                    #if 0
+                    printf("// bdead %llx %llx ", (unsigned long long)insn.b_liveout,
+                           (unsigned long long)(r_map_reg(GPR_O32_lo) | r_map_reg(GPR_O32_hi)));
+                    #else
                     printf("// bdead %llx ", (unsigned long long)insn.b_liveout);
+                    #endif
                 }
                 break;
 
@@ -3491,6 +3501,7 @@ void r_dump_c(void) {
             if (label_addresses.count(vaddr)) {
                 printf("L%x:\n", vaddr);
             }
+            //printf("// %s:\n", insn.instruction.disassembleInstruction(0).c_str());
             r_dump_instr(i);
         }
 
