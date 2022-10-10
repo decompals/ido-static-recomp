@@ -1541,9 +1541,6 @@ TYPE r_insn_to_type(RInsn& insn) {
         case rabbitizer::InstrId::UniqueId::cpu_multu:
             return TYPE_D_LO_HI_2S;
 
-            // case rabbitizer::InstrId::UniqueId::cpu_negu: // ? Capstone NEG
-            return TYPE_1D_1S;
-
         case rabbitizer::InstrId::UniqueId::cpu_neg_s:
         case rabbitizer::InstrId::UniqueId::cpu_neg_d:
             return TYPE_NOP;
@@ -1577,6 +1574,15 @@ uint64_t get_dest_reg_mask(const RInsn& insn) {
 }
 
 uint64_t get_single_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
+    switch (instr.getUniqueId()) {
+        case rabbitizer::InstrId::UniqueId::cpu_mflo:
+            return r_map_reg(GPR_O32_lo);
+        case rabbitizer::InstrId::UniqueId::cpu_mfhi:
+            return r_map_reg(GPR_O32_hi);
+
+        default:
+            break;
+    }
     if (instr.hasOperandAlias(rabbitizer::OperandType::cpu_rs)) {
         return r_map_reg(instr.GetO32_rs());
     } else if (instr.hasOperandAlias(rabbitizer::OperandType::cpu_rt)) {
@@ -1590,6 +1596,16 @@ uint64_t get_single_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
 
 uint64_t get_all_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
     uint64_t ret = 0;
+
+    switch (instr.getUniqueId()) {
+        case rabbitizer::InstrId::UniqueId::cpu_mflo:
+            ret |= r_map_reg(GPR_O32_lo);
+        case rabbitizer::InstrId::UniqueId::cpu_mfhi:
+            ret |= r_map_reg(GPR_O32_hi);
+
+        default:
+            break;
+    }
 
     if (instr.hasOperandAlias(rabbitizer::OperandType::cpu_rs)) {
         ret |= r_map_reg(instr.GetO32_rs());
