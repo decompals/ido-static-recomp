@@ -5,7 +5,7 @@
 #include <cinttypes>
 #include <unistd.h>
 
-#include <algorithm>
+//#include <algorithm>
 #include <map>
 #include <set>
 #include <vector>
@@ -87,6 +87,7 @@ struct Insn {
         uint32_t linked_value;
         float linked_float;
     };
+
     // jumptable instructions
     uint32_t jtbl_addr;
     uint32_t num_cases;
@@ -99,6 +100,27 @@ struct Insn {
     uint64_t b_livein;
     uint64_t f_livein;
     uint64_t f_liveout;
+
+    Insn(uint32_t word, uint32_t vram) : instruction(word, vram) {
+        this->is_global_got_memop = false;
+        this->no_following_successor = false;
+
+        this->patched = false;
+        this->patched_addr = 0;
+        this->patched_imms = 0;
+        this->lila_dst_reg = rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero;
+        this->linked_insn = -1;
+        this->linked_value = 0;
+
+        this->jtbl_addr = 0;
+        this->num_cases = 0;
+        this->index_reg = rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero;
+
+        this->b_liveout = 0;
+        this->b_livein = 0;
+        this->f_livein = 0;
+        this->f_liveout = 0;
+    }
 
     void patchInstruction(rabbitizer::InstrId::UniqueId instructionId) {
         // if (instructionId != rabbitizer::InstrId::UniqueId::cpu_nop) {
@@ -410,19 +432,13 @@ void disassemble(void) {
 
     for (i = 0; i < text_section_len; i += 4) {
         uint32_t word = read_u32_be(&text_section[i]);
-        // rabbitizer::InstructionCpu instr(word, text_vaddr + i);
-        Insn insn = { { word, text_vaddr + i }, 0 };
-        // insn.instruction = instr;
-        insn.linked_insn = -1;
-
+        Insn insn(word, text_vaddr + i);
         insns.push_back(insn);
     }
     {
         // Add dummy NOP instruction to avoid out of bounds
-        // rabbitizer::InstructionCpu instr(0x00000000, text_vaddr + i);
-        Insn insn = (Insn){ { 0x00000000, text_vaddr + i }, 0 };
+        Insn insn(0x00000000, text_vaddr + i);
         insn.no_following_successor = true;
-        // insn.instruction = instr;
         insns.push_back(insn);
     }
 }

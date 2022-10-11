@@ -136,7 +136,7 @@ $(RECOMP_ELF): LDFLAGS   += -Wl,-export-dynamic
 endif
 
 # Too many warnings, disable everything for now...
-$(RECOMP_ELF): WARNINGS  += -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-function
+$(RECOMP_ELF): WARNINGS  += -Wpedantic -Wno-shadow -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-implicit-fallthrough
 # Do we really need no-strict-aliasing?
 %/$(LIBC_IMPL_O): CFLAGS   += -fno-strict-aliasing -D$(IDO_VERSION)
 # TODO: fix warnings
@@ -169,8 +169,7 @@ c_files: $(C_FILES)
 #### Various Recipes ####
 
 $(BUILD_BASE)/%.elf: %.cpp
-#	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) -o $@ $^ $(LDFLAGS)
-	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) -o $@ $^ $(LDFLAGS)
 
 
 $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/%
