@@ -2015,7 +2015,7 @@ void dump_cond_branch(int i, const char* lhs, const char* op, const char* rhs) {
             cast2 = "(int)";
         }
     }
-    printf("if (%s%s %s %s%s) {", cast1, lhs, op, cast2, rhs);
+    printf("if (%s%s %s %s%s) {\n", cast1, lhs, op, cast2, rhs);
     dump_instr(i + 1);
 
     uint32_t addr = insn.getAddress();
@@ -2400,14 +2400,14 @@ void dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bc1f:
-            printf("if (!cf) {");
+            printf("if (!cf) {\n");
             dump_instr(i + 1);
             imm = insn.getAddress();
             printf("goto L%x;}\n", imm);
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_bc1t:
-            printf("if (cf) {");
+            printf("if (cf) {\n");
             dump_instr(i + 1);
             imm = insn.getAddress();
             printf("goto L%x;}\n", imm);
@@ -2415,7 +2415,7 @@ void dump_instr(int i) {
 
         case rabbitizer::InstrId::UniqueId::cpu_bc1fl: {
             uint32_t target = text_vaddr + (i + 2) * sizeof(uint32_t);
-            printf("if (!cf) {");
+            printf("if (!cf) {\n");
             dump_instr(i + 1);
             imm = insn.getAddress();
             printf("goto L%x;}\n", imm);
@@ -2429,7 +2429,7 @@ void dump_instr(int i) {
 
         case rabbitizer::InstrId::UniqueId::cpu_bc1tl: {
             uint32_t target = text_vaddr + (i + 2) * sizeof(uint32_t);
-            printf("if (cf) {");
+            printf("if (cf) {\n");
             dump_instr(i + 1);
             imm = insn.getAddress();
             printf("goto L%x;}\n", imm);
