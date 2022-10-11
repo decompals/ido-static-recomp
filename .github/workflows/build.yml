@@ -20,21 +20,19 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bison file gperf libcapstone-dev
+          sudo apt-get install -y build-essential
       - name: Install dependencies (MacOS)
         shell: bash
         if: matrix.os == 'macos-latest'
         run: |
-          brew install capstone pkg-config make
+          brew install make
       - name: Install dependencies (Windows)
         uses: msys2/setup-msys2@v2
         if: matrix.os == 'windows-latest'
         with:
           install: |-
             gcc
-            mingw-w64-x86_64-capstone
             mingw-w64-x86_64-gcc
-            pkg-config
             make
 
       - name: Build recomp binary (Ubuntu)

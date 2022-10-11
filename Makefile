@@ -62,7 +62,7 @@ STRIP := strip
 CSTD         ?= -std=c11
 CFLAGS       ?= -MMD -I.
 CXXSTD       ?= -std=c++17
-CXXFLAGS     ?= -MMD -I$(RABBITIZER)/include -I$(RABBITIZER)/cplusplus/include
+CXXFLAGS     ?= -MMD
 WARNINGS     ?= -Wall -Wextra
 LDFLAGS      ?= -lm
 RECOMP_FLAGS ?=
@@ -88,11 +88,6 @@ endif
 
 ifeq ($(DETECTED_OS),windows)
 	CXXFLAGS     += -static
-endif
-
-ifneq ($(DETECTED_OS),macos)
-# For traceback
-	LDFLAGS      += -Wl,-export-dynamic
 endif
 
 # -- Build Directories
@@ -128,12 +123,18 @@ $(shell mkdir -p $(BUILT_BIN))
 # to emulate, pass the conservative flag to `recomp`
 $(BUILD_BASE)/5.3/ugen.c: RECOMP_FLAGS := --conservative
 
-$(RECOMP_ELF): CXXFLAGS  += $(shell pkg-config --cflags capstone)
-$(RECOMP_ELF): LDFLAGS   += $(shell pkg-config --libs capstone) -Ltools/rabbitizer/build -lrabbitizerpp
+$(RECOMP_ELF): CXXFLAGS  += -I$(RABBITIZER)/include -I$(RABBITIZER)/cplusplus/include
+$(RECOMP_ELF): LDFLAGS   += -L$(RABBITIZER)/build -lrabbitizerpp
+
 ifneq ($(DETECTED_OS),windows)
 # For traceback
-	LDFLAGS              += -ldl
+$(RECOMP_ELF): LDFLAGS   += -ldl
 endif
+ifeq ($(DETECTED_OS),linux)
+# For traceback
+$(RECOMP_ELF): LDFLAGS   += -Wl,-export-dynamic
+endif
+
 # Too many warnings, disable everything for now...
 $(RECOMP_ELF): WARNINGS  += -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-function
 # Do we really need no-strict-aliasing?
@@ -172,11 +173,11 @@ $(BUILD_BASE)/%.elf: %.cpp
 	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 
-$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/% | $(RECOMP_ELF)
+$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/%
 	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
 # cc is special and is stored on the `bin` folder instead of the `lib` one
-$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/% | $(RECOMP_ELF)
+$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/%
 	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
 
