@@ -13,7 +13,7 @@ WERROR ?= 0
 RELEASE ?= 0
 # Disables/Enables optimizations to make debugging easier
 DEBUG ?= 1
-ASAN ?= 1
+ASAN ?= 0
 
 # Can be set to `universal` to build universal binaries on Mac
 TARGET ?= native
