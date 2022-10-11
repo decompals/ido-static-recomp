@@ -18,7 +18,8 @@ TARGET ?= native
 
 ifeq ($(VERSION),7.1)
 	IDO_VERSION := IDO71
-	IDO_TC      := cc as1 cfe ugen umerge uopt
+# copt currently does not build
+	IDO_TC      := cc acpp as0 as1 cfe ugen ujoin uld umerge uopt usplit
 else ifeq ($(VERSION),5.3)
 	IDO_VERSION := IDO53
 	IDO_TC      := cc acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit
