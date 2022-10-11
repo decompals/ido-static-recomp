@@ -167,8 +167,6 @@ struct Insn {
         }
 
         return this->instruction.getProcessedImmediate();
-
-        // assert(!"unreachable code");
     }
 
     std::string disassemble() const {
@@ -502,13 +500,12 @@ void link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, int mem_i
     int end_search = std::max(0, offset - MAX_LOOKBACK);
 
     for (int search = offset - 1; search >= end_search; search--) {
-
         switch (insns[search].instruction.getUniqueId()) {
             case rabbitizer::InstrId::UniqueId::cpu_lui:
                 if (reg == insns[search].instruction.GetO32_rt()) {
-                    return;
+                    goto loop_end;
                 }
-                break;
+                continue;
 
             case rabbitizer::InstrId::UniqueId::cpu_lw:
             case rabbitizer::InstrId::UniqueId::cpu_ld:
@@ -550,7 +547,7 @@ void link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, int mem_i
                                     if (addr >= text_vaddr && addr < text_vaddr + text_section_len) {
                                         add_function(addr);
                                     }
-                                    return;
+                                    goto loop_end;
 
                                 case rabbitizer::InstrId::UniqueId::cpu_lb:
                                 case rabbitizer::InstrId::UniqueId::cpu_lbu:
@@ -564,34 +561,35 @@ void link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, int mem_i
                                 case rabbitizer::InstrId::UniqueId::cpu_lwc1:
                                 case rabbitizer::InstrId::UniqueId::cpu_swc1:
                                     insns[offset].patchImmediate(0);
-                                    return;
+                                    goto loop_end;
 
                                 default:
                                     assert(0 && "Unsupported instruction type");
                             }
                         }
-                        return;
+                        goto loop_end;
                     } else {
                         // ignore: reg is pointer, offset is probably struct data member
-                        return;
+                        goto loop_end;
                     }
                 }
 
-                break;
+                continue;
 
             case rabbitizer::InstrId::UniqueId::cpu_jr:
                 if ((insns[search].instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra) &&
                     (offset - search >= 2)) {
                     // stop looking when previous `jr ra` is hit,
                     // but ignore if `offset` is branch delay slot for this `jr ra`
-                    return;
+                    goto loop_end;
                 }
-                break;
+                continue;
 
             default:
-                break;
+                continue;
         }
     }
+    loop_end:;
 }
 
 // for a given `jalr t9`, find the matching t9 load
