@@ -21,7 +21,7 @@
 #include <windows.h>
 #endif /* _WIN32 && !__CYGWIN__ */
 
-#if !defined(_MSC_VER) && !defined(__CYGWIN__)
+#if !defined(_MSC_VER) && !defined(__CYGWIN__) && !defined(_WIN32)
 #define UNIX_PLATFORM
 #endif
 

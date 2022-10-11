@@ -25,7 +25,7 @@ jobs:
         shell: bash
         if: matrix.os == 'macos-latest'
         run: |
-          brew install capstone pkg-config
+          brew install capstone pkg-config make
       - name: Install dependencies (Windows)
         uses: msys2/setup-msys2@v2
         if: matrix.os == 'windows-latest'
