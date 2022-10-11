@@ -105,7 +105,7 @@ IRIX_USR_DIR ?= $(IRIX_BASE)/$(VERSION)/usr
 # -- Location of the irix tool chain error messages
 ERR_STRS        := $(BUILT_BIN)/err.english.cc
 
-RECOMP_ELF      := $(BUILD_BASE)/rrecomp.elf
+RECOMP_ELF      := $(BUILD_BASE)/recomp.elf
 LIBC_IMPL_O     := libc_impl.o
 
 TARGET_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/$(binary))
