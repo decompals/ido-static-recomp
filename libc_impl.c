@@ -1193,42 +1193,39 @@ int wrapper_ftruncate(uint8_t *mem, int fd, int length) {
 }
 
 void wrapper_bcopy(uint8_t *mem, uint32_t src_addr, uint32_t dst_addr, uint32_t len) {
-    wrapper_memcpy(mem, dst_addr, src_addr, len);
-}
-
-/**
- * IRIX's memcpy seems to allow overlapping destination and source pointers, while the C standard dictates
- * both pointer should not overlap, (UB otherwise).
- * Because of this, we only use host's memcpy in case both pointers do not overlap and are 32bit-aligned 
- * (because of endianess), otherwise do a manual copy instead.
- * memmove has proven to be slower here for some unknown reason
- */
-uint32_t wrapper_memcpy(uint8_t *mem, uint32_t dst_addr, uint32_t src_addr, uint32_t len) {
-    uint32_t saved = dst_addr;
-    bool useHostMemcpy = false;
-
-    // We can only use memcpy in case both addresses are word aligned and the size to copy is a multiple of 4 bytes
-    // because the host endian may differ from the guest endian
-    if ((dst_addr % 4 == 0) && (src_addr % 4 == 0) && (len % 4 == 0)) {
-        // We need to ensure both the source and the destination do not overlap because memcpy relies on it
-        if ((src_addr < dst_addr) && (src_addr + len < dst_addr)) {
-            useHostMemcpy = true;
-        } else if ((dst_addr < src_addr) && (dst_addr + len < src_addr)) {
-            useHostMemcpy = true;
+    if (dst_addr % 4 == 0 && src_addr % 4 == 0 && len % 4 == 0) {
+        // Use memmove to copy regions that are 4-byte aligned.
+        // This prevents the byte-swapped mem from causing issues when copying normally.
+        // Memmove handles overlapping copies correctly, so overlap does not need to be checked.
+        memmove(&MEM_U32(dst_addr), &MEM_U32(src_addr), len);
+    } else if (dst_addr > src_addr) {
+        // Perform a reverse byte-swapped copy when the destination is ahead of the source.
+        // This prevents overwriting the source contents before they're read.
+        dst_addr += len - 1;
+        src_addr += len - 1;
+        while (len--) {
+            MEM_U8(dst_addr) = MEM_U8(src_addr);
+            --dst_addr;
+            --src_addr;
         }
-    }
-
-    if (useHostMemcpy) {
-        memcpy(&MEM_U32(dst_addr), &MEM_U32(src_addr), len);
     } else {
+        // Otherwise, perform a normal byte-swapped copy.
         while (len--) {
             MEM_U8(dst_addr) = MEM_U8(src_addr);
             ++dst_addr;
             ++src_addr;
         }
     }
+}
 
-    return saved;
+/**
+ * IRIX's memcpy seems to allow overlapping destination and source pointers, while the C standard dictates
+ * both pointer should not overlap, (UB otherwise).
+ * Because of this, we only use host bcopy since it can handle overlapping regions
+ */
+uint32_t wrapper_memcpy(uint8_t *mem, uint32_t dst_addr, uint32_t src_addr, uint32_t len) {
+    wrapper_bcopy(mem, src_addr, dst_addr, len);
+    return dst_addr;
 }
 
 uint32_t wrapper_memccpy(uint8_t *mem, uint32_t dst_addr, uint32_t src_addr, int c, uint32_t len) {
