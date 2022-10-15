@@ -127,10 +127,6 @@ struct Insn {
     }
 
     void patchInstruction(rabbitizer::InstrId::UniqueId instructionId) {
-        // if (instructionId != rabbitizer::InstrId::UniqueId::cpu_nop) {
-        //     assert(!this->patched);
-        // }
-
         this->patched = true;
         RabbitizerInstruction* innerInstr = this->instruction.getCPtr();
         innerInstr->uniqueId = (RabbitizerInstrId)(instructionId);
@@ -138,8 +134,6 @@ struct Insn {
     }
 
     void patchAddress(rabbitizer::InstrId::UniqueId instructionId, uint32_t newAddress) {
-        // assert(!this->patched);
-
         this->patchInstruction(instructionId);
         this->patched_addr = newAddress;
     }
@@ -797,7 +791,6 @@ void pass1(void) {
                                 insns[i - 1].patchInstruction(rabbitizer::InstrId::UniqueId::cpu_nop);
                             }
 
-                            // printf("jump table at %08x, size %u\n", jtbl_addr, num_cases);
                             insn.jtbl_addr = jtbl_addr;
                             insn.num_cases = num_cases;
                             insn.index_reg = insns[addu_index - 1].instruction.GetO32_rt();
@@ -1460,7 +1453,7 @@ uint64_t get_all_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
 }
 
 void pass4(void) {
-    vector<uint32_t> q; // Why is this called q?
+    vector<uint32_t> q; // TODO: Why is this called q?
     uint64_t livein_func_start = 1U | map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0) |
                                  map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_a1) |
                                  map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_sp) |
@@ -2736,11 +2729,6 @@ void dump_instr(int i) {
             imm = insn.getImmediate();
 
             printf("%s = 0x%x;\n", r((int)insn.lila_dst_reg), imm);
-            // if (imm > 0) {
-            //     printf("%s = 0x%x;\n", r((int)insn.lila_dst_reg), imm);
-            // } else {
-            //     printf("%s = %i;\n", r((int)insn.lila_dst_reg), imm);
-            // }
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_mfc1:
