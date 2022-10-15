@@ -5,7 +5,6 @@
 #include <cinttypes>
 #include <unistd.h>
 
-//#include <algorithm>
 #include <map>
 #include <set>
 #include <vector>
@@ -48,6 +47,11 @@
 #endif
 
 #define LABELS_64_BIT 1
+
+#ifndef DUMP_INSTRUCTIONS
+// Set to non-zero to dump actual disassembly when dumping C code
+#define DUMP_INSTRUCTIONS 0
+#endif
 
 #define u32be(x) (uint32_t)(((x & 0xff) << 24) + ((x & 0xff00) << 8) + ((x & 0xff0000) >> 8) + ((uint32_t)(x) >> 24))
 #define u16be(x) (uint16_t)(((x & 0xff) << 8) + ((x & 0xff00) >> 8))
@@ -510,8 +514,6 @@ void link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, int mem_i
             case rabbitizer::InstrId::UniqueId::cpu_lw:
             case rabbitizer::InstrId::UniqueId::cpu_ld:
             case rabbitizer::InstrId::UniqueId::cpu_addiu:
-
-            // case rabbitizer::InstrId::UniqueId::cpu_addu: // used in jump tables for offset
             case rabbitizer::InstrId::UniqueId::cpu_add:
             case rabbitizer::InstrId::UniqueId::cpu_sub:
             case rabbitizer::InstrId::UniqueId::cpu_subu:
@@ -910,10 +912,8 @@ void pass1(void) {
             case rabbitizer::InstrId::UniqueId::cpu_ldc1:
             case rabbitizer::InstrId::UniqueId::cpu_lwc1:
             case rabbitizer::InstrId::UniqueId::cpu_lwc2:
-            // case rabbitizer::InstrId::UniqueId::cpu_lwc3: // Seems unlikely that this is used
             case rabbitizer::InstrId::UniqueId::cpu_swc1:
             case rabbitizer::InstrId::UniqueId::cpu_swc2:
-                // case rabbitizer::InstrId::UniqueId::cpu_swc3:
                 {
                     rabbitizer::Registers::Cpu::GprO32 mem_rs = insns[i].instruction.GetO32_rs();
                     int32_t mem_imm = insns[i].instruction.getProcessedImmediate();
@@ -925,13 +925,10 @@ void pass1(void) {
                             got_entry -= got_locals.size();
                             if (got_entry < got_globals.size()) {
                                 assert(insn.instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_lw);
-                                // printf("gp 0x%08x %s\n", mem_imm, got_globals[got_entry].name);
-
                                 unsigned int dest_vaddr = got_globals[got_entry];
 
                                 insns[i].is_global_got_memop = true;
                                 insns[i].linked_value = dest_vaddr;
-                                // insns[i].label = got_globals[got_entry].name;
 
                                 // patch to LA
                                 insns[i].lila_dst_reg = get_dest_reg(insns[i]);
@@ -955,7 +952,7 @@ void pass1(void) {
                     insns[i].lila_dst_reg = get_dest_reg(insns[i]);
                     insns[i].patchInstruction(UniqueId_cpu_li);
                     insns[i].patchImmediate(imm);
-                } else if (/*rt == rs &&*/ rt !=
+                } else if (rt !=
                            rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) { // only look for LUI if rt and rs are the
                                                                              // same
                     link_with_lui(i, rs, imm);
@@ -984,7 +981,6 @@ void pass1(void) {
             (insn.instruction.GetO32_rd() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) &&
             (insn.instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) &&
             (insn.instruction.GetO32_rt() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_t9) && i >= 2) {
-            // state->function_entry_points.insert(vaddr + (i - 2) * 4);
             for (size_t j = i - 2; j <= i; j++) {
                 insns[j].patchInstruction(rabbitizer::InstrId::UniqueId::cpu_nop);
             }
@@ -1219,7 +1215,6 @@ void pass3(void) {
                 add_edge(i, i + 1);
 
                 uint32_t dest = insn.getAddress();
-                // fprintf(stderr, "%ld: %X: %X\n", i, insn.instruction.getRaw(), dest);
 
                 if (dest > mcount_addr && dest >= text_vaddr && dest < text_vaddr + text_section_len) {
                     add_edge(i + 1, addr_to_i(dest), true);
@@ -1390,7 +1385,6 @@ TYPE insn_to_type(Insn& insn) {
 
         case rabbitizer::InstrId::UniqueId::cpu_jr:
             if (insn.jtbl_addr != 0) {
-                // insn.instruction.word = RAB_INSTR_PACK_rs(insn.instruction.word, insn.index_reg);
                 insn.instruction.Set_rs(insn.index_reg);
             }
             if (insn.instruction.GetO32_rs() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra) {
@@ -1546,7 +1540,6 @@ void pass4(void) {
 
                 // TODO: Can this only ever be a J-type instruction?
                 auto it = symbol_names.find(address);
-                // auto it = symbol_names.find(insns[i - 1].operands[0].imm);
                 const ExternFunction* found_fn = nullptr;
 
                 if (it != symbol_names.end()) {
@@ -2189,11 +2182,6 @@ void dump_jal(int i, uint32_t imm) {
         } else if (ret_type == 'd') {
             printf("%s = FloatReg_from_double(tempf64);\n", dr((int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0));
         }
-
-        if (!name.empty()) {
-            // printf("printf(\"%s %%x\\n\", %s);\n", name.c_str(),
-            // r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0));
-        }
     } else {
         Function& f = functions.find(imm)->second;
 
@@ -2204,8 +2192,6 @@ void dump_jal(int i, uint32_t imm) {
         }
 
         if (!name.empty()) {
-            // printf("printf(\"%s %%x\\n\", %s);\n", string(name).c_str(),
-            // r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0));
             printf("f_%s", string(name).c_str());
         } else {
             printf("func_%x", imm);
@@ -2246,9 +2232,6 @@ void dump_instr(int i) {
         printf("++cnt; printf(\"pc=0x%08x%s%s\\n\"); ", text_vaddr + i * 4, symbol_name ? " " : "",
                symbol_name ? symbol_name : "");
     }
-
-    // printf("// %llx, %llx, %llx, %llx : %d : %s\n", insn.b_livein, insn.b_liveout, insn.f_livein, insn.f_liveout,
-    //        insn_to_type(insn), insn.instruction.getOpcodeName().c_str());
 
     uint64_t src_regs_map;
     if (!insn.instruction.isJump() && !insn.instruction.isBranch() && !conservative) {
@@ -2636,6 +2619,10 @@ void dump_instr(int i) {
                 dump_instr(i + 1);
                 printf("goto *dest;\n");
 #else
+                // This block produces a switch instead of an array of labels.
+                // It is not being used because currently it is a bit bugged.
+                // It has been keep as a reference and with the main intention to fix it
+
                 assert(insns[i + 1].id == MIPS_INS_NOP);
                 printf("switch (%s) {\n", r(insn.index_reg));
 
@@ -3279,7 +3266,9 @@ void dump_c(void) {
             if (label_addresses.count(vaddr)) {
                 printf("L%x:\n", vaddr);
             }
-            // printf("// %s:\n", insn.disassemble().c_str());
+#if DUMP_INSTRUCTIONS
+            printf("// %s:\n", insn.disassemble().c_str());
+#endif
             dump_instr(i);
         }
 
@@ -3633,10 +3622,7 @@ void parse_elf(const uint8_t* data, size_t file_len) {
 
         gp_value = gp_base;
         gp_value_adj = gp_adj;
-        // disasm_got_entries_set(state, gp_base, gp_adj, local_entries, local_got_no, global_entries, global_got_no);
 
-        // out_range.common_start = common_start;
-        // out_range.common_order.swap(common_order);
         free(local_entries);
     }
 
@@ -3841,7 +3827,6 @@ int main(int argc, char* argv[]) {
     pass4();
     pass5();
     pass6();
-    // dump();
     dump_c();
     free(data);
 
