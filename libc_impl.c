@@ -652,6 +652,9 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
             bool zero_prefix = false;
             continue_format:
             switch (c) {
+                case '\0':
+                    goto finish_str;
+
                 case '0':
                     do {
                         c = MEM_S8(format_addr + pos);
@@ -740,6 +743,7 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
         }
     }
 
+finish_str:
     MEM_S8(str_addr) = '\0';
     return ret;
 }
@@ -1193,19 +1197,37 @@ void wrapper_bcopy(uint8_t *mem, uint32_t src_addr, uint32_t dst_addr, uint32_t 
 }
 
 /**
- * IRIX's memcpy seems to allow overlapping pointers, while host's memcpy usually rely on both
- * pointers non overlapping (UB otherwise)
- * Because of this, we do a manual copy instead.
+ * IRIX's memcpy seems to allow overlapping destination and source pointers, while the C standard dictates
+ * both pointer should not overlap, (UB otherwise).
+ * Because of this, we only use host's memcpy in case both pointers do not overlap and are 32bit-aligned 
+ * (because of endianess), otherwise do a manual copy instead.
  * memmove has proven to be slower here for some unknown reason
  */
 uint32_t wrapper_memcpy(uint8_t *mem, uint32_t dst_addr, uint32_t src_addr, uint32_t len) {
     uint32_t saved = dst_addr;
+    bool useHostMemcpy = false;
 
-    while (len--) {
-        MEM_U8(dst_addr) = MEM_U8(src_addr);
-        ++dst_addr;
-        ++src_addr;
+    // We can only use memcpy in case both addresses are word aligned and the size to copy is a multiple of 4 bytes
+    // because the host endian may differ from the guest endian
+    if ((dst_addr % 4 == 0) && (src_addr % 4 == 0) && (len % 4 == 0)) {
+        // We need to ensure both the source and the destination do not overlap because memcpy relies on it
+        if ((src_addr < dst_addr) && (src_addr + len < dst_addr)) {
+            useHostMemcpy = true;
+        } else if ((dst_addr < src_addr) && (dst_addr + len < src_addr)) {
+            useHostMemcpy = true;
+        }
     }
+
+    if (useHostMemcpy) {
+        memcpy(&MEM_U32(dst_addr), &MEM_U32(src_addr), len);
+    } else {
+        while (len--) {
+            MEM_U8(dst_addr) = MEM_U8(src_addr);
+            ++dst_addr;
+            ++src_addr;
+        }
+    }
+
     return saved;
 }
 
