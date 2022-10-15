@@ -760,10 +760,29 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
         fflush(stderr);
         return 1;
     }
+    if (strcmp(format, "%s phase time: %.2fu %.2fs %u:%04.1f %.0f%%\n") == 0 && fp_addr == STDERR_ADDR) {
+        if (wrapper_fputs(mem, MEM_U32(sp), fp_addr) == -1) {
+            return 0;
+        }
+        sp += 4;
+        // align
+        sp += 4;
+
+        double arg0 = MEM_F64(sp + 0);
+        double arg1 = MEM_F64(sp + 8);
+        uint32_t arg2 = MEM_U32(sp + 16);
+        double arg3 = MEM_F64(sp + 24);
+        double arg4 = MEM_F64(sp + 32);
+        fprintf(stderr, " phase time: %.2fu %.2fs %u:%04.1f %.0f%%\n", arg0, arg1, arg2, arg3, arg4);
+        fflush(stderr);
+        return 1;
+    }
     int ret = 0;
     for (;;) {
+        int width = 1;
         uint32_t pos = format_addr;
         char ch = MEM_S8(pos);
+
         while (ch != '%' && ch != '\0') {
             ++pos;
             ch = MEM_S8(pos);
@@ -778,15 +797,29 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
         }
         ++pos;
         ch = MEM_S8(pos);
-        if (ch == '1') {
+        if (ch >= '1' && ch <= '9') {
             ++pos;
+            width = ch - '0';
             ch = MEM_S8(pos);
         }
+
         switch (ch) {
             case 'd':
+            case 'x':
+            case 'X':
+            case 'c':
+            case 'u':
             {
                 char buf[32];
-                sprintf(buf, "%d", MEM_U32(sp));
+
+                char formatSpecifier[0x100] = {0};
+
+                formatSpecifier[0] = '%';
+                formatSpecifier[1] = width + '0';
+                formatSpecifier[2] = ch;
+
+                sprintf(buf, formatSpecifier, MEM_U32(sp));
+
                 strcpy1(mem, INTBUF_ADDR, buf);
                 if (wrapper_fputs(mem, INTBUF_ADDR, fp_addr) == -1) {
                     return ret;
@@ -798,18 +831,6 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
             case 's':
             {
                 if (wrapper_fputs(mem, MEM_U32(sp), fp_addr) == -1) {
-                    return ret;
-                }
-                sp += 4;
-                ++ret;
-                break;
-            }
-            case 'c':
-            {
-                char buf[32];
-                sprintf(buf, "%c", MEM_U32(sp));
-                strcpy1(mem, INTBUF_ADDR, buf);
-                if (wrapper_fputs(mem, INTBUF_ADDR, fp_addr) == -1) {
                     return ret;
                 }
                 sp += 4;
@@ -2029,6 +2050,9 @@ uint32_t wrapper_fwrite(uint8_t *mem, uint32_t data_addr, uint32_t size, uint32_
 }
 
 int wrapper_fputs(uint8_t *mem, uint32_t str_addr, uint32_t fp_addr) {
+    if (str_addr == 0) {
+        return 0;
+    }
     uint32_t len = wrapper_strlen(mem, str_addr);
     uint32_t ret = wrapper_fwrite(mem, str_addr, 1, len, fp_addr);
     return ret == 0 && len != 0 ? -1 : 0;
