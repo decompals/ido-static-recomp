@@ -1192,16 +1192,19 @@ void wrapper_bcopy(uint8_t *mem, uint32_t src_addr, uint32_t dst_addr, uint32_t 
     wrapper_memcpy(mem, dst_addr, src_addr, len);
 }
 
+/**
+ * IRIX's memcpy seems to allow overlapping pointers, while host's memcpy usually rely on both
+ * pointers non overlapping (UB otherwise)
+ * Because of this, we do a manual copy instead.
+ * memmove has proven to be slower here for some unknown reason
+ */
 uint32_t wrapper_memcpy(uint8_t *mem, uint32_t dst_addr, uint32_t src_addr, uint32_t len) {
     uint32_t saved = dst_addr;
-    if (dst_addr % 4 == 0 && src_addr % 4 == 0 && len % 4 == 0) {
-        memcpy(&MEM_U32(dst_addr), &MEM_U32(src_addr), len);
-    } else {
-        while (len--) {
-            MEM_U8(dst_addr) = MEM_U8(src_addr);
-            ++dst_addr;
-            ++src_addr;
-        }
+
+    while (len--) {
+        MEM_U8(dst_addr) = MEM_U8(src_addr);
+        ++dst_addr;
+        ++src_addr;
     }
     return saved;
 }
