@@ -2053,9 +2053,8 @@ uint32_t wrapper_fwrite(uint8_t *mem, uint32_t data_addr, uint32_t size, uint32_
 }
 
 int wrapper_fputs(uint8_t *mem, uint32_t str_addr, uint32_t fp_addr) {
-    if (str_addr == 0) {
-        return 0;
-    }
+    assert(str_addr != 0);
+
     uint32_t len = wrapper_strlen(mem, str_addr);
     uint32_t ret = wrapper_fwrite(mem, str_addr, 1, len, fp_addr);
     return ret == 0 && len != 0 ? -1 : 0;
