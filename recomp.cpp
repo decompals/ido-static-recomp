@@ -485,8 +485,6 @@ rabbitizer::Registers::Cpu::GprO32 get_dest_reg(const Insn& insn) {
             break;
     }
 
-    // assert(!"No destination registers");
-    // This should be okay...
     return rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero;
 }
 
@@ -1424,8 +1422,6 @@ uint64_t get_single_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
     } else if (instr.hasOperandAlias(rabbitizer::OperandType::cpu_rt)) {
         return map_reg(instr.GetO32_rt());
     } else {
-        // assert(!"No source registers");
-        // Fine since we want to add nothing
         return 0;
     }
 }
@@ -3815,6 +3811,7 @@ int main(int argc, char* argv[]) {
     pass4();
     pass5();
     pass6();
+    // dump();
     dump_c();
     free(data);
 
