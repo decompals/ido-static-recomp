@@ -19,12 +19,12 @@ ASAN ?= 0
 TARGET ?= native
 
 ifeq ($(VERSION),7.1)
-	IDO_VERSION := IDO71
+  IDO_VERSION := IDO71
 # copt currently does not build
-	IDO_TC      := cc acpp as0 as1 cfe ugen ujoin uld umerge uopt usplit
+  IDO_TC      := cc acpp as0 as1 cfe ugen ujoin uld umerge uopt usplit upas
 else ifeq ($(VERSION),5.3)
-	IDO_VERSION := IDO53
-	IDO_TC      := cc acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit
+  IDO_VERSION := IDO53
+  IDO_TC      := cc acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit
 else
 	$(error Unknown or unsupported IDO version - $(VERSION))
 endif
@@ -42,15 +42,15 @@ UNAME_P := $(shell uname -p)
 
 MAKE   := make
 ifeq ($(OS),Windows_NT)
-	DETECTED_OS := windows
+  DETECTED_OS := windows
 else ifeq ($(UNAME_S),Linux)
-	DETECTED_OS := linux
+  DETECTED_OS := linux
 else ifeq ($(UNAME_S),Darwin)
-	DETECTED_OS := macos
-	MAKE := gmake
-	CPPFLAGS += -xc++
+  DETECTED_OS := macos
+  MAKE := gmake
+  CPPFLAGS += -xc++
 else
-	$(error Unsupported host OS for Makefile)
+  $(error Unsupported host OS for Makefile)
 endif
 
 RABBITIZER := tools/rabbitizer
@@ -69,26 +69,26 @@ LDFLAGS      ?= -lm
 RECOMP_FLAGS ?=
 
 ifneq ($(WERROR),0)
-	WARNINGS += -Werror
+  WARNINGS += -Werror
 endif
 
 ifeq ($(RELEASE),0)
-	STRIP := @:
+  STRIP := @:
 endif
 
 ifeq ($(DEBUG),0)
-	OPTFLAGS     ?= -Os
+  OPTFLAGS     ?= -Os
 else
-	OPTFLAGS     ?= -O0 -g3
+  OPTFLAGS     ?= -O0 -g3
 endif
 
 ifneq ($(ASAN),0)
-	CFLAGS      += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fno-sanitize-recover=all
-	CXXFLAGS    += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fno-sanitize-recover=all
+  CFLAGS      += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fno-sanitize-recover=all
+  CXXFLAGS    += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fno-sanitize-recover=all
 endif
 
 ifeq ($(DETECTED_OS),windows)
-	CXXFLAGS     += -static
+  CXXFLAGS     += -static
 endif
 
 # -- Build Directories
