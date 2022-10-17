@@ -61,8 +61,8 @@ STRIP := strip
 
 CSTD         ?= -std=c11
 CFLAGS       ?= -MMD -fno-strict-aliasing -I. -I$(RABBITIZER)/include
-CXXSTD       ?= -std=c++17 -I$(RABBITIZER)/include
-CXXFLAGS     ?= -MMD
+CXXSTD       ?= -std=c++17
+CXXFLAGS     ?= -MMD -I$(RABBITIZER)/include
 WARNINGS     ?= -Wall -Wextra
 LDFLAGS      ?= -lm
 RECOMP_FLAGS ?=
