@@ -1133,7 +1133,6 @@ void add_edge(uint32_t from, uint32_t to, bool function_entry = false, bool func
 void pass3(void) {
     // Build graph
     for (size_t i = 0; i < insns.size(); i++) {
-        uint32_t addr = text_vaddr + i * 4;
         Insn& insn = insns[i];
 
         if (insn.no_following_successor) {
@@ -1429,6 +1428,8 @@ uint64_t get_all_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
     switch (instr.getUniqueId()) {
         case rabbitizer::InstrId::UniqueId::cpu_mflo:
             ret |= map_reg(GPR_O32_lo);
+            break;
+
         case rabbitizer::InstrId::UniqueId::cpu_mfhi:
             ret |= map_reg(GPR_O32_hi);
 
@@ -1521,7 +1522,6 @@ void pass4(void) {
                 function_entry = true;
             } else if (e.extern_function) {
                 string_view name;
-                size_t extern_function_id;
                 uint32_t address = insns[i - 1].getAddress();
 
                 // TODO: Can this only ever be a J-type instruction?
@@ -1697,7 +1697,6 @@ void pass5(void) {
                             map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_sp);
             } else if (e.extern_function) {
                 string_view name;
-                size_t extern_function_id;
                 const ExternFunction* found_fn = nullptr;
                 uint32_t address = insns[i - 2].getAddress();
                 // TODO: Can this only ever be a J-type instruction?
@@ -2255,7 +2254,6 @@ void dump_instr(int i) {
     }
 
     int32_t imm;
-    char buf[0x100];
     switch (insn.instruction.getUniqueId()) {
         case rabbitizer::InstrId::UniqueId::cpu_add:
         case rabbitizer::InstrId::UniqueId::cpu_addu:
@@ -3239,12 +3237,13 @@ void dump_c(void) {
         }
 
         for (size_t i = addr_to_i(start_addr), end_i = addr_to_i(end_addr); i < end_i; i++) {
-            Insn& insn = insns[i];
             uint32_t vaddr = text_vaddr + i * 4;
+
             if (label_addresses.count(vaddr)) {
                 printf("L%x:\n", vaddr);
             }
 #if DUMP_INSTRUCTIONS
+            Insn& insn = insns[i];
             printf("// %s:\n", insn.disassemble().c_str());
 #endif
             dump_instr(i);
@@ -3623,15 +3622,7 @@ void parse_elf(const uint8_t* data, size_t file_len) {
         for (uint32_t i = 0; i < u32be(shdr->sh_size); i += sizeof(Elf32_Rel)) {
             Elf32_Rel* rel = (Elf32_Rel*)(data + u32be(shdr->sh_offset) + i);
             uint32_t offset = text_offset + u32be(rel->r_offset);
-            uint32_t symIndex = ELF32_R_SYM(u32be(rel->r_info));
             uint32_t rtype = ELF32_R_TYPE(u32be(rel->r_info));
-            const char* symName = "0";
-
-            if (symIndex != STN_UNDEF) {
-                Elf32_Sym* sym = (Elf32_Sym*)(data + u32be(sym_shdr->sh_offset) + symIndex * sizeof(Elf32_Sym));
-
-                symName = STR(sym_strtab, u32be(sym->st_name));
-            }
 
             if (rtype == R_MIPS_HI16) {
                 if (prevHi != NULL) {
@@ -3650,17 +3641,14 @@ void parse_elf(const uint8_t* data, size_t file_len) {
                     uint32_t offset2 = text_offset + u32be(prevHi->r_offset);
 
                     addend += (uint32_t)((data[offset2 + 2] << 8) + data[offset2 + 3]) << 16;
-                    // add_reloc(state, offset2, symName, addend, out_range.vaddr);
                 }
                 prevHi = NULL;
-                // add_reloc(state, offset, symName, addend, out_range.vaddr);
             } else if (rtype == R_MIPS_26) {
                 int32_t addend = (u32be(*(uint32_t*)(data + offset)) & ((1 << 26) - 1)) << 2;
 
                 if (addend >= (1 << 27)) {
                     addend -= 1 << 28;
                 }
-                // add_reloc(state, offset, symName, addend, out_range.vaddr);
             }
 
             else {
@@ -3781,6 +3769,8 @@ void crashHandler(int sig) {
 
 int main(int argc, char* argv[]) {
     const char* filename = argv[1];
+
+    fprintf(stderr, "argc: %i\n", argc);
 
     if (strcmp(filename, "--conservative") == 0) {
         conservative = true;

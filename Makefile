@@ -134,7 +134,7 @@ $(RECOMP_ELF): LDFLAGS   += -Wl,-export-dynamic
 endif
 
 # Too many warnings, disable everything for now...
-$(RECOMP_ELF): WARNINGS  += -Wpedantic -Wno-shadow -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-implicit-fallthrough
+$(RECOMP_ELF): WARNINGS  += -Wpedantic
 %/$(LIBC_IMPL_O): CFLAGS   += -D$(IDO_VERSION)
 # TODO: fix warnings
 %/$(LIBC_IMPL_O): WARNINGS += -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-sign-compare -Wno-deprecated-declarations
