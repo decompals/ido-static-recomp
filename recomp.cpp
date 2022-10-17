@@ -1432,6 +1432,7 @@ uint64_t get_all_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
 
         case rabbitizer::InstrId::UniqueId::cpu_mfhi:
             ret |= map_reg(GPR_O32_hi);
+            break;
 
         default:
             break;
@@ -3772,7 +3773,7 @@ int main(int argc, char* argv[]) {
 
     fprintf(stderr, "argc: %i\n", argc);
 
-    if (strcmp(filename, "--conservative") == 0) {
+    if ((argc > 2) && (strcmp(filename, "--conservative") == 0)) {
         conservative = true;
         filename = argv[2];
     }

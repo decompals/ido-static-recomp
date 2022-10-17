@@ -139,7 +139,7 @@ endif
 $(RECOMP_ELF): WARNINGS  += -Wpedantic
 %/$(LIBC_IMPL_O): CFLAGS   += -D$(IDO_VERSION)
 # TODO: fix warnings
-%/$(LIBC_IMPL_O): WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
+%/$(LIBC_IMPL_O): WARNINGS += -Wpedantic -Wno-unused-parameter -Wno-deprecated-declarations
 
 #### Main Targets ###
 

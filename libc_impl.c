@@ -392,7 +392,7 @@ void mmap_initial_data_range(uint8_t* mem, uint32_t start, uint32_t end) {
 void setup_libc_data(uint8_t* mem) {
     memory_allocate(mem, LIBC_ADDR, (LIBC_ADDR + LIBC_SIZE));
     for (size_t i = 0; i < sizeof(ctype); i++) {
-        MEM_S8(CTYPE_ADDR + i) = ctype[i];
+        MEM_U8(CTYPE_ADDR + i) = ctype[i];
     }
     STDIN->_flag = IOREAD;
     STDIN->_file = 0;
