@@ -3771,8 +3771,6 @@ void crashHandler(int sig) {
 int main(int argc, char* argv[]) {
     const char* filename = argv[1];
 
-    fprintf(stderr, "argc: %i\n", argc);
-
     if ((argc > 2) && (strcmp(filename, "--conservative") == 0)) {
         conservative = true;
         filename = argv[2];
