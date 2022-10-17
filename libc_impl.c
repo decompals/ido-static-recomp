@@ -35,7 +35,6 @@
 
 #include "libc_impl.h"
 #include "helpers.h"
-#include "header.h"
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -345,7 +344,7 @@ void redirect_path(char* out, const char* path, const char* from, const char* to
 
         n = snprintf(redirected_path, sizeof(redirected_path), "%s%s", to, path + from_len);
 
-        if (n >= 0 && n < sizeof(redirected_path)) {
+        if ((n >= 0) && ((size_t)n < sizeof(redirected_path))) {
             strcpy(out, redirected_path);
         } else {
             fprintf(stderr, "Error: Unable to redirect %s->%s for %s\n", from, to, path);
@@ -479,12 +478,14 @@ size_t num_sbrks;
 size_t num_allocs;
 uint32_t wrapper_malloc(uint8_t* mem, uint32_t size) {
     int bin = -1;
+
     for (int i = 3; i < 30; i++) {
-        if (size <= (1 << i)) {
+        if (size <= (uint32_t)(1 << i)) {
             bin = i;
             break;
         }
     }
+
     if (bin == -1) {
         return 0;
     }
@@ -567,7 +568,7 @@ void wrapper_free(uint8_t* mem, uint32_t data_addr) {
     }
     uint32_t list_ptr = MALLOC_BINS_ADDR + (bin - 3) * 4;
     assert(bin >= 3 && bin < 30);
-    assert(size <= (1 << bin));
+    assert(size <= (uint32_t)(1 << bin));
     MEM_U32(node_ptr) = MEM_U32(list_ptr);
     MEM_U32(node_ptr + 4) = 0;
     MEM_U32(list_ptr) = node_ptr;
@@ -575,8 +576,11 @@ void wrapper_free(uint8_t* mem, uint32_t data_addr) {
 }
 
 int wrapper_fscanf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_t sp) {
-    struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
-    STRING(format) // for debug
+#ifdef DEVELOPMENT
+    UNUSED struct FILE_irix *f = (struct FILE_irix *)&MEM_U32(fp_addr);
+    STRING(format)
+    (void)format;
+#endif
 
     int ret = 0;
     char c;
@@ -700,7 +704,6 @@ int wrapper_sprintf(uint8_t* mem, uint32_t str_addr, uint32_t format_addr, uint3
         return 1;
     }
 
-    uint32_t orig_str_addr = str_addr;
     uint32_t pos = 0;
     int ret = 0;
     char c;
@@ -813,7 +816,10 @@ finish_str:
 }
 
 int wrapper_fprintf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_t sp) {
-    struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
+#ifdef DEVELOPMENT
+    struct FILE_irix *f = (struct FILE_irix *)&MEM_U32(fp_addr);
+    (void)f;
+#endif
     STRING(format)
     sp += 8;
 
@@ -1153,11 +1159,12 @@ uint32_t wrapper_strrchr(uint8_t* mem, uint32_t str_addr, int c) {
 
 uint32_t wrapper_strcspn(uint8_t* mem, uint32_t str_addr, uint32_t invalid_addr) {
     STRING(invalid)
-    uint32_t n = strlen(invalid);
+    size_t n = strlen(invalid);
     uint32_t pos = 0;
     char c;
+
     while ((c = MEM_S8(str_addr)) != 0) {
-        for (int i = 0; i < n; i++) {
+        for (size_t i = 0; i < n; i++) {
             if (c == invalid[i]) {
                 return pos;
             }
@@ -1170,10 +1177,11 @@ uint32_t wrapper_strcspn(uint8_t* mem, uint32_t str_addr, uint32_t invalid_addr)
 
 uint32_t wrapper_strpbrk(uint8_t* mem, uint32_t str_addr, uint32_t accept_addr) {
     STRING(accept)
-    uint32_t n = strlen(accept);
+    size_t n = strlen(accept);
     char c;
+
     while ((c = MEM_S8(str_addr)) != 0) {
-        for (int i = 0; i < n; i++) {
+        for (size_t i = 0; i < n; i++) {
             if (c == accept[i]) {
                 return str_addr;
             }
@@ -1502,12 +1510,14 @@ int wrapper_fseek(uint8_t* mem, uint32_t fp_addr, int offset, int origin) {
         if (origin < SEEK_END && f->_base_addr && !(f->_flag & IONBF)) {
             c = f->_cnt;
             p = offset;
+
             if (origin == SEEK_SET) {
                 p += c - lseek(f->_file, 0L, SEEK_CUR);
             } else {
                 offset -= c;
             }
-            if (!(f->_flag & IORW) && c > 0 && p <= c && p >= f->_base_addr - f->_ptr_addr) {
+
+            if (!(f->_flag & IORW) && c > 0 && p <= c && (uint32_t)p >= f->_base_addr - f->_ptr_addr) {
                 f->_ptr_addr += p;
                 f->_cnt -= p;
                 return 0;
@@ -1858,21 +1868,12 @@ uint32_t wrapper_strftime(uint8_t* mem, uint32_t ptr_addr, uint32_t maxsize, uin
 }
 
 int wrapper_times(uint8_t* mem, uint32_t buffer_addr) {
-    struct tms_irix {
-        int tms_utime;
-        int tms_stime;
-        int tms_cutime;
-        int tms_cstime;
-    } r;
     struct tms t;
     clock_t ret = times(&t);
+
     if (ret == (clock_t)-1) {
         MEM_U32(ERRNO_ADDR) = errno;
     } else {
-        r.tms_utime = t.tms_utime;
-        r.tms_stime = t.tms_stime;
-        r.tms_cutime = t.tms_cutime;
-        r.tms_cstime = t.tms_cstime;
         MEM_U32(buffer_addr + 0x0) = t.tms_utime;
         MEM_U32(buffer_addr + 0x4) = t.tms_stime;
         MEM_U32(buffer_addr + 0x8) = t.tms_cutime;
@@ -2372,7 +2373,7 @@ uint32_t wrapper_setlocale(uint8_t* mem, int category, uint32_t locale_addr) {
     assert(locale_addr != 0);
     STRING(locale)
     assert(category == 6); // LC_ALL
-    char* ret = setlocale(LC_ALL, locale);
+    UNUSED char* ret = setlocale(LC_ALL, locale);
     // Let's hope the caller doesn't use the return value
     return 0;
 }
@@ -2556,7 +2557,8 @@ uint32_t wrapper_tmpfile(uint8_t* mem) {
 
     char name[PATH_MAX + 1] = { 0 };
     int n = snprintf(name, sizeof(name), "%s/copt_temp_XXXXXX", tmpdir);
-    if (n < 0 || n >= sizeof(name)) {
+
+    if (n < 0 || (size_t)n >= sizeof(name)) {
         // This isn't the best errno code, but it is one that can be returned by tmpfile
         MEM_U32(ERRNO_ADDR) = EACCES;
         return 0;
@@ -2925,6 +2927,7 @@ uint32_t wrapper_regcmp(uint8_t* mem, uint32_t string1_addr, uint32_t sp) {
 
 uint32_t wrapper_regex(uint8_t* mem, uint32_t re_addr, uint32_t subject_addr, uint32_t sp) {
     STRING(subject);
+    (void)subject;
     assert(0 && "regex not implemented");
     return 0;
 }

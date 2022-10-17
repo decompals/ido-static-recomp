@@ -60,8 +60,8 @@ CXX   := g++
 STRIP := strip
 
 CSTD         ?= -std=c11
-CFLAGS       ?= -MMD -fno-strict-aliasing -I.
-CXXSTD       ?= -std=c++17
+CFLAGS       ?= -MMD -fno-strict-aliasing -I. -I$(RABBITIZER)/include
+CXXSTD       ?= -std=c++17 -I$(RABBITIZER)/include
 CXXFLAGS     ?= -MMD
 WARNINGS     ?= -Wall -Wextra
 LDFLAGS      ?= -lm
@@ -76,6 +76,8 @@ ifeq ($(RELEASE),1)
 else
   OPTFLAGS     ?= -Og -g3
   STRIP := @:
+  CFLAGS       += -DDEVELOPMENT=1
+  CXXFLAGS     += -DDEVELOPMENT=1
 endif
 
 ifneq ($(ASAN),0)
@@ -121,7 +123,7 @@ $(shell mkdir -p $(BUILT_BIN))
 # to emulate, pass the conservative flag to `recomp`
 $(BUILD_BASE)/5.3/ugen.c: RECOMP_FLAGS := --conservative
 
-$(RECOMP_ELF): CXXFLAGS  += -I$(RABBITIZER)/include -I$(RABBITIZER)/cplusplus/include
+$(RECOMP_ELF): CXXFLAGS  += -I$(RABBITIZER)/cplusplus/include
 $(RECOMP_ELF): LDFLAGS   += -L$(RABBITIZER)/build -lrabbitizerpp
 
 ifneq ($(DETECTED_OS),windows)
@@ -137,7 +139,7 @@ endif
 $(RECOMP_ELF): WARNINGS  += -Wpedantic
 %/$(LIBC_IMPL_O): CFLAGS   += -D$(IDO_VERSION)
 # TODO: fix warnings
-%/$(LIBC_IMPL_O): WARNINGS += -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-sign-compare -Wno-deprecated-declarations
+%/$(LIBC_IMPL_O): WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
 
 #### Main Targets ###
 

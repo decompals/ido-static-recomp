@@ -2,6 +2,7 @@
 #define HELPERS_H
 
 #include <stdint.h>
+#include "common/Utils.h"
 
 #define MEM_F64(a) (double_from_memory(mem, a))
 #define MEM_F32(a) (*(float *)(mem + a))
