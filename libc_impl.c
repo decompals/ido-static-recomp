@@ -652,6 +652,9 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
             bool zero_prefix = false;
             continue_format:
             switch (c) {
+                case '\0':
+                    goto finish_str;
+
                 case '0':
                     do {
                         c = MEM_S8(format_addr + pos);
@@ -740,6 +743,7 @@ int wrapper_sprintf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint3
         }
     }
 
+finish_str:
     MEM_S8(str_addr) = '\0';
     return ret;
 }
@@ -760,10 +764,29 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
         fflush(stderr);
         return 1;
     }
+    if (strcmp(format, "%s phase time: %.2fu %.2fs %u:%04.1f %.0f%%\n") == 0 && fp_addr == STDERR_ADDR) {
+        if (wrapper_fputs(mem, MEM_U32(sp), fp_addr) == -1) {
+            return 0;
+        }
+        sp += 4;
+        // align
+        sp += 4;
+
+        double arg0 = MEM_F64(sp + 0);
+        double arg1 = MEM_F64(sp + 8);
+        uint32_t arg2 = MEM_U32(sp + 16);
+        double arg3 = MEM_F64(sp + 24);
+        double arg4 = MEM_F64(sp + 32);
+        fprintf(stderr, " phase time: %.2fu %.2fs %u:%04.1f %.0f%%\n", arg0, arg1, arg2, arg3, arg4);
+        fflush(stderr);
+        return 1;
+    }
     int ret = 0;
     for (;;) {
+        int width = 1;
         uint32_t pos = format_addr;
         char ch = MEM_S8(pos);
+
         while (ch != '%' && ch != '\0') {
             ++pos;
             ch = MEM_S8(pos);
@@ -778,15 +801,29 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
         }
         ++pos;
         ch = MEM_S8(pos);
-        if (ch == '1') {
+        if (ch >= '1' && ch <= '9') {
             ++pos;
+            width = ch - '0';
             ch = MEM_S8(pos);
         }
+
         switch (ch) {
             case 'd':
+            case 'x':
+            case 'X':
+            case 'c':
+            case 'u':
             {
                 char buf[32];
-                sprintf(buf, "%d", MEM_U32(sp));
+
+                char formatSpecifier[0x100] = {0};
+
+                formatSpecifier[0] = '%';
+                formatSpecifier[1] = width + '0';
+                formatSpecifier[2] = ch;
+
+                sprintf(buf, formatSpecifier, MEM_U32(sp));
+
                 strcpy1(mem, INTBUF_ADDR, buf);
                 if (wrapper_fputs(mem, INTBUF_ADDR, fp_addr) == -1) {
                     return ret;
@@ -798,18 +835,6 @@ int wrapper_fprintf(uint8_t *mem, uint32_t fp_addr, uint32_t format_addr, uint32
             case 's':
             {
                 if (wrapper_fputs(mem, MEM_U32(sp), fp_addr) == -1) {
-                    return ret;
-                }
-                sp += 4;
-                ++ret;
-                break;
-            }
-            case 'c':
-            {
-                char buf[32];
-                sprintf(buf, "%c", MEM_U32(sp));
-                strcpy1(mem, INTBUF_ADDR, buf);
-                if (wrapper_fputs(mem, INTBUF_ADDR, fp_addr) == -1) {
                     return ret;
                 }
                 sp += 4;
@@ -1168,21 +1193,39 @@ int wrapper_ftruncate(uint8_t *mem, int fd, int length) {
 }
 
 void wrapper_bcopy(uint8_t *mem, uint32_t src_addr, uint32_t dst_addr, uint32_t len) {
-    wrapper_memcpy(mem, dst_addr, src_addr, len);
-}
-
-uint32_t wrapper_memcpy(uint8_t *mem, uint32_t dst_addr, uint32_t src_addr, uint32_t len) {
-    uint32_t saved = dst_addr;
     if (dst_addr % 4 == 0 && src_addr % 4 == 0 && len % 4 == 0) {
-        memcpy(&MEM_U32(dst_addr), &MEM_U32(src_addr), len);
+        // Use memmove to copy regions that are 4-byte aligned.
+        // This prevents the byte-swapped mem from causing issues when copying normally.
+        // Memmove handles overlapping copies correctly, so overlap does not need to be checked.
+        memmove(&MEM_U32(dst_addr), &MEM_U32(src_addr), len);
+    } else if (dst_addr > src_addr) {
+        // Perform a reverse byte-swapped copy when the destination is ahead of the source.
+        // This prevents overwriting the source contents before they're read.
+        dst_addr += len - 1;
+        src_addr += len - 1;
+        while (len--) {
+            MEM_U8(dst_addr) = MEM_U8(src_addr);
+            --dst_addr;
+            --src_addr;
+        }
     } else {
+        // Otherwise, perform a normal byte-swapped copy.
         while (len--) {
             MEM_U8(dst_addr) = MEM_U8(src_addr);
             ++dst_addr;
             ++src_addr;
         }
     }
-    return saved;
+}
+
+/**
+ * IRIX's memcpy seems to allow overlapping destination and source pointers, while the C standard dictates
+ * both pointer should not overlap, (UB otherwise).
+ * Because of this, we only use host bcopy since it can handle overlapping regions
+ */
+uint32_t wrapper_memcpy(uint8_t *mem, uint32_t dst_addr, uint32_t src_addr, uint32_t len) {
+    wrapper_bcopy(mem, src_addr, dst_addr, len);
+    return dst_addr;
 }
 
 uint32_t wrapper_memccpy(uint8_t *mem, uint32_t dst_addr, uint32_t src_addr, int c, uint32_t len) {
@@ -2029,6 +2072,8 @@ uint32_t wrapper_fwrite(uint8_t *mem, uint32_t data_addr, uint32_t size, uint32_
 }
 
 int wrapper_fputs(uint8_t *mem, uint32_t str_addr, uint32_t fp_addr) {
+    assert(str_addr != 0);
+
     uint32_t len = wrapper_strlen(mem, str_addr);
     uint32_t ret = wrapper_fwrite(mem, str_addr, 1, len, fp_addr);
     return ret == 0 && len != 0 ? -1 : 0;
