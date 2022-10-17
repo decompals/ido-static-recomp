@@ -2160,9 +2160,8 @@ double wrapper_ldexp(double d, int i) {
     return ldexp(d, i);
 }
 
-int64_t wrapper___ll_mul(int64_t a0, int64_t a1) {
-    // Cast to remove UB for large multiplicands
-    return (int64_t)((uint64_t)a0 * (uint64_t)a1);
+uint64_t wrapper___ll_mul(uint64_t a0, uint64_t a1) {
+    return a0 * a1;
 }
 
 int64_t wrapper___ll_div(int64_t a0, int64_t a1) {
@@ -2173,9 +2172,8 @@ int64_t wrapper___ll_rem(uint64_t a0, int64_t a1) {
     return a0 % a1;
 }
 
-int64_t wrapper___ll_lshift(int64_t a0, uint64_t shift) {
-    // Cast to remove UB for large shifts
-    return (int64_t)((uint64_t)a0 << (shift & 0x3F));
+uint64_t wrapper___ll_lshift(uint64_t a0, uint64_t shift) {
+    return a0 << (shift & 0x3F);
 }
 
 int64_t wrapper___ll_rshift(int64_t a0, uint64_t shift) {
