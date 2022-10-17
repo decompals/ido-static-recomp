@@ -13,6 +13,8 @@ WERROR ?= 0
 RELEASE ?= 0
 # Disables/Enables optimizations to make debugging easier
 DEBUG ?= 1
+ASAN ?= 0
+
 # Can be set to `universal` to build universal binaries on Mac
 TARGET ?= native
 
@@ -51,6 +53,9 @@ else
 	$(error Unsupported host OS for Makefile)
 endif
 
+RABBITIZER := tools/rabbitizer
+RABBITIZER_LIB := $(RABBITIZER)/build/librabbitizerpp.a
+
 CC    := gcc
 CXX   := g++
 STRIP := strip
@@ -77,6 +82,11 @@ else
 	OPTFLAGS     ?= -O0 -g3
 endif
 
+ifneq ($(ASAN),0)
+	CFLAGS      += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fno-sanitize-recover=all
+	CXXFLAGS    += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fno-sanitize-recover=all
+endif
+
 ifeq ($(DETECTED_OS),windows)
 	CXXFLAGS     += -static
 endif
@@ -87,6 +97,7 @@ endif
 BUILD_BASE ?= build
 BUILD_DIR  := $(BUILD_BASE)/$(VERSION)
 BUILT_BIN  := $(BUILD_DIR)/out
+
 
 # -- Location of original IDO binaries
 IRIX_BASE    ?= ido
@@ -113,11 +124,20 @@ $(shell mkdir -p $(BUILT_BIN))
 # to emulate, pass the conservative flag to `recomp`
 $(BUILD_BASE)/5.3/ugen.c: RECOMP_FLAGS := --conservative
 
-$(RECOMP_ELF): CXXFLAGS  += $(shell pkg-config --cflags capstone)
-$(RECOMP_ELF): LDFLAGS   += $(shell pkg-config --libs capstone)
+$(RECOMP_ELF): CXXFLAGS  += -I$(RABBITIZER)/include -I$(RABBITIZER)/cplusplus/include
+$(RECOMP_ELF): LDFLAGS   += -L$(RABBITIZER)/build -lrabbitizerpp
+
+ifneq ($(DETECTED_OS),windows)
+# For traceback
+$(RECOMP_ELF): LDFLAGS   += -ldl
+endif
+ifeq ($(DETECTED_OS),linux)
+# For traceback
+$(RECOMP_ELF): LDFLAGS   += -Wl,-export-dynamic
+endif
+
 # Too many warnings, disable everything for now...
-$(RECOMP_ELF): WARNINGS  += -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-unused-function
-# Do we really need no-strict-aliasing?
+$(RECOMP_ELF): WARNINGS  += -Wpedantic -Wno-shadow -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-implicit-fallthrough
 %/$(LIBC_IMPL_O): CFLAGS   += -D$(IDO_VERSION)
 # TODO: fix warnings
 %/$(LIBC_IMPL_O): WARNINGS += -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-sign-compare -Wno-deprecated-declarations
@@ -126,13 +146,18 @@ $(RECOMP_ELF): WARNINGS  += -Wno-unused-variable -Wno-unused-but-set-variable -W
 
 all: $(TARGET_BINARIES) $(ERR_STRS)
 
-setup: $(RECOMP_ELF)
+setup:
+	$(MAKE) -C $(RABBITIZER) static CC=$(CC) CXX=$(CXX) DEBUG=$(DEBUG)
+	$(MAKE) $(RECOMP_ELF)
 
 clean:
 	$(RM) -r $(BUILD_DIR)
 
 distclean: clean
 	$(RM) -r $(BUILD_BASE)
+	$(MAKE) -C $(RABBITIZER) distclean
+
+c_files: $(C_FILES)
 
 
 .PHONY: all clean distclean setup
@@ -147,12 +172,12 @@ $(BUILD_BASE)/%.elf: %.cpp
 	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) -o $@ $^ $(LDFLAGS)
 
 
-$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/% | $(RECOMP_ELF)
-	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@
+$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/%
+	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
 # cc is special and is stored on the `bin` folder instead of the `lib` one
-$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/% | $(RECOMP_ELF)
-	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@
+$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/%
+	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
 
 $(BUILT_BIN)/%.cc: $(IRIX_USR_DIR)/lib/%.cc

@@ -21,7 +21,13 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bison file gperf libcapstone-dev
+          sudo apt-get install -y build-essential
+
+      - name: Build recomp binary (Ubuntu)
+        shell: bash
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          make -j $(nproc) RELEASE=1 DEBUG=0 setup
 
       - name: Run the build script (Ubuntu)
         shell: bash
@@ -34,8 +40,13 @@ jobs:
         shell: bash
         if: matrix.os == 'macos-latest'
         run: |
-          brew install capstone pkg-config
+          brew install make
 
+      - name: Build recomp binary (MacOS)
+        shell: bash
+        if: matrix.os == 'macos-latest'
+        run: |
+          make -j $(nproc) RELEASE=1 DEBUG=0 setup
       - name: Run the build script (MacOS)
         shell: bash
         if: matrix.os == 'macos-latest'
@@ -49,23 +60,21 @@ jobs:
         with:
           install: |-
             gcc
-            mingw-w64-x86_64-capstone
             mingw-w64-x86_64-gcc
-            pkg-config
             make
 
       - name: Build recomp binary (Windows)
         shell: msys2 {0}
         if: matrix.os == 'windows-latest'
         run: |-
-          make RELEASE=1 DEBUG=0 setup
+          make --jobs RELEASE=1 DEBUG=0 setup
 
       - name: Run the build script (Windows)
         shell: cmd
         if: matrix.os == 'windows-latest'
         run: |-
           set MSYSTEM=MSYS
-          msys2 -c 'make RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }}'
+          msys2 -c 'make --jobs RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }}'
 
       # Archive
       - name: Create release archive
