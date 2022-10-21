@@ -33,6 +33,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           make -j $(nproc) VERSION=${{ matrix.ido }} TARGET=universal
+          ./build/7.1/out/cc
 
       # Archive
       - name: Create release archive
