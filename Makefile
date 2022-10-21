@@ -13,10 +13,11 @@ WERROR ?= 0
 RELEASE ?= 0
 # Disables/Enables optimizations to make debugging easier
 DEBUG ?= 1
-ASAN ?= 0
-
-# Can be set to `universal` to build universal binaries on Mac
+# On Mac, set this to `universal` to build universal (x86+ARM) binaries
 TARGET ?= native
+# Set to 1 to build with sanitization enabled
+# N.B. cannot be used for `make setup` at the moment due to recomp.cpp not respecting it
+ASAN ?= 0
 
 ifeq ($(VERSION),7.1)
   IDO_VERSION := IDO71
@@ -26,7 +27,7 @@ else ifeq ($(VERSION),5.3)
   IDO_VERSION := IDO53
   IDO_TC      := cc acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit
 else
-	$(error Unknown or unsupported IDO version - $(VERSION))
+  $(error Unknown or unsupported IDO version - $(VERSION))
 endif
 
 
@@ -86,6 +87,7 @@ ifneq ($(ASAN),0)
   CFLAGS      += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fno-sanitize-recover=all
   CXXFLAGS    += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fno-sanitize-recover=all
 endif
+
 
 ifeq ($(DETECTED_OS),windows)
   CXXFLAGS     += -static
