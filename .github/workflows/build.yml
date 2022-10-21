@@ -46,12 +46,12 @@ jobs:
         shell: bash
         if: matrix.os == 'macos-latest'
         run: |
-          make -j $(nproc) RELEASE=1 DEBUG=0 setup
+          make -j $(nproc) setup
       - name: Run the build script (MacOS)
         shell: bash
         if: matrix.os == 'macos-latest'
         run: |
-          make -j $(nproc) RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }} TARGET=universal
+          make -j $(nproc) VERSION=${{ matrix.ido }} TARGET=universal
 
       # Windows
       - name: Install dependencies (Windows)
