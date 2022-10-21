@@ -33,21 +33,14 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           make -j $(nproc) VERSION=${{ matrix.ido }} TARGET=universal
-          ./build/7.1/out/cc
-
-      # Archive
-      - name: Create release archive
-        shell: bash
-        run: |
-          cd build/${{ matrix.ido }}/out
-          tar -czvf ../../../ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz *
+          ./build/7.1/out/cc || true
 
       - name: Upload archive
         uses: actions/upload-artifact@v2
         with:
-          name: ido-${{ matrix.ido }}-recomp-${{ matrix.os }}
+          name: ido7.1cc
           path: |
-            ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz
+            build/7.1/out/cc
 
       - name: Publish release
         uses: softprops/action-gh-release@v1
