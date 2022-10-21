@@ -8,32 +8,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        ido: [5.3, 7.1]
+        os: [macos-latest]
+        ido: [7.1]
 
     name: Recompiling ido ${{ matrix.ido }} for ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
 
-      # Ubuntu
-      - name: Install dependencies (Ubuntu)
-        shell: bash
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential
-
-      - name: Build recomp binary (Ubuntu)
-        shell: bash
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          make -j $(nproc) RELEASE=1 DEBUG=0 setup
-
-      - name: Run the build script (Ubuntu)
-        shell: bash
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          make -j $(nproc) RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }}
 
       # MacOS
       - name: Install dependencies (MacOS)
@@ -52,47 +33,3 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           make -j $(nproc) VERSION=${{ matrix.ido }} TARGET=universal
-
-      # Windows
-      - name: Install dependencies (Windows)
-        uses: msys2/setup-msys2@v2
-        if: matrix.os == 'windows-latest'
-        with:
-          install: |-
-            gcc
-            mingw-w64-x86_64-gcc
-            make
-
-      - name: Build recomp binary (Windows)
-        shell: msys2 {0}
-        if: matrix.os == 'windows-latest'
-        run: |-
-          make --jobs RELEASE=1 DEBUG=0 setup
-
-      - name: Run the build script (Windows)
-        shell: cmd
-        if: matrix.os == 'windows-latest'
-        run: |-
-          set MSYSTEM=MSYS
-          msys2 -c 'make --jobs RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }}'
-
-      # Archive
-      - name: Create release archive
-        shell: bash
-        run: |
-          cd build/${{ matrix.ido }}/out
-          tar -czvf ../../../ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz *
-
-      - name: Upload archive
-        uses: actions/upload-artifact@v2
-        with:
-          name: ido-${{ matrix.ido }}-recomp-${{ matrix.os }}
-          path: |
-            ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz
-
-      - name: Publish release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: |
-            ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz
