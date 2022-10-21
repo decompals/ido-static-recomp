@@ -325,12 +325,14 @@ int main(int argc, char *argv[]) {
 void mmap_initial_data_range(uint8_t *mem, uint32_t start, uint32_t end) {
     custom_libc_data_addr = end;
 #ifdef __APPLE__
+    printf("APPLE\n");
     end += vm_page_size;
 #else
     end += 4096;
 #endif /* __APPLE__ */
     memory_allocate(mem, start, end);
     cur_sbrk = end;
+    printf("%s : cur_sbrk : %X\n", __func__, cur_sbrk);
 }
 
 void setup_libc_data(uint8_t *mem) {
