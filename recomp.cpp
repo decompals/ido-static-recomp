@@ -3047,9 +3047,10 @@ void dump_c(void) {
     //     uint32_t page_size = sysconf(_SC_PAGESIZE);
     // #endif /* _WIN32 && !__CYGWIN__ */
 
-    uint32_t page_size = 0x10000; // Supposedly the worst-case smallest permitted page size, increase if necessary.
-                                  // This ensures the hardcoded min_addr and max_addr are sufficiently aligned for the
-                                  // machine running the recompiled binaries.
+    // 64 kB. Supposedly the worst-case smallest permitted page size, increase if necessary.
+    // Ensures the hardcoded min_addr and max_addr are sufficiently aligned for the machine running the
+    // recompiled binaries (and not just the one doing the original recomp build).
+    uint32_t page_size = 0x10000;
 
     min_addr = min_addr & ~(page_size - 1);
     max_addr = (max_addr + (page_size - 1)) & ~(page_size - 1);

@@ -219,7 +219,7 @@ static uint8_t *memory_map(size_t length)
     uint8_t *mem = mmap(0, length, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 #endif
 
-    assert(TRUNC_PAGE((uintptr_t)mem) == (uintptr_t)mem);
+    assert(TRUNC_PAGE((uintptr_t)mem) == (uintptr_t)mem && "Page size too small, try increasing `page_size` in recomp.cpp");
     if (mem == MAP_FAILED) {
         perror("mmap (memory_map)");
         exit(1);
@@ -233,7 +233,7 @@ static void memory_allocate(uint8_t *mem, uint32_t start, uint32_t end)
     assert(end <= MEM_REGION_START + MEM_REGION_SIZE);
     // `start` will be passed to mmap,
     // so it has to be host aligned in order to keep the guest's pages valid
-    assert(start == TRUNC_PAGE(start));
+    assert(start == TRUNC_PAGE(start) && "Page size too small, try increasing `page_size` in recomp.cpp");
 #ifdef __CYGWIN__
     uintptr_t _start = TRUNC_PAGE((uintptr_t)mem + start);
     uintptr_t _end = ROUND_PAGE((uintptr_t)mem + end);
