@@ -529,14 +529,12 @@ void link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, int mem_i
 
                             // Patch instruction to have offset 0
                             switch (insns[offset].instruction.getUniqueId()) {
-                                case rabbitizer::InstrId::UniqueId::cpu_addiu:
-                                    {
-                                        rabbitizer::Registers::Cpu::GprO32 dst_reg =
-                                            insns[offset].instruction.GetO32_rt();
-                                        insns[offset].patchInstruction(rabbitizer::InstrId::UniqueId::cpu_move);
-                                        // Patch the destination register too
-                                        insns[offset].instruction.Set_rd(dst_reg);
-                                    }
+                                case rabbitizer::InstrId::UniqueId::cpu_addiu: {
+                                    rabbitizer::Registers::Cpu::GprO32 dst_reg = insns[offset].instruction.GetO32_rt();
+                                    insns[offset].patchInstruction(rabbitizer::InstrId::UniqueId::cpu_move);
+                                    // Patch the destination register too
+                                    insns[offset].instruction.Set_rd(dst_reg);
+                                }
 
                                     if (addr >= text_vaddr && addr < text_vaddr + text_section_len) {
                                         add_function(addr);
@@ -583,7 +581,7 @@ void link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, int mem_i
                 continue;
         }
     }
-    loop_end:;
+loop_end:;
 }
 
 // for a given `jalr t9`, find the matching t9 load
@@ -904,33 +902,31 @@ void pass1(void) {
             case rabbitizer::InstrId::UniqueId::cpu_lwc1:
             case rabbitizer::InstrId::UniqueId::cpu_lwc2:
             case rabbitizer::InstrId::UniqueId::cpu_swc1:
-            case rabbitizer::InstrId::UniqueId::cpu_swc2:
-                {
-                    rabbitizer::Registers::Cpu::GprO32 mem_rs = insns[i].instruction.GetO32_rs();
-                    int32_t mem_imm = insns[i].instruction.getProcessedImmediate();
+            case rabbitizer::InstrId::UniqueId::cpu_swc2: {
+                rabbitizer::Registers::Cpu::GprO32 mem_rs = insns[i].instruction.GetO32_rs();
+                int32_t mem_imm = insns[i].instruction.getProcessedImmediate();
 
-                    if (mem_rs == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) {
-                        unsigned int got_entry = (mem_imm + gp_value_adj) / sizeof(unsigned int);
+                if (mem_rs == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) {
+                    unsigned int got_entry = (mem_imm + gp_value_adj) / sizeof(unsigned int);
 
-                        if (got_entry >= got_locals.size()) {
-                            got_entry -= got_locals.size();
-                            if (got_entry < got_globals.size()) {
-                                assert(insn.instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_lw);
-                                unsigned int dest_vaddr = got_globals[got_entry];
+                    if (got_entry >= got_locals.size()) {
+                        got_entry -= got_locals.size();
+                        if (got_entry < got_globals.size()) {
+                            assert(insn.instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_lw);
+                            unsigned int dest_vaddr = got_globals[got_entry];
 
-                                insns[i].is_global_got_memop = true;
-                                insns[i].linked_value = dest_vaddr;
+                            insns[i].is_global_got_memop = true;
+                            insns[i].linked_value = dest_vaddr;
 
-                                // patch to LA
-                                insns[i].lila_dst_reg = get_dest_reg(insns[i]);
-                                insns[i].patchAddress(UniqueId_cpu_la, dest_vaddr);
-                            }
+                            // patch to LA
+                            insns[i].lila_dst_reg = get_dest_reg(insns[i]);
+                            insns[i].patchAddress(UniqueId_cpu_la, dest_vaddr);
                         }
-                    } else {
-                        link_with_lui(i, mem_rs, mem_imm);
                     }
+                } else {
+                    link_with_lui(i, mem_rs, mem_imm);
                 }
-                break;
+            } break;
 
             case rabbitizer::InstrId::UniqueId::cpu_addiu:
             case rabbitizer::InstrId::UniqueId::cpu_ori: {
@@ -943,9 +939,8 @@ void pass1(void) {
                     insns[i].lila_dst_reg = get_dest_reg(insns[i]);
                     insns[i].patchInstruction(UniqueId_cpu_li);
                     insns[i].patchImmediate(imm);
-                } else if (rt !=
-                           rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) { // only look for LUI if rt and rs are the
-                                                                             // same
+                } else if (rt != rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp) { // only look for LUI if rt and rs are
+                                                                                   // the same
                     link_with_lui(i, rs, imm);
                 }
             } break;
@@ -3043,20 +3038,17 @@ void dump_c(void) {
         max_addr = std::max(max_addr, bss_vaddr + bss_section_len);
     }
 
-    // get pagesize at runtime
-#if defined(_WIN32) && !defined(__CYGWIN__)
-    SYSTEM_INFO si;
-    GetSystemInfo(&si);
-    uint32_t page_size = si.dwPageSize;
-#else
-    uint32_t page_size = sysconf(_SC_PAGESIZE);
-#endif /* _WIN32 && !__CYGWIN__ */
+    // 64 kB. Supposedly the worst-case smallest permitted page size, increase if necessary.
+    // Ensures the hardcoded min_addr and max_addr are sufficiently aligned for the machine running the
+    // recompiled binaries (and not just the one doing the original recomp build).
+    uint32_t page_size = 0x10000;
+
     min_addr = min_addr & ~(page_size - 1);
     max_addr = (max_addr + (page_size - 1)) & ~(page_size - 1);
 
     uint32_t stack_bottom = min_addr;
-    min_addr -= 1 * 1024 * 1024; // 1 MB stack
-    stack_bottom -= 16;          // for main's stack frame
+    min_addr -= 0x100000; // 1 MB stack
+    stack_bottom -= 0x10; // for main's stack frame
 
     printf("#include \"header.h\"\n");
 

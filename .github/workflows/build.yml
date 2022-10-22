@@ -13,7 +13,7 @@ jobs:
 
     name: Recompiling ido ${{ matrix.ido }} for ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       # Ubuntu
       - name: Install dependencies (Ubuntu)
@@ -84,7 +84,7 @@ jobs:
           tar -czvf ../../../ido-${{ matrix.ido }}-recomp-${{ matrix.os }}.tar.gz *
 
       - name: Upload archive
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ido-${{ matrix.ido }}-recomp-${{ matrix.os }}
           path: |
