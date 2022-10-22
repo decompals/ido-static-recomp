@@ -3038,15 +3038,6 @@ void dump_c(void) {
         max_addr = std::max(max_addr, bss_vaddr + bss_section_len);
     }
 
-    //     // get pagesize at runtime
-    // #if defined(_WIN32) && !defined(__CYGWIN__)
-    //     SYSTEM_INFO si;
-    //     GetSystemInfo(&si);
-    //     uint32_t page_size = si.dwPageSize;
-    // #else
-    //     uint32_t page_size = sysconf(_SC_PAGESIZE);
-    // #endif /* _WIN32 && !__CYGWIN__ */
-
     // 64 kB. Supposedly the worst-case smallest permitted page size, increase if necessary.
     // Ensures the hardcoded min_addr and max_addr are sufficiently aligned for the machine running the
     // recompiled binaries (and not just the one doing the original recomp build).
