@@ -992,7 +992,7 @@ void pass2(void) {
             it->second.returns.push_back(addr + 4);
         }
 
-        if (insn.is_global_got_memop && insn.instruction.getUniqueId() == UniqueId_cpu_la) {
+        if (insn.instruction.getUniqueId() == UniqueId_cpu_la) {
             uint32_t faddr = insn.getAddress();
 
             if ((text_vaddr <= faddr) && (faddr < text_vaddr + text_section_len)) {
@@ -2709,7 +2709,7 @@ void dump_instr(int i) {
             uint32_t addr = insn.getAddress();
 
             printf("%s = 0x%x;", r((int)insn.lila_dst_reg), addr);
-            if (insn.is_global_got_memop && (text_vaddr <= addr) && (addr < text_vaddr + text_section_len)) {
+            if ((text_vaddr <= addr) && (addr < text_vaddr + text_section_len)) {
                 printf(" // function pointer");
                 label_addresses.insert(addr);
             }
