@@ -2302,11 +2302,14 @@ uint32_t wrapper_setlocale(uint8_t *mem, int category, uint32_t locale_addr) {
 
 uint32_t wrapper_mmap(uint8_t *mem, uint32_t addr, uint32_t length, int prot, int flags, int fd, int offset) {
     if (addr == 0 && prot == (prot & 3) && flags == 2) {
-        // Read/write, map anonymous. Just make a copy.
-        uint8_t *ptr = mmap(0, length, prot, flags, fd, offset);
-        uint32_t padded_length = (length + 3) & -4;
-        uint32_t out = wrapper_malloc(mem, padded_length);
-        for (uint32_t i = 0; i < padded_length; i++) {
+        // Read/write, map private. Just make a copy.
+        uint8_t *ptr = mmap(0, length, PROT_READ, MAP_PRIVATE, fd, offset);
+        if (ptr == MAP_FAILED) {
+            MEM_U32(ERRNO_ADDR) = errno;
+            return -1;
+        }
+        uint32_t out = wrapper_malloc(mem, length);
+        for (uint32_t i = 0; i < length; i++) {
             MEM_S8(out + i) = ptr[i];
         }
         munmap(ptr, length);
