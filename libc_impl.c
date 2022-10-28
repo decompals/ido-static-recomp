@@ -2296,12 +2296,25 @@ uint32_t wrapper_setlocale(uint8_t* mem, int category, uint32_t locale_addr) {
 }
 
 uint32_t wrapper_mmap(uint8_t* mem, uint32_t addr, uint32_t length, int prot, int flags, int fd, int offset) {
+    if (addr == 0 && prot == (prot & 3) && flags == 2) {
+        // Read/write, map private. Just make a copy.
+        uint8_t* ptr = mmap(0, length, PROT_READ, MAP_PRIVATE, fd, offset);
+        if (ptr == MAP_FAILED) {
+            MEM_U32(ERRNO_ADDR) = errno;
+            return -1;
+        }
+        uint32_t out = wrapper_malloc(mem, length);
+        for (uint32_t i = 0; i < length; i++) {
+            MEM_S8(out + i) = ptr[i];
+        }
+        munmap(ptr, length);
+        return out;
+    }
     assert(0 && "mmap not implemented");
     return 0;
 }
 
 int wrapper_munmap(uint8_t* mem, uint32_t addr, uint32_t length) {
-    assert(0 && "munmap not implemented");
     return 0;
 }
 
@@ -2674,11 +2687,38 @@ uint32_t wrapper_tfind(uint8_t* mem, uint32_t key_addr, uint32_t rootp_addr, uin
     return tsearch_tfind(mem, key_addr, rootp_addr, compar_addr, false);
 }
 
+struct QsortMeta {
+    uint8_t* mem;
+    uint64_t (*trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t fp_dest);
+    uint32_t compare_addr;
+    uint32_t sp;
+} global_qsort_meta;
+
+int qsort_comp(const void* a, const void* b) {
+    return (int)global_qsort_meta.trampoline(
+        global_qsort_meta.mem,
+        global_qsort_meta.sp,
+        (uint32_t)(uintptr_t)a,
+        (uint32_t)(uintptr_t)b,
+        0,
+        0,
+        global_qsort_meta.compare_addr
+    );
+}
+
 uint32_t wrapper_qsort(uint8_t* mem, uint32_t base_addr, uint32_t num, uint32_t size,
                        uint64_t (*trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2,
                                               uint32_t a3, uint32_t fp_dest),
                        uint32_t compare_addr, uint32_t sp) {
-    assert(0 && "qsort not implemented");
+    // We don't let recompiled programs run multithreaded, and hopefully
+    // there's no re-entrancy, so using a global should be fine...
+    global_qsort_meta = (struct QsortMeta) {
+        .mem = mem,
+        .trampoline = trampoline,
+        .compare_addr = compare_addr,
+        .sp = sp,
+    };
+    qsort((void*)(uintptr_t)base_addr, num, size, qsort_comp);
     return 0;
 }
 
