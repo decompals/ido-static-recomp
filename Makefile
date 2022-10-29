@@ -9,10 +9,8 @@
 VERSION ?= 7.1
 # if WERROR is 1, pass -Werror to CC, so warnings would be treated as errors
 WERROR ?= 0
-# if RELEASE is 1 symbols are stripped from the recomped binaries
+# if RELEASE is 1 strip binaries as well as enable optimizations
 RELEASE ?= 0
-# Disables/Enables optimizations to make debugging easier
-DEBUG ?= 1
 # On Mac, set this to `universal` to build universal (x86+ARM) binaries
 TARGET ?= native
 # Set to 1 to build with sanitization enabled
@@ -73,14 +71,11 @@ ifneq ($(WERROR),0)
   WARNINGS += -Werror
 endif
 
-ifeq ($(RELEASE),0)
-  STRIP := @:
-endif
-
-ifeq ($(DEBUG),0)
+ifeq ($(RELEASE),1)
   OPTFLAGS     ?= -Os
 else
   OPTFLAGS     ?= -O0 -g3
+  STRIP := @:
 endif
 
 ifneq ($(ASAN),0)
@@ -155,7 +150,7 @@ setup:
 clean:
 	$(RM) -r $(BUILD_DIR)
 
-distclean: clean
+distclean:
 	$(RM) -r $(BUILD_BASE)
 	$(MAKE) -C $(RABBITIZER) distclean
 
