@@ -40,6 +40,9 @@ make VERSION=7.1
 
 The build artifacts are located in `build/{7.1|5.3}/out`. Add `-j{thread num}` for multithreaded building.
 
+By default, debug builds are created with less optimizations, debug flags, and unstripped binaries.
+Add `RELEASE=1` to build release builds with optimizations and stripped binaries.
+
 ### Creating Universal ARM/x86_64 macOS Builds
 
 By default, make build script create native binaries on macOS. This was done to minimize the time to build the recompiled suite.
