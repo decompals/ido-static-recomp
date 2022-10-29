@@ -2695,11 +2695,13 @@ struct QsortMeta {
 } global_qsort_meta;
 
 int qsort_comp(const void* a, const void* b) {
+    uint32_t a_addr = (uint32_t)((uint8_t*)a - global_qsort_meta.mem);
+    uint32_t b_addr = (uint32_t)((uint8_t*)b - global_qsort_meta.mem);
     return (int)global_qsort_meta.trampoline(
         global_qsort_meta.mem,
         global_qsort_meta.sp,
-        (uint32_t)(uintptr_t)a,
-        (uint32_t)(uintptr_t)b,
+        a_addr,
+        b_addr,
         0,
         0,
         global_qsort_meta.compare_addr
@@ -2718,7 +2720,11 @@ uint32_t wrapper_qsort(uint8_t* mem, uint32_t base_addr, uint32_t num, uint32_t 
         .compare_addr = compare_addr,
         .sp = sp,
     };
-    qsort((void*)(uintptr_t)base_addr, num, size, qsort_comp);
+    // Memory must be 4-byte aligned since we're using the non-byteswap-aware
+    // libc qsort. It always is in the cases we care about.
+    assert(base_addr % 4 == 0);
+    assert(size % 4 == 0);
+    qsort(mem + base_addr, num, size, qsort_comp);
     return 0;
 }
 
