@@ -123,10 +123,12 @@ struct FILE_irix {
     uint8_t _flag;
 };
 
+typedef uint64_t (*fptr_trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3,
+                               uint32_t fp_dest);
+
 static struct {
     struct {
-        uint64_t (*trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3,
-                               uint32_t fp_dest);
+        fptr_trampoline trampoline;
         uint8_t* mem;
         uint32_t fp_dest;
     } handlers[65];
@@ -2687,46 +2689,219 @@ uint32_t wrapper_tfind(uint8_t* mem, uint32_t key_addr, uint32_t rootp_addr, uin
     return tsearch_tfind(mem, key_addr, rootp_addr, compar_addr, false);
 }
 
-struct QsortMeta {
-    uint8_t* mem;
-    uint64_t (*trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t fp_dest);
-    uint32_t compare_addr;
-    uint32_t sp;
-} global_qsort_meta;
+// qsort implementation from SGI libc, originally derived from
+// https://people.ece.ubc.ca/~eddieh/glu_dox/d7/da4/qsort_8c_source.html (public domain)
 
-int qsort_comp(const void* a, const void* b) {
-    uint32_t a_addr = (uint32_t)((uint8_t*)a - global_qsort_meta.mem);
-    uint32_t b_addr = (uint32_t)((uint8_t*)b - global_qsort_meta.mem);
-    return (int)global_qsort_meta.trampoline(
-        global_qsort_meta.mem,
-        global_qsort_meta.sp,
-        a_addr,
-        b_addr,
-        0,
-        0,
-        global_qsort_meta.compare_addr
-    );
-}
+#define CMP(x, y) (int32_t)(trampoline(mem, sp, (x), (y), 0, 0, compare_addr) >> 32)
 
-uint32_t wrapper_qsort(uint8_t* mem, uint32_t base_addr, uint32_t num, uint32_t size,
-                       uint64_t (*trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2,
-                                              uint32_t a3, uint32_t fp_dest),
+static void qst(uint8_t* mem, uint32_t start, uint32_t end,
+                fptr_trampoline trampoline,
+                uint32_t compare_addr, uint32_t sp, uint32_t size, uint32_t minSortSize,
+                uint32_t medianOfThreeThreshold);
+
+uint32_t wrapper_qsort(uint8_t* mem, uint32_t base_addr, uint32_t count, uint32_t size,
+                       fptr_trampoline trampoline,
                        uint32_t compare_addr, uint32_t sp) {
-    // We don't let recompiled programs run multithreaded, and hopefully
-    // there's no re-entrancy, so using a global should be fine...
-    global_qsort_meta = (struct QsortMeta) {
-        .mem = mem,
-        .trampoline = trampoline,
-        .compare_addr = compare_addr,
-        .sp = sp,
-    };
-    // Memory must be 4-byte aligned since we're using the non-byteswap-aware
-    // libc qsort. It always is in the cases we care about.
-    assert(base_addr % 4 == 0);
-    assert(size % 4 == 0);
-    qsort(mem + base_addr, num, size, qsort_comp);
+    uint32_t end;
+    uint32_t it;
+    uint32_t prevIt;
+    uint32_t byteIt;
+    uint32_t hi;
+    uint32_t insPos;
+    uint32_t cur;
+    uint32_t smallest;
+    uint8_t temp;
+
+    if (count < 2) {
+        return 0;
+    }
+
+    end = base_addr + (count * size);
+
+    if (count >= 4) {
+        // run a rough quicksort
+        qst(mem, base_addr, end, trampoline, compare_addr, sp, size, size * 4, size * 6);
+        // the smallest element will be one of the first 4
+        hi = base_addr + size * 4;
+    } else {
+        hi = end;
+    }
+
+    // Find the smallest element and swap it to the front
+    smallest = base_addr;
+    for (it = base_addr + size; it < hi; it += size) {
+        if (CMP(smallest, it) > 0) {
+            smallest = it;
+        }
+    }
+
+    if (smallest != base_addr) {
+        for (it = base_addr; it < base_addr + size; smallest++, it++) {
+            temp = MEM_U8(smallest);
+            MEM_U8(smallest) = MEM_U8(it);
+            MEM_U8(it) = temp;
+        }
+    }
+
+    // Do insertion sort on the rest of the elements
+    for (cur = base_addr + size; cur < end; cur += size) {
+
+        // Find where cur should go
+        insPos = cur - size;
+        while (CMP(insPos, cur) > 0) {
+            if (base_addr == insPos) {
+                // This isn't logically possible, because we've put the smallest element first.
+                // But it can happen if the comparator function is faulty, and it's best not to
+                // write out of bounds in that situation.
+                break;
+            }
+            insPos -= size;
+        }
+        insPos += size;
+
+        if (insPos == cur) {
+            continue;
+        }
+
+        for (byteIt = cur + size; --byteIt >= cur; ) {
+            temp = MEM_U8(byteIt);
+            prevIt = byteIt;
+            for (it = byteIt - size; it >= insPos; it -= size) {
+                MEM_U8(prevIt) = MEM_U8(it);
+                prevIt = it;
+            }
+            MEM_U8(prevIt) = temp;
+        }
+    }
+
     return 0;
 }
+
+static void qst(uint8_t* mem, uint32_t start, uint32_t end,
+                fptr_trampoline trampoline,
+                uint32_t compare_addr, uint32_t sp, uint32_t size, uint32_t minSortSize,
+                uint32_t medianOfThreeThreshold) {
+    uint32_t sizeAfterPivot;
+    uint32_t sizeBeforePivot;
+    uint32_t totalSize;
+    int32_t i;
+    uint32_t afterPivot;
+    uint32_t last;
+    uint32_t newPartitionFirst;
+    uint32_t median;
+    uint32_t partitionFirst;
+    uint32_t partitionLast;
+    uint32_t pivot;
+    uint32_t swapWith;
+    uint8_t temp;
+
+    totalSize = end - start;
+    do {
+        last = end - size;
+        pivot = partitionFirst = (((totalSize / size) >> 1) * size) + start;
+        if (totalSize >= medianOfThreeThreshold) {
+            // compute median of three
+            median = CMP(start, pivot) > 0 ? start : pivot;
+            if (CMP(median, last) > 0) {
+                median = median == start ? pivot : start;
+                median = CMP(median, last) < 0 ? last : median;
+            }
+
+            // swap the median so it ends up in the middle
+            if (median != pivot) {
+                // Fake-match: use partitionFirst here instead of e.g. swapWith.
+                i = size;
+                do {
+                    temp = MEM_U8(partitionFirst);
+                    MEM_U8(partitionFirst) = MEM_U8(median);
+                    MEM_U8(median) = temp;
+                    partitionFirst++;
+                    median++;
+                    i--;
+                } while (i != 0);
+            }
+        }
+
+        // Partition the elements start, ..., pivot, ..., last, such that values smaller than the pivot are on the left,
+        // and values greater than the pivot are on the right (equal ones can go wherever). The pivot may end up getting
+        // swapped into another position in the process.
+
+        partitionFirst = start;
+        partitionLast = last;
+
+        // Loop invariant: Elements partitionFirst, ..., partitionLast remain to be partitioned, and pivot is in that range.
+        for (;;) {
+            while (partitionFirst < pivot && CMP(partitionFirst, pivot) < 0) {
+                // Skip over smaller values on the left.
+                partitionFirst += size;
+            }
+
+            while (pivot < partitionLast) {
+                if (CMP(pivot, partitionLast) < 0) {
+                    // Skip over greater values on the right.
+                    partitionLast -= size;
+                } else {
+                    // We have found a value we cannot skip over. Put it at the front.
+                    // If the pivot was at the front, it gets swapped to the last position,
+                    // otherwise, the value at the front is something we know isn't smaller
+                    // than the pivot, so we can skip partitioning it.
+                    newPartitionFirst = partitionFirst + size;
+                    if (partitionFirst == pivot) {
+                        swapWith = partitionLast;
+                        pivot = partitionLast;
+                    } else {
+                        swapWith = partitionLast;
+                        partitionLast -= size;
+                    }
+                    goto swapFront;
+                }
+            }
+
+            // We have hit up against the pivot at the end. Swap it to the front to we can
+            // skip over it. The front element is known to not be smaller than the pivot,
+            // except if the pivot is at the front also, i.e. if the range has been reduced
+            // down to size 1 -- in that case it's time to break out of the loop.
+            partitionLast -= size;
+            if (partitionFirst == pivot) {
+                break;
+            }
+            swapWith = pivot;
+            pivot = partitionFirst;
+            newPartitionFirst = partitionFirst;
+
+        swapFront:
+            i = size;
+            do {
+                temp = MEM_U8(partitionFirst);
+                MEM_U8(partitionFirst) = MEM_U8(swapWith);
+                MEM_U8(swapWith) = temp;
+                partitionFirst++;
+                swapWith++;
+                i--;
+            } while (i != 0);
+            partitionFirst = newPartitionFirst;
+        }
+
+        afterPivot = pivot + size;
+        sizeBeforePivot = pivot - start;
+        sizeAfterPivot = end - afterPivot;
+        totalSize = sizeBeforePivot;
+        if (sizeAfterPivot >= sizeBeforePivot) {
+            if (sizeBeforePivot >= minSortSize) {
+                qst(mem, start, pivot, trampoline, compare_addr, sp, size, minSortSize, medianOfThreeThreshold);
+            }
+            start = afterPivot;
+            totalSize = sizeAfterPivot;
+        } else {
+            if (sizeAfterPivot >= minSortSize) {
+                qst(mem, afterPivot, end, trampoline, compare_addr, sp, size, minSortSize, medianOfThreeThreshold);
+            }
+            end = pivot;
+        }
+    } while (totalSize >= minSortSize);
+}
+
+#undef CMP
 
 uint32_t wrapper_regcmp(uint8_t* mem, uint32_t string1_addr, uint32_t sp) {
     STRING(string1);
