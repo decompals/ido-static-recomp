@@ -5,7 +5,7 @@ Convert selected IRIX C toolchain programs into modern Linux or macOS programs
 ## Supported Programs
 
 * IDO 5.3
-  * cc, acpp, as0, as1, cfe, copt, ugen, ujoin, uld, umerge, uopt, usplit, ld
+  * cc, acpp, as0, as1, cfe, copt, ugen, ujoin, uld, umerge, uopt, usplit, ld, strip
 * IDO 7.1
   * cc, acpp, as0, as1, cfe, ugen, ujoin, uld, umerge, uopt, usplit, upas
 

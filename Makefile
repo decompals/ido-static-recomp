@@ -25,7 +25,7 @@ ifeq ($(VERSION),7.1)
   IDO_TC      := cc acpp as0 as1 cfe ugen ujoin uld umerge uopt usplit upas
 else ifeq ($(VERSION),5.3)
   IDO_VERSION := IDO53
-  IDO_TC      := cc acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit ld
+  IDO_TC      := cc strip acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit ld
 else
   $(error Unknown or unsupported IDO version - $(VERSION))
 endif
@@ -177,7 +177,7 @@ $(BUILD_BASE)/%.elf: %.cpp
 $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/%
 	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
-# cc is special and is stored on the `bin` folder instead of the `lib` one
+# cc and strip are special and are stored in the `bin` folder instead of the `lib` one
 $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/%
 	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
