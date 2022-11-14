@@ -124,7 +124,7 @@ struct FILE_irix {
 };
 
 typedef uint64_t (*fptr_trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3,
-                               uint32_t fp_dest);
+                                    uint32_t fp_dest);
 
 static struct {
     struct {
@@ -2694,13 +2694,10 @@ uint32_t wrapper_tfind(uint8_t* mem, uint32_t key_addr, uint32_t rootp_addr, uin
 
 #define CMP(x, y) (int32_t)(trampoline(mem, sp, (x), (y), 0, 0, compare_addr) >> 32)
 
-static void qst(uint8_t* mem, uint32_t start, uint32_t end,
-                fptr_trampoline trampoline,
-                uint32_t compare_addr, uint32_t sp, uint32_t size, uint32_t minSortSize,
-                uint32_t medianOfThreeThreshold);
+static void qst(uint8_t* mem, uint32_t start, uint32_t end, fptr_trampoline trampoline, uint32_t compare_addr,
+                uint32_t sp, uint32_t size, uint32_t minSortSize, uint32_t medianOfThreeThreshold);
 
-uint32_t wrapper_qsort(uint8_t* mem, uint32_t base_addr, uint32_t count, uint32_t size,
-                       fptr_trampoline trampoline,
+uint32_t wrapper_qsort(uint8_t* mem, uint32_t base_addr, uint32_t count, uint32_t size, fptr_trampoline trampoline,
                        uint32_t compare_addr, uint32_t sp) {
     uint32_t end;
     uint32_t it;
@@ -2763,7 +2760,7 @@ uint32_t wrapper_qsort(uint8_t* mem, uint32_t base_addr, uint32_t count, uint32_
             continue;
         }
 
-        for (byteIt = cur + size; --byteIt >= cur; ) {
+        for (byteIt = cur + size; --byteIt >= cur;) {
             temp = MEM_U8(byteIt);
             prevIt = byteIt;
             for (it = byteIt - size; it >= insPos; it -= size) {
@@ -2777,10 +2774,8 @@ uint32_t wrapper_qsort(uint8_t* mem, uint32_t base_addr, uint32_t count, uint32_
     return 0;
 }
 
-static void qst(uint8_t* mem, uint32_t start, uint32_t end,
-                fptr_trampoline trampoline,
-                uint32_t compare_addr, uint32_t sp, uint32_t size, uint32_t minSortSize,
-                uint32_t medianOfThreeThreshold) {
+static void qst(uint8_t* mem, uint32_t start, uint32_t end, fptr_trampoline trampoline, uint32_t compare_addr,
+                uint32_t sp, uint32_t size, uint32_t minSortSize, uint32_t medianOfThreeThreshold) {
     uint32_t sizeAfterPivot;
     uint32_t sizeBeforePivot;
     uint32_t totalSize;
@@ -2822,14 +2817,15 @@ static void qst(uint8_t* mem, uint32_t start, uint32_t end,
             }
         }
 
-        // Partition the elements start, ..., pivot, ..., last, such that values smaller than the pivot are on the left,
-        // and values greater than the pivot are on the right (equal ones can go wherever). The pivot may end up getting
-        // swapped into another position in the process.
+        // Partition the elements start, ..., pivot, ..., last, such that values smaller than the
+        // pivot are on the left, and values greater than the pivot are on the right (equal ones can
+        // go wherever). The pivot may end up getting swapped into another position in the process.
 
         partitionFirst = start;
         partitionLast = last;
 
-        // Loop invariant: Elements partitionFirst, ..., partitionLast remain to be partitioned, and pivot is in that range.
+        // Loop invariant: Elements partitionFirst, ..., partitionLast remain to be partitioned,
+        // and pivot is in that range.
         for (;;) {
             while (partitionFirst < pivot && CMP(partitionFirst, pivot) < 0) {
                 // Skip over smaller values on the left.
