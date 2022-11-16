@@ -2699,7 +2699,7 @@ void dump_instr(int i) {
             imm = insn.getImmediate();
 
             printf("%s = %s + %d; ", reg, r((int)insn.instruction.GetO32_rs()), imm);
-            printf("%s = (uint32_t)(MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + 3);\n", reg,
+            printf("%s = ((uint32_t)MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + 3);\n", reg,
                    reg, reg, reg, reg);
         } break;
 
