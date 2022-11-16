@@ -496,9 +496,17 @@ uint32_t wrapper_realloc(uint8_t* mem, uint32_t data_addr, uint32_t size) {
 }
 
 void wrapper_free(uint8_t* mem, uint32_t data_addr) {
+    if (data_addr == 0) {
+        return;
+    }
     uint32_t node_ptr = data_addr - 8;
     int bin = MEM_U32(node_ptr);
     uint32_t size = MEM_U32(node_ptr + 4);
+    if (size == 0) {
+        // Double free. IDO 5.3 strip relies on this.
+        fprintf(stderr, "warning: double free: 0x%x\n", data_addr);
+        return;
+    }
     uint32_t list_ptr = MALLOC_BINS_ADDR + (bin - 3) * 4;
     assert(bin >= 3 && bin < 30);
     assert(size <= (1 << bin));
@@ -1188,6 +1196,15 @@ int wrapper_ftruncate(uint8_t* mem, int fd, int length) {
     return ret;
 }
 
+int wrapper_truncate(uint8_t* mem, uint32_t pathname_addr, int length) {
+    STRING(pathname)
+    int ret = truncate(pathname, length);
+    if (ret != 0) {
+        MEM_U32(ERRNO_ADDR) = errno;
+    }
+    return ret;
+}
+
 void wrapper_bcopy(uint8_t* mem, uint32_t src_addr, uint32_t dst_addr, uint32_t len) {
     if (dst_addr % 4 == 0 && src_addr % 4 == 0 && len % 4 == 0) {
         // Use memmove to copy regions that are 4-byte aligned.
@@ -1381,6 +1398,14 @@ int wrapper_fflush(uint8_t* mem, uint32_t fp_addr) {
         f->_cnt += to_flush;
     }
     return 0;
+}
+
+int wrapper_fchown(uint8_t* mem, int fd, int owner, int group) {
+    int ret = fchown(fd, owner, group);
+    if (ret != 0) {
+        MEM_U32(ERRNO_ADDR) = errno;
+    }
+    return ret;
 }
 
 int wrapper_ftell(uint8_t* mem, uint32_t fp_addr) {
