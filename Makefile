@@ -74,7 +74,7 @@ endif
 ifeq ($(RELEASE),1)
   OPTFLAGS     ?= -Os
 else
-  OPTFLAGS     ?= -O0 -g3
+  OPTFLAGS     ?= -Og -g3
   STRIP := @:
 endif
 
