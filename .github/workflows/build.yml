@@ -18,20 +18,20 @@ jobs:
       # Ubuntu
       - name: Install dependencies (Ubuntu)
         shell: bash
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-20.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential
 
       - name: Build recomp binary (Ubuntu)
         shell: bash
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-20.04t'
         run: |
           make -j $(nproc) RELEASE=1 DEBUG=0 setup
 
       - name: Run the build script (Ubuntu)
         shell: bash
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-20.04'
         run: |
           make -j $(nproc) RELEASE=1 DEBUG=0 VERSION=${{ matrix.ido }}
 
