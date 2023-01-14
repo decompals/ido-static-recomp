@@ -25,7 +25,7 @@ jobs:
 
       - name: Build recomp binary (Ubuntu)
         shell: bash
-        if: matrix.os == 'ubuntu-20.04t'
+        if: matrix.os == 'ubuntu-20.04'
         run: |
           make -j $(nproc) RELEASE=1 DEBUG=0 setup
 
