@@ -194,6 +194,8 @@ static char bin_dir[PATH_MAX + 1];
 #endif
 static int g_file_max = 3;
 
+static char redirect_dir[PATH_MAX + 1];
+
 /* Compilation Target/Emulation Host Page Size Determination */
 #if defined(__CYGWIN__) || (defined(__linux__) && defined(__aarch64__))
 #define RUNTIME_PAGESIZE
@@ -300,6 +302,17 @@ static void find_bin_dir(void) {
 #endif
 }
 
+static void get_redirect_dir(void) {
+    char path[PATH_MAX + 1] = {0};
+    char *include_env = NULL;
+
+    if ((!(include_env = getenv("INCLUDE_DIR"))) || (snprintf(path, PATH_MAX, "%s", include_env) >= PATH_MAX)) {
+        return;
+    }
+
+    strcpy(redirect_dir, path);
+}
+
 void final_cleanup(uint8_t* mem) {
     wrapper_fflush(mem, 0);
     free_all_file_bufs(mem);
@@ -311,6 +324,7 @@ int main(int argc, char* argv[]) {
     int ret;
 
     find_bin_dir();
+    get_redirect_dir();
 #ifdef RUNTIME_PAGESIZE
     g_Pagesize = sysconf(_SC_PAGESIZE);
 #endif /* RUNTIME_PAGESIZE */
@@ -870,8 +884,29 @@ uint32_t wrapper_strlen(uint8_t* mem, uint32_t str_addr) {
     return len;
 }
 
+void redirect_open(char* pathname) {
+    if(!strncmp(pathname, "/usr/include", 12) && redirect_dir[0] != '\0') {
+        char redirected_path[PATH_MAX + 1] = {0};
+        char stripped_path[PATH_MAX + 1] = {0};
+        int n;
+
+        memmove(stripped_path, pathname + 12, strlen(pathname));
+        n = snprintf(redirected_path, sizeof(redirected_path), "%s%s", redirect_dir, stripped_path);
+
+        if (n >= 0 && n < sizeof(redirected_path)) {
+            strcpy(pathname, redirected_path);
+        }
+    }
+}
+
 int wrapper_open(uint8_t* mem, uint32_t pathname_addr, int flags, int mode) {
     STRING(pathname)
+    char rpathname[PATH_MAX + 1];
+
+    strcpy(rpathname, pathname);
+
+    redirect_open(rpathname);
+
     int f = flags & O_ACCMODE;
     if (flags & 0x100) {
         f |= O_CREAT;
@@ -888,7 +923,8 @@ int wrapper_open(uint8_t* mem, uint32_t pathname_addr, int flags, int mode) {
     if (flags & 0x08) {
         f |= O_APPEND;
     }
-    int fd = open(pathname, f, mode);
+
+    int fd = open(rpathname, f, mode);
     MEM_U32(ERRNO_ADDR) = errno;
     return fd;
 }
