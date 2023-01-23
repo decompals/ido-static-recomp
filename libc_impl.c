@@ -194,7 +194,7 @@ static char bin_dir[PATH_MAX + 1];
 #endif
 static int g_file_max = 3;
 
-static char redirect_dir[PATH_MAX + 1];
+static char usr_include_redirect[PATH_MAX + 1];
 
 /* Compilation Target/Emulation Host Page Size Determination */
 #if defined(__CYGWIN__) || (defined(__linux__) && defined(__aarch64__))
@@ -302,15 +302,15 @@ static void find_bin_dir(void) {
 #endif
 }
 
-static void get_redirect_dir(void) {
+static void get_usr_include_reirect(void) {
     char path[PATH_MAX + 1] = {0};
     char *include_env = NULL;
 
-    if ((!(include_env = getenv("INCLUDE_DIR"))) || (snprintf(path, PATH_MAX, "%s", include_env) >= PATH_MAX)) {
+    if ((!(include_env = getenv("USR_INCLUDE"))) || (snprintf(path, PATH_MAX, "%s", include_env) >= PATH_MAX)) {
         return;
     }
 
-    strcpy(redirect_dir, path);
+    strcpy(usr_include_redirect, path);
 }
 
 void final_cleanup(uint8_t* mem) {
@@ -324,7 +324,7 @@ int main(int argc, char* argv[]) {
     int ret;
 
     find_bin_dir();
-    get_redirect_dir();
+    get_usr_include_reirect();
 #ifdef RUNTIME_PAGESIZE
     g_Pagesize = sysconf(_SC_PAGESIZE);
 #endif /* RUNTIME_PAGESIZE */
@@ -884,14 +884,14 @@ uint32_t wrapper_strlen(uint8_t* mem, uint32_t str_addr) {
     return len;
 }
 
-void redirect_open(char* pathname) {
-    if(!strncmp(pathname, "/usr/include", 12) && redirect_dir[0] != '\0') {
+void redirect_usr_include(char* pathname) {
+    if(!strncmp(pathname, "/usr/include", 12) && usr_include_redirect[0] != '\0') {
         char redirected_path[PATH_MAX + 1] = {0};
         char stripped_path[PATH_MAX + 1] = {0};
         int n;
 
         memmove(stripped_path, pathname + 12, strlen(pathname));
-        n = snprintf(redirected_path, sizeof(redirected_path), "%s%s", redirect_dir, stripped_path);
+        n = snprintf(redirected_path, sizeof(redirected_path), "%s%s", usr_include_redirect, stripped_path);
 
         if (n >= 0 && n < sizeof(redirected_path)) {
             strcpy(pathname, redirected_path);
@@ -905,7 +905,7 @@ int wrapper_open(uint8_t* mem, uint32_t pathname_addr, int flags, int mode) {
 
     strcpy(rpathname, pathname);
 
-    redirect_open(rpathname);
+    redirect_usr_include(rpathname);
 
     int f = flags & O_ACCMODE;
     if (flags & 0x100) {
