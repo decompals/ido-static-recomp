@@ -302,7 +302,7 @@ static void find_bin_dir(void) {
 #endif
 }
 
-static void get_usr_include_reirect(void) {
+static void get_usr_include_redirect(void) {
     char path[PATH_MAX + 1] = {0};
     char *include_env = NULL;
 
@@ -324,7 +324,7 @@ int main(int argc, char* argv[]) {
     int ret;
 
     find_bin_dir();
-    get_usr_include_reirect();
+    get_usr_include_redirect();
 #ifdef RUNTIME_PAGESIZE
     g_Pagesize = sysconf(_SC_PAGESIZE);
 #endif /* RUNTIME_PAGESIZE */
