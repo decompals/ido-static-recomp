@@ -1,0 +1,19 @@
+# Custom Functionality
+
+## Redirection
+Ido recomp currently has two forms of path redirection, both involving the `/usr` folder.
+
+### `/usr/lib`
+In order for users to not having to worry about installing the binaries in particular locations in `/usr/lib`, recomp automatically redirects `/usr/lib/` paths. This is done by determining the location of `cc` and redirecting to the same directory. This does mean all the binaries (including `err.english.cc`) are expected to be a part of a single flattened directory.
+
+Note: If a Linux environment is unable to read `/proc/self/exe` for any reason, one can use the environment variable `IDO_CC` to explictly specify where the `cc` binary is.
+
+Wrapper functions implementing this redirection:
+* `init_file`
+* `wrapper_execvp`
+
+### /usr/include
+The other form of redirection is completly optional and is done by setting the environment variable `USR_INCLUDE` with the desired redirection path. This will than redirect all opened files files there. This is done so that the `mdebug` section file paths will still use `/usr/lib` path, but the files themselves can be located elsewhere for greater flexibility.
+
+Wrapper functions implementing this redirection:
+* `wrapper_open`
