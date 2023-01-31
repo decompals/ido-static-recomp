@@ -6,7 +6,7 @@ Ido recomp currently has two forms of path redirection, both involving the `/usr
 ### `/usr/lib`
 In order for users to not having to worry about installing the binaries in particular locations in `/usr/lib`, recomp automatically redirects `/usr/lib/` paths. This is done by determining the location of `cc` and redirecting to the same directory. This does mean all the binaries (including `err.english.cc`) are expected to be a part of a single flattened directory.
 
-Note: If a Linux environment is unable to read `/proc/self/exe` for any reason, one can use the environment variable `IDO_CC` to explictly specify where the `cc` binary is.
+It is also possible to override the auto redirect by using the environment variable `USR_LIB` with the desired redirection path. This can be used if the binaries are not in a flattened directory with `cc` or if on Linux and are unable to read `/proc/self/exe`.
 
 Wrapper functions implementing this redirection:
 * `init_file`

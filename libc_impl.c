@@ -188,11 +188,11 @@ static char ctype[] = {
 };
 
 
-static char bin_dir[PATH_MAX + 1];
+static char usr_lib_redirect[PATH_MAX + 1];
+static char usr_include_redirect[PATH_MAX + 1];
 
 static int g_file_max = 3;
 
-static char usr_include_redirect[PATH_MAX + 1];
 
 /* Compilation Target/Emulation Host Page Size Determination */
 #if defined(__CYGWIN__) || (defined(__linux__) && defined(__aarch64__))
@@ -272,9 +272,26 @@ static void free_all_file_bufs(uint8_t* mem) {
     }
 }
 
-static void find_bin_dir(void) {
+void get_env_var(char* out, char* name) {
+    char* env = NULL;
+
+    if ((!(env = getenv(name))) || (snprintf(out, PATH_MAX, "%s", env) >= PATH_MAX)) {
+        out[0] = '\0';
+    }
+
+}
+
+static void get_usr_lib_redirect(void) {
     // gets the current executable's path
     char path[PATH_MAX + 1] = { 0 };
+
+    get_env_var(path, "USR_LIB");
+
+    if (path[0] != '\0') {
+        strcpy(usr_lib_redirect, path);
+        return;
+    }
+
 #ifdef __CYGWIN__
     uint32_t size = GetModuleFileName(NULL, path, PATH_MAX);
     if (size == 0 || size == PATH_MAX) {
@@ -288,25 +305,24 @@ static void find_bin_dir(void) {
 #else
     ssize_t size = readlink("/proc/self/exe", path, PATH_MAX);
     if (size < 0 || size == PATH_MAX) {
-        char* ido_cc = NULL;
-        if ((!(ido_cc = getenv("IDO_CC"))) || (snprintf(path, PATH_MAX, "%s", ido_cc) >= PATH_MAX)) {
-            return;
-        }
+        return;
     }
 #endif
 
-    strcpy(bin_dir, dirname(path));
+    strcpy(usr_lib_redirect, dirname(path));
 }
 
 static void get_usr_include_redirect(void) {
     char path[PATH_MAX + 1] = {0};
-    char *include_env = NULL;
 
-    if ((!(include_env = getenv("USR_INCLUDE"))) || (snprintf(path, PATH_MAX, "%s", include_env) >= PATH_MAX)) {
-        return;
-    }
+    get_env_var(path, "USR_INCLUDE");
 
     strcpy(usr_include_redirect, path);
+}
+
+static void get_redirects(void) {
+    get_usr_lib_redirect();
+    get_usr_include_redirect();
 }
 
 /**
@@ -342,8 +358,7 @@ void final_cleanup(uint8_t* mem) {
 int main(int argc, char* argv[]) {
     int ret;
 
-    find_bin_dir();
-    get_usr_include_redirect();
+    get_redirects();
 #ifdef RUNTIME_PAGESIZE
     g_Pagesize = sysconf(_SC_PAGESIZE);
 #endif /* RUNTIME_PAGESIZE */
@@ -1338,7 +1353,7 @@ static uint32_t init_file(uint8_t* mem, int fd, int i, const char* path, const c
     }
     if (fd == -1) {
         char rpathname[PATH_MAX + 1];
-        redirect_path(rpathname, path, "/usr/lib", bin_dir);
+        redirect_path(rpathname, path, "/usr/lib", usr_lib_redirect);
 
         fd = open(rpathname, flags, 0666);
 
@@ -2670,7 +2685,7 @@ int wrapper_execvp(uint8_t* mem, uint32_t file_addr, uint32_t argv_addr) {
     argv[argc] = NULL;
 
     char rfile[PATH_MAX + 1];
-    redirect_path(rfile, file, "/usr/lib", bin_dir);
+    redirect_path(rfile, file, "/usr/lib", usr_lib_redirect);
 
     execvp(rfile, argv);
 
