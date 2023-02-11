@@ -281,7 +281,7 @@ void get_env_var(char* out, char* name) {
 
 }
 
-static void get_usr_lib_redirect(void) {
+static void init_usr_lib_redirect(void) {
     // gets the current executable's path
     char path[PATH_MAX + 1] = { 0 };
 
@@ -312,7 +312,7 @@ static void get_usr_lib_redirect(void) {
     strcpy(usr_lib_redirect, dirname(path));
 }
 
-static void get_usr_include_redirect(void) {
+static void init_usr_include_redirect(void) {
     char path[PATH_MAX + 1] = {0};
 
     get_env_var(path, "USR_INCLUDE");
@@ -320,14 +320,14 @@ static void get_usr_include_redirect(void) {
     strcpy(usr_include_redirect, path);
 }
 
-static void get_redirects(void) {
-    get_usr_lib_redirect();
-    get_usr_include_redirect();
+static void init_redirect_paths(void) {
+    init_usr_lib_redirect();
+    init_usr_include_redirect();
 }
 
 /**
- * Redirects a path by replacing `from` with `to` and placing it in `out`.
- * Note if the path doesn't start with `from`, or an error occurs, the original path is returned.
+ * Redirects path by replacing the initial segment from by to. The result is placed in out.
+ * If path does not have from as its initial segment, or an error occurs, the original path is used.
 */
 void redirect_path(char* out, const char* path, const char* from, const char* to) {
     int from_len = strlen(from);
@@ -358,7 +358,7 @@ void final_cleanup(uint8_t* mem) {
 int main(int argc, char* argv[]) {
     int ret;
 
-    get_redirects();
+    init_redirect_paths();
 #ifdef RUNTIME_PAGESIZE
     g_Pagesize = sysconf(_SC_PAGESIZE);
 #endif /* RUNTIME_PAGESIZE */
