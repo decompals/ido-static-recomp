@@ -273,10 +273,16 @@ static void free_all_file_bufs(uint8_t* mem) {
 }
 
 void get_env_var(char* out, char* name) {
-    char* env = NULL;
+    char* env = getenv(name);
 
-    if ((!(env = getenv(name))) || (snprintf(out, PATH_MAX, "%s", env) >= PATH_MAX)) {
+    if (env == NULL) { // No environment variable found, so just return empty string
         out[0] = '\0';
+        return;
+    }
+
+    if (snprintf(out, PATH_MAX, "%s", env) >= PATH_MAX) {
+        fprintf(stderr, "Error: Environment variable %s is too large\n", name);
+        exit(1);
     }
 
 }
@@ -342,7 +348,7 @@ void redirect_path(char* out, const char* path, const char* from, const char* to
         if (n >= 0 && n < sizeof(redirected_path)) {
             strcpy(out, redirected_path);
         } else {
-            fprintf(stderr, "Unable to redirect %s->%s for %s\n", from, to, path);
+            fprintf(stderr, "Error: Unable to redirect %s->%s for %s\n", from, to, path);
             exit(1);
         }
     } else {
