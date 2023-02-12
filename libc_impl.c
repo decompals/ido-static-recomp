@@ -327,7 +327,8 @@ static void init_redirect_paths(void) {
 
 /**
  * Redirects `path` by replacing the initial segment `from` by `to`. The result is placed in `out`.
- * If `path` does not have `from` as its initial segment, or an error occurs, the original path is used.
+ * If `path` does not have `from` as its initial segment, or there is no `to`, the original path is used.
+ * If an error occurs, an error message will be printed, and the program exited.
 */
 void redirect_path(char* out, const char* path, const char* from, const char* to) {
     int from_len = strlen(from);
@@ -341,7 +342,8 @@ void redirect_path(char* out, const char* path, const char* from, const char* to
         if (n >= 0 && n < sizeof(redirected_path)) {
             strcpy(out, redirected_path);
         } else {
-            strcpy(out, path);
+            fprintf(stderr, "Unable to redirect %s->%s for %s\n", from, to, path);
+            exit(1);
         }
     } else {
         strcpy(out, path);
