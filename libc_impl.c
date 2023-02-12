@@ -326,8 +326,8 @@ static void init_redirect_paths(void) {
 }
 
 /**
- * Redirects path by replacing the initial segment from by to. The result is placed in out.
- * If path does not have from as its initial segment, or an error occurs, the original path is used.
+ * Redirects `path` by replacing the initial segment `from` by `to`. The result is placed in `out`.
+ * If `path` does not have `from` as its initial segment, or an error occurs, the original path is used.
 */
 void redirect_path(char* out, const char* path, const char* from, const char* to) {
     int from_len = strlen(from);
