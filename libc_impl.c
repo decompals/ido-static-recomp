@@ -187,12 +187,12 @@ static char ctype[] = {
     // clang-format on
 };
 
-#define REDIRECT_USR_LIB
 
-#ifdef REDIRECT_USR_LIB
-static char bin_dir[PATH_MAX + 1];
-#endif
+static char usr_lib_redirect[PATH_MAX + 1];
+static char usr_include_redirect[PATH_MAX + 1];
+
 static int g_file_max = 3;
+
 
 /* Compilation Target/Emulation Host Page Size Determination */
 #if defined(__CYGWIN__) || (defined(__linux__) && defined(__aarch64__))
@@ -272,10 +272,32 @@ static void free_all_file_bufs(uint8_t* mem) {
     }
 }
 
-static void find_bin_dir(void) {
-#ifdef REDIRECT_USR_LIB
-    // gets the current executable's path
+void get_env_var(char* out, char* name) {
+    char* env = getenv(name);
+
+    if (env == NULL) { // No environment variable found, so just return empty string
+        out[0] = '\0';
+        return;
+    }
+
+    if (snprintf(out, PATH_MAX, "%s", env) >= PATH_MAX) {
+        fprintf(stderr, "Error: Environment variable %s is too large\n", name);
+        exit(1);
+    }
+
+}
+
+static void init_usr_lib_redirect(void) {
     char path[PATH_MAX + 1] = { 0 };
+
+    get_env_var(path, "USR_LIB");
+
+    if (path[0] != '\0') {
+        strcpy(usr_lib_redirect, path);
+        return;
+    }
+
+    // gets the current executable's path
 #ifdef __CYGWIN__
     uint32_t size = GetModuleFileName(NULL, path, PATH_MAX);
     if (size == 0 || size == PATH_MAX) {
@@ -289,15 +311,49 @@ static void find_bin_dir(void) {
 #else
     ssize_t size = readlink("/proc/self/exe", path, PATH_MAX);
     if (size < 0 || size == PATH_MAX) {
-        char* ido_cc = NULL;
-        if ((!(ido_cc = getenv("IDO_CC"))) || (snprintf(path, PATH_MAX, "%s", ido_cc) >= PATH_MAX)) {
-            return;
-        }
+        return;
     }
 #endif
 
-    strcpy(bin_dir, dirname(path));
-#endif
+    strcpy(usr_lib_redirect, dirname(path));
+}
+
+static void init_usr_include_redirect(void) {
+    char path[PATH_MAX + 1] = {0};
+
+    get_env_var(path, "USR_INCLUDE");
+
+    strcpy(usr_include_redirect, path);
+}
+
+static void init_redirect_paths(void) {
+    init_usr_lib_redirect();
+    init_usr_include_redirect();
+}
+
+/**
+ * Redirects `path` by replacing the initial segment `from` by `to`. The result is placed in `out`.
+ * If `path` does not have `from` as its initial segment, or there is no `to`, the original path is used.
+ * If an error occurs, an error message will be printed, and the program exited.
+*/
+void redirect_path(char* out, const char* path, const char* from, const char* to) {
+    int from_len = strlen(from);
+
+    if(!strncmp(path, from, from_len) && (to[0] != '\0')) {
+        char redirected_path[PATH_MAX + 1] = {0};
+        int n;
+
+        n = snprintf(redirected_path, sizeof(redirected_path), "%s%s", to, path + from_len);
+
+        if (n >= 0 && n < sizeof(redirected_path)) {
+            strcpy(out, redirected_path);
+        } else {
+            fprintf(stderr, "Error: Unable to redirect %s->%s for %s\n", from, to, path);
+            exit(1);
+        }
+    } else {
+        strcpy(out, path);
+    }
 }
 
 void final_cleanup(uint8_t* mem) {
@@ -310,7 +366,7 @@ void final_cleanup(uint8_t* mem) {
 int main(int argc, char* argv[]) {
     int ret;
 
-    find_bin_dir();
+    init_redirect_paths();
 #ifdef RUNTIME_PAGESIZE
     g_Pagesize = sysconf(_SC_PAGESIZE);
 #endif /* RUNTIME_PAGESIZE */
@@ -872,6 +928,10 @@ uint32_t wrapper_strlen(uint8_t* mem, uint32_t str_addr) {
 
 int wrapper_open(uint8_t* mem, uint32_t pathname_addr, int flags, int mode) {
     STRING(pathname)
+
+    char rpathname[PATH_MAX + 1];
+    redirect_path(rpathname, pathname, "/usr/include", usr_include_redirect);
+
     int f = flags & O_ACCMODE;
     if (flags & 0x100) {
         f |= O_CREAT;
@@ -888,7 +948,8 @@ int wrapper_open(uint8_t* mem, uint32_t pathname_addr, int flags, int mode) {
     if (flags & 0x08) {
         f |= O_APPEND;
     }
-    int fd = open(pathname, f, mode);
+
+    int fd = open(rpathname, f, mode);
     MEM_U32(ERRNO_ADDR) = errno;
     return fd;
 }
@@ -1299,17 +1360,11 @@ static uint32_t init_file(uint8_t* mem, int fd, int i, const char* path, const c
         flags = O_RDWR | O_CREAT | O_APPEND;
     }
     if (fd == -1) {
+        char rpathname[PATH_MAX + 1];
+        redirect_path(rpathname, path, "/usr/lib", usr_lib_redirect);
 
-#ifdef REDIRECT_USR_LIB
-        char fixed_path[PATH_MAX + 1];
-        if (!strcmp(path, "/usr/lib/err.english.cc") && bin_dir[0] != '\0') {
-            int n = snprintf(fixed_path, sizeof(fixed_path), "%s/err.english.cc", bin_dir);
-            if (n >= 0 && n < sizeof(fixed_path)) {
-                path = fixed_path;
-            }
-        }
-#endif
-        fd = open(path, flags, 0666);
+        fd = open(rpathname, flags, 0666);
+
         if (fd < 0) {
             MEM_U32(ERRNO_ADDR) = errno;
             return 0;
@@ -2637,25 +2692,10 @@ int wrapper_execvp(uint8_t* mem, uint32_t file_addr, uint32_t argv_addr) {
     }
     argv[argc] = NULL;
 
-#ifdef REDIRECT_USR_LIB
-    if (!strncmp(file, "/usr/lib/", 9) && bin_dir[0] != '\0') {
-        char fixed_path[PATH_MAX + 1];
-#ifdef __CYGWIN__
-        int n = snprintf(fixed_path, sizeof(fixed_path), "%s/%s.exe", bin_dir, file + 9);
-#else
-        int n = snprintf(fixed_path, sizeof(fixed_path), "%s/%s", bin_dir, file + 9);
-#endif
-        if (n > 0 && n < sizeof(fixed_path)) {
-            execvp(fixed_path, argv);
-        } else {
-            execvp(file, argv);
-        }
-    } else {
-        execvp(file, argv);
-    }
-#else
-    execvp(file, argv);
-#endif
+    char rfile[PATH_MAX + 1];
+    redirect_path(rfile, file, "/usr/lib", usr_lib_redirect);
+
+    execvp(rfile, argv);
 
     MEM_U32(ERRNO_ADDR) = errno;
     for (uint32_t i = 0; i < argc; i++) {
