@@ -288,7 +288,6 @@ void get_env_var(char* out, char* name) {
 }
 
 static void init_usr_lib_redirect(void) {
-    // gets the current executable's path
     char path[PATH_MAX + 1] = { 0 };
 
     get_env_var(path, "USR_LIB");
@@ -298,6 +297,7 @@ static void init_usr_lib_redirect(void) {
         return;
     }
 
+    // gets the current executable's path
 #ifdef __CYGWIN__
     uint32_t size = GetModuleFileName(NULL, path, PATH_MAX);
     if (size == 0 || size == PATH_MAX) {
