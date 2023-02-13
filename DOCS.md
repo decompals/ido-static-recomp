@@ -13,7 +13,7 @@ Wrapper functions implementing this redirection:
 * `wrapper_execvp`
 
 ### /usr/include
-The other form of redirection is completely optional and is done by setting the environment variable `USR_INCLUDE` to the desired redirection path. This will than redirect all opened files files there. This is done so that the `mdebug` section file paths will still use `/usr/lib` path, but the files themselves can be located elsewhere for greater flexibility.
+The other form of redirection is completely optional and is done by setting the environment variable `USR_INCLUDE` to the desired redirection path. This will than redirect all opened files files there. This is done so that the `mdebug` section file paths will still use `/usr/include` path, but the files themselves can be located elsewhere for greater flexibility.
 
 Wrapper functions implementing this redirection:
 * `wrapper_open`
