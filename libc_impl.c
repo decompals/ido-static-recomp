@@ -950,6 +950,8 @@ int wrapper_open(uint8_t* mem, uint32_t pathname_addr, int flags, int mode) {
 
     char rpathname[PATH_MAX + 1];
     redirect_path(rpathname, pathname, "/usr/include", usr_include_redirect);
+    redirect_path(rpathname, pathname, "/usr/lib", usr_lib_redirect);
+    redirect_path(rpathname, pathname, "/lib", usr_lib_redirect);
 
     int f = flags & O_ACCMODE;
     if (flags & 0x100) {
@@ -1416,7 +1418,9 @@ static uint32_t init_file(uint8_t* mem, int fd, int i, const char* path, const c
 }
 
 uint32_t wrapper_fopen(uint8_t* mem, uint32_t path_addr, uint32_t mode_addr) {
-    assert(path_addr != 0);
+    if (path_addr == 0) {
+        return 0;
+    }
     assert(mode_addr != 0);
 
     STRING(path)
