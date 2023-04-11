@@ -187,12 +187,10 @@ static char ctype[] = {
     // clang-format on
 };
 
-
 static char usr_lib_redirect[PATH_MAX + 1];
 static char usr_include_redirect[PATH_MAX + 1];
 
 static int g_file_max = 3;
-
 
 /* Compilation Target/Emulation Host Page Size Determination */
 #if defined(__CYGWIN__) || (defined(__linux__) && defined(__aarch64__))
@@ -284,7 +282,6 @@ void get_env_var(char* out, char* name) {
         fprintf(stderr, "Error: Environment variable %s is too large\n", name);
         exit(1);
     }
-
 }
 
 static void init_usr_lib_redirect(void) {
@@ -319,7 +316,7 @@ static void init_usr_lib_redirect(void) {
 }
 
 static void init_usr_include_redirect(void) {
-    char path[PATH_MAX + 1] = {0};
+    char path[PATH_MAX + 1] = { 0 };
 
     get_env_var(path, "USR_INCLUDE");
 
@@ -335,12 +332,12 @@ static void init_redirect_paths(void) {
  * Redirects `path` by replacing the initial segment `from` by `to`. The result is placed in `out`.
  * If `path` does not have `from` as its initial segment, or there is no `to`, the original path is used.
  * If an error occurs, an error message will be printed, and the program exited.
-*/
+ */
 void redirect_path(char* out, const char* path, const char* from, const char* to) {
     int from_len = strlen(from);
 
-    if(!strncmp(path, from, from_len) && (to[0] != '\0')) {
-        char redirected_path[PATH_MAX + 1] = {0};
+    if (!strncmp(path, from, from_len) && (to[0] != '\0')) {
+        char redirected_path[PATH_MAX + 1] = { 0 };
         int n;
 
         n = snprintf(redirected_path, sizeof(redirected_path), "%s%s", to, path + from_len);
@@ -363,8 +360,11 @@ void final_cleanup(uint8_t* mem) {
     memory_unmap(mem, MEM_REGION_SIZE);
 }
 
+const char* progname;
+
 int main(int argc, char* argv[]) {
     int ret;
+    progname = argv[0];
 
     init_redirect_paths();
 #ifdef RUNTIME_PAGESIZE
@@ -423,6 +423,17 @@ static uint32_t strcpy2(uint8_t* mem, uint32_t dest_addr, uint32_t src_addr) {
         ++dest_addr;
         if (c == '\0') {
             return dest_addr - 1;
+        }
+    }
+}
+
+static char* strcpy3(uint8_t* mem, char* dest, uint32_t src_addr) {
+    for (;;) {
+        char c = MEM_S8(src_addr);
+        src_addr++;
+        *dest++ = c;
+        if (c == '\0') {
+            return dest - 1;
         }
     }
 }
@@ -817,6 +828,7 @@ int wrapper_fprintf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32
     STRING(format)
     sp += 8;
 
+#if 0
     // Special-case this one format string. This seems to be the only one that uses `%f` or width specifiers.
     if (!strcmp(format, "%.2fu %.2fs %u:%04.1f %.0f%%\n") && fp_addr == STDERR_ADDR) {
         double arg0 = MEM_F64(sp + 0);
@@ -845,12 +857,20 @@ int wrapper_fprintf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32
         fflush(stderr);
         return 1;
     }
+#endif
     int ret = 0;
+    bool float_seen = false;
+    uint32_t sp_incr = 4;
+    char* str = malloc(0x1000);
+    char* buf = malloc(0x1000);
     for (;;) {
         int width = 1;
         uint32_t pos = format_addr;
         char ch = MEM_S8(pos);
+        bool asterisk = false;
+        char formatSpecifier[0x100] = { 0 };
 
+        // print any non-formatting parts
         while (ch != '%' && ch != '\0') {
             ++pos;
             ch = MEM_S8(pos);
@@ -863,52 +883,108 @@ int wrapper_fprintf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32
         if (ch == '\0') {
             break;
         }
-        ++pos;
-        ch = MEM_S8(pos);
-        if (ch >= '1' && ch <= '9') {
-            ++pos;
-            width = ch - '0';
-            ch = MEM_S8(pos);
-        }
 
+        // read format specifiers
+        format_addr = pos;
+        int i;
+        formatSpecifier[0] = '%';
+        for (i = 1; ch != '\0'; i++) {
+            pos++;
+            ch = MEM_S8(pos);
+            formatSpecifier[i] = ch;
+            switch (ch) {
+                // need an extra argument
+                case '*':
+                    asterisk = true;
+                    continue;
+
+                // flags
+                case '+':
+                case '-':
+                case '#':
+                case '0':
+                // precision indicator
+                case '.':
+                // length modifiers (others exist, but only in >=C99)
+                case 'h':
+                case 'l':
+                // minimum field widths
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                case '7':
+                case '8':
+                case '9':
+                    continue;
+
+                default:
+                    break;
+            }
+            i++;
+            break;
+        }
+        formatSpecifier[i] = '\0';
+        if (asterisk) {
+            fprintf(stderr, "format '%s' contains asterisk\n", format);
+            assert(0 && "non-implemented fprintf format");
+        }
+        // fprintf(stderr, "Format specifier: %s\n", formatSpecifier);
+        // format and print
         switch (ch) {
+            case '%':
+                sprintf(buf, "%c", '%');
+                break;
             case 'd':
             case 'x':
             case 'X':
             case 'c':
-            case 'u': {
-                char buf[32];
-
-                char formatSpecifier[0x100] = { 0 };
-
-                formatSpecifier[0] = '%';
-                formatSpecifier[1] = width + '0';
-                formatSpecifier[2] = ch;
-
-                sprintf(buf, formatSpecifier, MEM_U32(sp));
-
-                strcpy1(mem, INTBUF_ADDR, buf);
-                if (wrapper_fputs(mem, INTBUF_ADDR, fp_addr) == -1) {
-                    return ret;
-                }
-                sp += 4;
-                ++ret;
+            case 'u':
+                sprintf(buf, formatSpecifier, MEM_U32(sp)); // TODO: asterisk
                 break;
-            }
-            case 's': {
-                if (wrapper_fputs(mem, MEM_U32(sp), fp_addr) == -1) {
-                    return ret;
+
+            case 'F':
+            case 'f':
+                // fprintf(stderr, "sp: %X\n", sp);
+                if (!float_seen) {
+                    // align to position of float promoted to double
+                    if ((sp % 8) != 0) {
+                        sp += 4;
+                    }
+                    float_seen = true;
+                    sp_incr = 8; // subsequent arguments are also aligned like doubles
                 }
-                sp += 4;
-                ++ret;
+                // fprintf(stderr, "sp aligned: %X\n", sp);
+                sprintf(buf, formatSpecifier, MEM_F64(sp)); // TODO: asterisk
+                break;
+
+            case 's': {
+                size_t len = wrapper_strlen(mem, MEM_U32(sp));
+                if (len + 1 >= 0x1000) {
+                    str = realloc(str, len + 1);
+                }
+                strcpy3(mem, str, MEM_U32(sp));
+                sprintf(buf, formatSpecifier, str);
                 break;
             }
             default:
                 fprintf(stderr, "missing format: '%s'\n", format);
                 assert(0 && "non-implemented fprintf format");
         }
+
+        strcpy1(mem, INTBUF_ADDR, buf);
+        if (wrapper_fputs(mem, INTBUF_ADDR, fp_addr) == -1) {
+            return ret;
+        }
+        sp += sp_incr;
+        ret++;
+
         format_addr = ++pos;
-    }
+    } /* for (;;) */
+    free(str);
+    free(buf);
     return ret;
 }
 
@@ -931,6 +1007,9 @@ int wrapper_open(uint8_t* mem, uint32_t pathname_addr, int flags, int mode) {
 
     char rpathname[PATH_MAX + 1];
     redirect_path(rpathname, pathname, "/usr/include", usr_include_redirect);
+
+    // fprintf(stderr, "%s: ", progname);
+    // fprintf(stderr, "%s: file: %s flags: 0x%X, mode: 0%o\n", __func__, rpathname, flags, mode);
 
     int f = flags & O_ACCMODE;
     if (flags & 0x100) {
@@ -956,6 +1035,9 @@ int wrapper_open(uint8_t* mem, uint32_t pathname_addr, int flags, int mode) {
 
 int wrapper_creat(uint8_t* mem, uint32_t pathname_addr, int mode) {
     STRING(pathname)
+
+    // fprintf(stderr, "%s: ", progname);
+    // fprintf(stderr, "%s: file: %s mode: 0x%X\n", __func__, pathname, mode);
     int ret = creat(pathname, mode);
     if (ret < 0) {
         MEM_U32(ERRNO_ADDR) = errno;
@@ -1363,6 +1445,8 @@ static uint32_t init_file(uint8_t* mem, int fd, int i, const char* path, const c
         char rpathname[PATH_MAX + 1];
         redirect_path(rpathname, path, "/usr/lib", usr_lib_redirect);
 
+        // fprintf(stderr, "%s: ", progname);
+        // fprintf(stderr, "%s: file: %s, flags: 0x%X mode: %s\n", __func__, rpathname, flags, mode);
         fd = open(rpathname, flags, 0666);
 
         if (fd < 0) {
@@ -1399,12 +1483,18 @@ uint32_t wrapper_fopen(uint8_t* mem, uint32_t path_addr, uint32_t mode_addr) {
 
     STRING(path)
     STRING(mode)
+
+    // fprintf(stderr, "%s: ", progname);
+    // fprintf(stderr, "%s: file: %s mode: %s\n", __func__, path, mode);
     return init_file(mem, -1, -1, path, mode);
 }
 
 uint32_t wrapper_freopen(uint8_t* mem, uint32_t path_addr, uint32_t mode_addr, uint32_t fp_addr) {
     STRING(path)
     STRING(mode)
+
+    // fprintf(stderr, "%s: ", progname);
+    // fprintf(stderr, "%s: file: %s mode: %s\n", __func__, path, mode);
     struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
     wrapper_fclose(mem, fp_addr);
     return init_file(mem, -1, f - (struct FILE_irix*)&MEM_U32(IOB_ADDR), path, mode);
@@ -1576,8 +1666,18 @@ void wrapper_perror(uint8_t* mem, uint32_t str_addr) {
     perror(str);
 }
 
+// #include <sys/param.h>
+// #include <fcntl.h>
+
 int wrapper_fdopen(uint8_t* mem, int fd, uint32_t mode_addr) {
     STRING(mode)
+
+    // fprintf(stderr, "%s: ", progname);
+    // fprintf(stderr, "%s: fd: %X mode: %s\n", __func__, fd, mode);
+    // char filePath[MAXPATHLEN];
+    // if (fcntl(fd, F_GETPATH, filePath) != -1) {
+    //     fprintf(stderr, "filename: %s\n", filePath);
+    // }
     return init_file(mem, fd, -1, NULL, mode);
 }
 
@@ -2496,11 +2596,11 @@ void wrapper_longjmp(uint8_t* mem, uint32_t addr, int status) {
     assert(0 && "longjmp not implemented");
 }
 
-uint32_t wrapper_tempnam(uint8_t *mem, uint32_t dir_addr, uint32_t pfx_addr) {
+uint32_t wrapper_tempnam(uint8_t* mem, uint32_t dir_addr, uint32_t pfx_addr) {
     STRING(dir)
     STRING(pfx)
-    char *ret = tempnam(dir, pfx);
-    char *ret_saved = ret;
+    char* ret = tempnam(dir, pfx);
+    char* ret_saved = ret;
     if (ret == NULL) {
         MEM_U32(ERRNO_ADDR) = errno;
         return 0;
@@ -2517,10 +2617,10 @@ uint32_t wrapper_tempnam(uint8_t *mem, uint32_t dir_addr, uint32_t pfx_addr) {
     return ret_addr;
 }
 
-uint32_t wrapper_tmpnam(uint8_t *mem, uint32_t str_addr) {
+uint32_t wrapper_tmpnam(uint8_t* mem, uint32_t str_addr) {
     char buf[1024];
     assert(str_addr != 0 && "s NULL not implemented for tmpnam");
-    char *ret = tmpnam(buf);
+    char* ret = tmpnam(buf);
     if (ret == NULL) {
         return 0;
     } else {
@@ -2529,7 +2629,7 @@ uint32_t wrapper_tmpnam(uint8_t *mem, uint32_t str_addr) {
     }
 }
 
-uint32_t wrapper_mktemp(uint8_t *mem, uint32_t template_addr) {
+uint32_t wrapper_mktemp(uint8_t* mem, uint32_t template_addr) {
     STRING(template)
     mktemp(template);
     strcpy1(mem, template_addr, template);
