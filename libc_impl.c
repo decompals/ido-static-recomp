@@ -677,24 +677,25 @@ int wrapper_fscanf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_
 
 #define MEM_X8(a) MEM_U8(a)
 
-typedef int (*prout)(uint8_t* mem, uint32_t out, uint32_t in_addr, uint32_t count);
+typedef int (*prout)(uint8_t* mem, uint32_t* out, uint32_t in_addr, uint32_t count);
 
-int prout_file(uint8_t* mem, uint32_t fp_addr, uint32_t in_addr, uint32_t count) {
-    return wrapper_fwrite(mem, in_addr, 1, count, (uint32_t)fp_addr);
+int prout_file(uint8_t* mem, uint32_t* fp_addr, uint32_t in_addr, uint32_t count) {
+    return wrapper_fwrite(mem, in_addr, 1, count, *fp_addr);
 }
 
-int prout_mem(uint8_t* mem, uint32_t dest_addr, uint32_t in_addr, uint32_t count) {
-    wrapper_memcpy(mem, dest_addr, in_addr, count);
-    wrapper_memset(mem, dest_addr+count, '\0', 1);
+int prout_mem(uint8_t* mem, uint32_t* dest_addr, uint32_t in_addr, uint32_t count) {
+    wrapper_memcpy(mem, *dest_addr, in_addr, count);
+    MEM_X8(*dest_addr + count) = '\0';
+    *dest_addr += count;
     return count;
 }
 
 // printf internal that takes `mem` as input.
-int _mprintf(prout prout, uint8_t* mem, uint32_t out, uint32_t format_addr, uint32_t sp) {
+int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uint32_t sp) {
     STRING(format)
     // if (prout == prout_mem) {
     //     fprintf(stderr, "Used as sprintf\n");
-    //     fprintf(stderr, "format: %s\n", format);
+    //     fprintf(stderr, "\nformat: %s\n", format);
     //     // exit(1);
     // }
     sp += 8;
@@ -841,6 +842,15 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t out, uint32_t format_addr, uint
                 break;
 
             case 's': {
+                // fprintf(stderr, "string format specifier \"%s\": ", format_specifier);
+                if (strcmp(format_specifier, "%s") == 0) {
+                    uint32_t str_addr = MEM_U32(sp);
+                    size_t len = wrapper_strlen(mem, str_addr);
+                    prout(mem, out, str_addr, len);
+                    step_chars_printed = len;
+                    goto increments;
+                }
+
                 step_chars_printed = wrapper_strlen(mem, MEM_U32(sp));
                 if (step_chars_printed + 1 > str_len) {
                     str_len = step_chars_printed + 1;
@@ -853,6 +863,9 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t out, uint32_t format_addr, uint
                     buf = realloc(buf, buf_len);
                 }
                 step_chars_printed = sprintf(buf, format_specifier, str);
+                // fprintf(stderr, "string format specifier \"%s\": ", format_specifier);
+                // fprintf(stderr, format_specifier, str);
+                // fprintf(stderr, "\n");
                 // step_chars_printed = 1;
                 // buf[0] = '\0';
                 break;
@@ -869,6 +882,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t out, uint32_t format_addr, uint
             fprintf(stderr, "Did not print %s successfully\n", format);
             return ret;
         }
+    increments:
         sp += sp_incr;
         ret += step_chars_printed;
         pos++;
@@ -881,7 +895,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t out, uint32_t format_addr, uint
 }
 
 int wrapper_fprintf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_t sp) {
-    return _mprintf(prout_file, mem, fp_addr, format_addr, sp);
+    return _mprintf(prout_file, mem, &fp_addr, format_addr, sp);
 }
 
 int wrapper_printf(uint8_t* mem, uint32_t format_addr, uint32_t sp) {
@@ -889,7 +903,7 @@ int wrapper_printf(uint8_t* mem, uint32_t format_addr, uint32_t sp) {
 }
 
 int wrapper_sprintf(uint8_t* mem, uint32_t str_addr, uint32_t format_addr, uint32_t sp) {
-    return _mprintf(prout_mem, mem, str_addr, format_addr, sp);
+    return _mprintf(prout_mem, mem, &str_addr, format_addr, sp);
 }
 
 #if 0
