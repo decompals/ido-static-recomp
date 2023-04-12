@@ -685,29 +685,18 @@ int prout_file(uint8_t* mem, uint32_t fp_addr, uint32_t in_addr, uint32_t count)
 
 int prout_mem(uint8_t* mem, uint32_t dest_addr, uint32_t in_addr, uint32_t count) {
     wrapper_memcpy(mem, dest_addr, in_addr, count);
-    size_t len = wrapper_strlen(mem, in_addr);
-    if (len == count) {
-         return len;
-    } else {
-        fprintf(stderr, "memcpy did not copy a nul-terminated string.\n");
-        return -1;
-    }
-    // return 
-    // uint32_t dest = (uint32_t)dest_addr;
-    // int i;
-    // char c;
-    // for (i = 0; i < count; i++, c = MEM_X8(in_addr + i)) {
-    //     MEM_X8(dest + i) = c;
-    // }
-    // return i;
+    wrapper_memset(mem, dest_addr+count, '\0', 1);
+    return count;
 }
 
 // printf internal that takes `mem` as input.
 int _mprintf(prout prout, uint8_t* mem, uint32_t out, uint32_t format_addr, uint32_t sp) {
     STRING(format)
-    if (strstr(progname, "cfe") != NULL) {
-        printf("\nformat: %s\n", format);
-    }
+    // if (prout == prout_mem) {
+    //     fprintf(stderr, "Used as sprintf\n");
+    //     fprintf(stderr, "format: %s\n", format);
+    //     // exit(1);
+    // }
     sp += 8;
 
     int ret = 0;
@@ -763,6 +752,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t out, uint32_t format_addr, uint
                 // length modifiers (others exist, but only in >=C99)
                 case 'h':
                 case 'l':
+                case 'L':
                 // minimum field widths
                 case '1':
                 case '2':
@@ -852,17 +842,19 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t out, uint32_t format_addr, uint
 
             case 's': {
                 step_chars_printed = wrapper_strlen(mem, MEM_U32(sp));
-                if (step_chars_printed + 1 >= str_len) {
+                if (step_chars_printed + 1 > str_len) {
                     str_len = step_chars_printed + 1;
                     str = realloc(str, str_len);
                 }
                 strcpy_mem2str(mem, str, MEM_U32(sp));
                 step_chars_printed = snprintf(NULL, 0, format_specifier, str);
-                if (step_chars_printed + 1 >= buf_len) {
+                if (step_chars_printed + 1 > buf_len) {
                     buf_len = step_chars_printed + 1;
                     buf = realloc(buf, buf_len);
                 }
                 step_chars_printed = sprintf(buf, format_specifier, str);
+                // step_chars_printed = 1;
+                // buf[0] = '\0';
                 break;
             }
             default:
@@ -874,7 +866,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t out, uint32_t format_addr, uint
         strcpy_str2mem(mem, INTBUF_ADDR, buf);
         step_chars_printed = prout(mem, out, INTBUF_ADDR, step_chars_printed);
         if (step_chars_printed == -1) {
-            printf("Did not print %s successfully\n", format);
+            fprintf(stderr, "Did not print %s successfully\n", format);
             return ret;
         }
         sp += sp_incr;
