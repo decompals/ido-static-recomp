@@ -24,8 +24,12 @@ ifeq ($(VERSION),7.1)
 else ifeq ($(VERSION),5.3)
   IDO_VERSION := IDO53
   IDO_TC      := cc strip acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit ld upas
+else ifeq ($(VERSION),C++4.0)
+  IDO_VERSION := IDOPLUSPLUS40
+#   IDO_TC      := CC
+  IDO_TC      := CC
 else
-  $(error Unknown or unsupported IDO version - $(VERSION))
+$(error Unknown or unsupported IDO version - $(VERSION))
 endif
 
 
