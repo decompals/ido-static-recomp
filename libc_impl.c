@@ -347,7 +347,13 @@ static void init_redirect_paths(void) {
 void redirect_path(char* out, const char* path, const char* from, const char* to) {
     int from_len = strlen(from);
 
-    if (!strncmp(path, from, from_len) && (to[0] != '\0')) {
+    //fprintf(stderr, "%s: out:    %s\n", __func__, out);
+    //fprintf(stderr, "%s: path:   %s\n", __func__, path);
+    //fprintf(stderr, "%s: from:   %s\n", __func__, from);
+    //fprintf(stderr, "%s: to:     %s\n", __func__, to);
+    //fprintf(stderr, "\n");
+
+    if ((strncmp(path, from, from_len) == 0) && (to[0] != '\0')) {
         char redirected_path[PATH_MAX + 1] = { 0 };
         int n;
 
@@ -360,8 +366,11 @@ void redirect_path(char* out, const char* path, const char* from, const char* to
             exit(1);
         }
     } else {
-        strcpy(out, path);
+        // memmove instead of strcpy to allow overlapping buffers
+        memmove(out, path, strlen(path)+1);
     }
+
+    //fprintf(stderr, "\n");
 }
 
 void final_cleanup(uint8_t* mem) {
@@ -3041,6 +3050,8 @@ int32_t wrapper_fputc(uint8_t *mem, int32_t ch, uint32_t stream_addr) {
     return ret;
 }
 
+#define GETOPT_DEBUG 1
+
 // https://linux.die.net/man/3/getopt
 int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t optstring_addr) {
     bool optargFound = false;
@@ -3050,6 +3061,9 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
     uint32_t argv_mem_new[argc];
 
     #ifdef GETOPT_DEBUG
+    fflush(stdout);
+    fflush(stderr);
+
     fprintf(stderr, "\n");
     fprintf(stderr, "%s: argc           %i\n", __func__, argc);
     fprintf(stderr, "%s: argv_addr      %u\n", __func__, argv_addr);
@@ -3065,17 +3079,74 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
     }
     fprintf(stderr, "\n");
 
-    fprintf(stderr, "%s: optarg         %s\n", __func__, optarg);
+    fprintf(stderr, "%s: optarg pre getopt %s\n", __func__, optarg);
     #endif
 
+    if ((optarg != NULL) && (MEM_U32(OPTARG_ADDR) != 0)) {
+        bool optarg_from_memory_found = false;
+        // optarg points to an old argv value which is no longer valid, we need to update it before calling getopt
+        uint32_t optarg_mem_addr = MEM_U32(OPTARG_ADDR);
+        STRING(optarg_mem);
+
+        #ifdef GETOPT_DEBUG
+        fprintf(stderr, "\n");
+        fprintf(stderr, "%s: starting optarg from memory search\n", __func__);
+        fprintf(stderr, "\n");
+        fprintf(stderr, "%s: optarg_mem     %s\n", __func__, optarg_mem);
+        fprintf(stderr, "\n");
+        #endif
+
+        for (int32_t i = 0; i < argc && !optarg_from_memory_found; i++) {
+            size_t arg_len = strlen(argv[i]);
+            #ifdef GETOPT_DEBUG
+            fprintf(stderr, "%s: argv[i]        %s\n", __func__, argv[i]);
+            #endif
+
+            for (size_t j = 0; j < arg_len; j++) {
+                if (strcmp(&argv[i][j], optarg_mem) == 0) {
+                    #ifdef GETOPT_DEBUG
+                    fprintf(stderr, "%s: found          %s %i %zu\n", __func__, &argv[i][j], i, j);
+                    #endif
+
+                    optarg = &argv[i][j];
+                    optarg_from_memory_found = true;
+                    break;
+                }
+            }
+        }
+
+        #ifdef GETOPT_DEBUG
+        fprintf(stderr, "\n");
+        fprintf(stderr, "%s: finishing optarg from memory search\n", __func__);
+        fprintf(stderr, "\n");
+        #endif
+
+        assert(optarg_from_memory_found);
+    }
+
+    #ifdef GETOPT_DEBUG
+    fprintf(stderr, "%s: optarg pre getopt, post search %s\n", __func__, optarg);
+    #endif
+
+    #ifdef GETOPT_DEBUG
+    fprintf(stderr, "\n");
+    fprintf(stderr, "%s: pre getopt\n", __func__);
+    #endif
     ret = getopt(argc, argv, optstring);
+    #ifdef GETOPT_DEBUG
+    fprintf(stderr, "%s: post getopt\n", __func__);
+    fprintf(stderr, "\n");
+    #endif
 
     MEM_S32(OPTERR_ADDR) = opterr;
     MEM_S32(OPTIND_ADDR) = optind;
     MEM_S32(OPTOPT_ADDR) = optopt;
 
     #ifdef GETOPT_DEBUG
-    fprintf(stderr, "%s: optarg         %s %p\n", __func__, optarg, optarg);
+    fprintf(stderr, "%s: optarg         %s\n", __func__, optarg);
+    fprintf(stderr, "%s: opterr         %i\n", __func__, opterr);
+    fprintf(stderr, "%s: optind         %i\n", __func__, optind);
+    fprintf(stderr, "%s: optopt         %i\n", __func__, optopt);
     #endif
 
     if (optarg == NULL) {
@@ -3092,7 +3163,7 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
         #ifdef GETOPT_DEBUG
         uint32_t str_addr = MEM_U32(argv_addr + i * sizeof(uint32_t));
         STRING(str);
-        fprintf(stderr, "%s: argv[i]        %s %p\n", __func__, argv[i], argv[i]);
+        fprintf(stderr, "%s: argv[i]        %s\n", __func__, argv[i]);
         #endif
 
         // TODO: We need to find optarg
