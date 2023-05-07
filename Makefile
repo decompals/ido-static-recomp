@@ -20,7 +20,7 @@ ASAN ?= 0
 ifeq ($(VERSION),7.1)
   IDO_VERSION := IDO71
 # copt currently does not build
-  IDO_TC      := cc acpp as0 as1 cfe ugen ujoin uld umerge uopt usplit upas edgcpfe CC
+  IDO_TC      := cc acpp as0 as1 cfe ugen ujoin uld umerge uopt usplit upas edgcpfe NCC
 else ifeq ($(VERSION),5.3)
   IDO_VERSION := IDO53
   IDO_TC      := cc strip acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit ld upas
@@ -215,10 +215,10 @@ $(BUILD_DIR)/x86_64-apple-macos10.14/%: $(BUILD_DIR)/x86_64-apple-macos10.14/%.o
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
-$(BUILD_BASE)/7.1/arm64-apple-macos11/CC: $(BUILD_BASE)/7.1/arm64-apple-macos11/cc
+$(BUILD_BASE)/7.1/arm64-apple-macos11/NCC: $(BUILD_BASE)/7.1/arm64-apple-macos11/cc
 	cp $^ $@
 
-$(BUILD_BASE)/7.1/x86_64-apple-macos10.14/CC: $(BUILD_BASE)/7.1/x86_64-apple-macos10.14/cc
+$(BUILD_BASE)/7.1/x86_64-apple-macos10.14/NCC: $(BUILD_BASE)/7.1/x86_64-apple-macos10.14/cc
 	cp $^ $@
 
 $(BUILD_DIR)/arm64-apple-macos11/edgcpfe: $(BUILD_DIR)/arm64-apple-macos11/edgcpfe.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL)_53.o | $(ERR_STRS)
@@ -258,8 +258,8 @@ $(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
-# CC 7.1 is just a renamed cc
-$(BUILD_BASE)/7.1/out/CC: $(BUILD_BASE)/7.1/out/cc
+# NCC 7.1 is just a renamed cc
+$(BUILD_BASE)/7.1/out/NCC: $(BUILD_BASE)/7.1/out/cc
 	cp $^ $@
 
 # edgcpfe 7.1 uses libc 5.3, so we need to hack a way to link a libc_impl file with the 5.3 stuff
