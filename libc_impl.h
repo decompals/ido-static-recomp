@@ -174,6 +174,28 @@ uint32_t wrapper_qsort(uint8_t *mem, uint32_t base_addr, uint32_t num, uint32_t 
 uint32_t wrapper_regcmp(uint8_t *mem, uint32_t string1_addr, uint32_t sp);
 uint32_t wrapper_regex(uint8_t *mem, uint32_t re_addr, uint32_t subject_addr, uint32_t sp);
 void wrapper___assert(uint8_t *mem, uint32_t assertion_addr, uint32_t file_addr, int line);
+// void wrapper_twalk(uint8_t *mem, void *, void *trampoline);
+// int32_t wrapper_msync(uint8_t *mem, void *, uint32_t, int32_t);
+// int32_t wrapper_mkdir(uint8_t *mem, void *, uint32_t);
+// int32_t wrapper_fputc(uint8_t *mem, int32_t, void *);
+// int32_t wrapper_getopt(uint8_t *mem, int32_t, void *, void *);
+// int32_t wrapper_link(uint8_t *mem, void *, void *);
+// int32_t wrapper_vsprintf(uint8_t *mem, void *, void *, void *);
+double wrapper_fabs(uint8_t *mem, double x);
+// int32_t wrapper_sysid(uint8_t *mem, void *);
+// uint32_t wrapper_realpath(uint8_t *mem, void *, void *);
+// int32_t wrapper_fsync(uint8_t *mem, int32_t);
+// uint32_t wrapper_sleep(uint8_t *mem, uint32_t);
+// int32_t wrapper_socket(uint8_t *mem, int32_t, int32_t, int32_t);
+// int32_t wrapper_connect(uint8_t *mem, int32_t, void *, uint32_t);
+// int32_t wrapper_recv(uint8_t *mem, int32_t, void *, uint32_t, int32_t);
+// int32_t wrapper_send(uint8_t *mem, int32_t, void *, uint32_t, int32_t);
+// int32_t wrapper_shutdown(uint8_t *mem, int32_t, int32_t);
+// uint32_t wrapper_sscanf(uint8_t *mem, void *, void *, uint32_t s, void *);
+
+// C++ functions
+// uint32_t wrapper___nw__FUi(uint8_t *mem, uint32_t);
+// void wrapper___dl__FPv(uint8_t *mem, uint32_t);
 
 union FloatReg FloatReg_from_double(double d);
 double double_from_FloatReg(union FloatReg floatreg);
