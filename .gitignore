@@ -8,3 +8,9 @@ ctx.c.m2c
 *.s
 
 .DS_Store
+
+
+*.T
+*.o
+*.ii
+*.B

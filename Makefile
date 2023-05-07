@@ -137,9 +137,9 @@ endif
 
 # Too many warnings, disable everything for now...
 $(RECOMP_ELF): WARNINGS  += -Wpedantic -Wno-shadow -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-implicit-fallthrough
-%/$(LIBC_IMPL).o: CFLAGS   += -D$(IDO_VERSION)
 # TODO: fix warnings
 %/$(LIBC_IMPL).o: WARNINGS += -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-sign-compare -Wno-deprecated-declarations
+%/$(LIBC_IMPL)_53.o: WARNINGS += -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-sign-compare -Wno-deprecated-declarations
 
 #### Main Targets ###
 
@@ -205,7 +205,7 @@ $(BUILT_BIN)/%: $(BUILD_DIR)/arm64-apple-macos11/% $(BUILD_DIR)/x86_64-apple-mac
 	lipo -create -output $@ $^
 
 
-### Built program ###
+### Built programs ###
 
 $(BUILD_DIR)/arm64-apple-macos11/%: $(BUILD_DIR)/arm64-apple-macos11/%.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $^ $(LDFLAGS)
@@ -221,6 +221,14 @@ $(BUILD_BASE)/7.1/arm64-apple-macos11/CC: $(BUILD_BASE)/7.1/arm64-apple-macos11/
 $(BUILD_BASE)/7.1/x86_64-apple-macos10.14/CC: $(BUILD_BASE)/7.1/x86_64-apple-macos10.14/cc
 	cp $^ $@
 
+$(BUILD_DIR)/arm64-apple-macos11/edgcpfe: $(BUILD_DIR)/arm64-apple-macos11/edgcpfe.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL)_53.o | $(ERR_STRS)
+	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $^ $(LDFLAGS)
+	$(STRIP) $@
+
+$(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe: $(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL)_53.o | $(ERR_STRS)
+	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $^ $(LDFLAGS)
+	$(STRIP) $@
+
 
 ### Intermediary steps ###
 
@@ -232,13 +240,16 @@ $(BUILD_DIR)/x86_64-apple-macos10.14/%.o: $(BUILD_DIR)/%.c
 
 
 $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL).o: $(LIBC_IMPL).c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
 
 $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL).o: $(LIBC_IMPL).c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
+
+$(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
 
 else
-### Built program ###
+### Built programs ###
 
 $(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
@@ -248,6 +259,11 @@ $(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL).o | $(ERR_STRS)
 $(BUILD_BASE)/7.1/out/CC: $(BUILD_BASE)/7.1/out/cc
 	cp $^ $@
 
+# edgcpfe 7.1 uses libc 5.3, so we need to hack a way to link a libc_impl file with the 5.3 stuff
+$(BUILT_BIN)/edgcpfe: $(BUILD_DIR)/edgcpfe.o $(BUILD_DIR)/$(LIBC_IMPL)_53.o | $(ERR_STRS)
+	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(STRIP) $@
+
 
 ### Intermediary steps ###
 
@@ -256,7 +272,10 @@ $(BUILD_DIR)/%.o: $(BUILD_DIR)/%.c
 
 
 $(BUILD_DIR)/$(LIBC_IMPL).o: $(LIBC_IMPL).c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -o $@ $<
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -o $@ $<
+
+$(BUILD_DIR)/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -o $@ $<
 endif
 
 # Remove built-in rules, to improve performance
