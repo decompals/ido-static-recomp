@@ -199,9 +199,13 @@ $(shell mkdir -p $(FAT_FOLDERS))
 FAT_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/arm64-apple-macos11/$(binary)) \
                 $(foreach binary,$(IDO_TC),$(BUILT_BIN)/x86_64-apple-macos10.14/$(binary))
 
+### Fat ###
+
 $(BUILT_BIN)/%: $(BUILD_DIR)/arm64-apple-macos11/% $(BUILD_DIR)/x86_64-apple-macos10.14/% | $(ERR_STRS)
 	lipo -create -output $@ $^
 
+
+### Built program ###
 
 $(BUILD_DIR)/arm64-apple-macos11/%: $(BUILD_DIR)/arm64-apple-macos11/%.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $^ $(LDFLAGS)
@@ -210,6 +214,15 @@ $(BUILD_DIR)/arm64-apple-macos11/%: $(BUILD_DIR)/arm64-apple-macos11/%.o $(BUILD
 $(BUILD_DIR)/x86_64-apple-macos10.14/%: $(BUILD_DIR)/x86_64-apple-macos10.14/%.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
+
+$(BUILD_BASE)/7.1/arm64-apple-macos11/CC: $(BUILD_BASE)/7.1/arm64-apple-macos11/cc
+	cp $^ $@
+
+$(BUILD_BASE)/7.1/x86_64-apple-macos10.14/CC: $(BUILD_BASE)/7.1/x86_64-apple-macos10.14/cc
+	cp $^ $@
+
+
+### Intermediary steps ###
 
 $(BUILD_DIR)/arm64-apple-macos11/%.o: $(BUILD_DIR)/%.c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $<
@@ -225,6 +238,8 @@ $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL).o: $(LIBC_IMPL).c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
 
 else
+### Built program ###
+
 $(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
@@ -232,6 +247,9 @@ $(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL).o | $(ERR_STRS)
 # CC 7.1 is just a renamed cc
 $(BUILD_BASE)/7.1/out/CC: $(BUILD_BASE)/7.1/out/cc
 	cp $^ $@
+
+
+### Intermediary steps ###
 
 $(BUILD_DIR)/%.o: $(BUILD_DIR)/%.c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $<
