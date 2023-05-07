@@ -61,6 +61,10 @@
 #define CTYPE_ADDR 0x0fb504f0
 #define LIBC_ADDR 0x0fb50000
 #define LIBC_SIZE 0x3000
+#define OPTERR_ADDR 0x0fb522e0
+#define OPTIND_ADDR 0x0fb522e4
+#define OPTOPT_ADDR 0x0fb522e8
+#define OPTARG_ADDR 0x0fb522ec
 #endif
 
 #ifdef IDO71
@@ -70,6 +74,10 @@
 #define CTYPE_ADDR 0x0fb4cba0
 #define LIBC_ADDR 0x0fb4c000
 #define LIBC_SIZE 0x3000
+#define OPTERR_ADDR 0x0fb436a0
+#define OPTIND_ADDR 0x0fb436a4
+#define OPTOPT_ADDR 0x0fb436a8
+#define OPTARG_ADDR 0x0fb436ac
 #endif
 
 #ifdef IDO72
@@ -79,6 +87,10 @@
 #define CTYPE_ADDR 0x0fb46db0
 #define LIBC_ADDR 0x0fb46000
 #define LIBC_SIZE 0x4000
+// #define OPTERR_ADDR
+// #define OPTIND_ADDR
+// #define OPTOPT_ADDR
+// #define OPTARG_ADDR
 #endif
 
 #define STDIN_ADDR IOB_ADDR
@@ -358,6 +370,34 @@ void final_cleanup(uint8_t* mem) {
     mem += MEM_REGION_START;
     memory_unmap(mem, MEM_REGION_SIZE);
 }
+
+char **make_argv_from_mem(uint8_t* mem, int argc, uint32_t argv_addr) {
+    char **argv = malloc((argc + 1) * sizeof(char *));
+
+    for (uint32_t i = 0; i < argc; i++) {
+        uint32_t str_addr = MEM_U32(argv_addr + i * sizeof(uint32_t));
+        uint32_t len = wrapper_strlen(mem, str_addr) + 1;
+        argv[i] = (char*)malloc(len);
+        char* pos = argv[i];
+        while (len--) {
+            *pos++ = MEM_S8(str_addr);
+            ++str_addr;
+        }
+    }
+
+    argv[argc] = NULL;
+
+    return argv;
+}
+
+void free_argv(int argc, char **argv) {
+    for (uint32_t i = 0; i < argc; i++) {
+        free(argv[i]);
+    }
+
+    free(argv);
+}
+
 
 const char* progname;
 
@@ -2991,7 +3031,93 @@ int32_t wrapper_fputc(uint8_t *mem, int32_t ch, uint32_t stream_addr) {
 
 // https://linux.die.net/man/3/getopt
 int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t optstring_addr) {
-    assert(0 && "getopt not implemented");
+    bool optargFound = false;
+    STRING(optstring);
+    int32_t ret;
+    char **argv;
+    uint32_t argv_mem_new[argc];
+
+    #ifdef GETOPT_DEBUG
+    fprintf(stderr, "\n");
+    fprintf(stderr, "%s: argc           %i\n", __func__, argc);
+    fprintf(stderr, "%s: argv_addr      %u\n", __func__, argv_addr);
+    fprintf(stderr, "%s: optstring_addr %u\n", __func__, optstring_addr);
+    fprintf(stderr, "%s: optstring      %s\n", __func__, optstring);
+    #endif
+
+    argv = make_argv_from_mem(mem, argc, argv_addr);
+
+    #ifdef GETOPT_DEBUG
+    for (int32_t i = 0; i < argc; i++) {
+        fprintf(stderr, "%s: argv[i]        %s\n", __func__, argv[i]);
+    }
+    fprintf(stderr, "\n");
+
+    fprintf(stderr, "%s: optarg         %s\n", __func__, optarg);
+    #endif
+
+    ret = getopt(argc, argv, optstring);
+
+    MEM_S32(OPTERR_ADDR) = opterr;
+    MEM_S32(OPTIND_ADDR) = optind;
+    MEM_S32(OPTOPT_ADDR) = optopt;
+
+    #ifdef GETOPT_DEBUG
+    fprintf(stderr, "%s: optarg         %s %p\n", __func__, optarg, optarg);
+    #endif
+
+    if (optarg == NULL) {
+        optargFound = true;
+        MEM_U32(OPTARG_ADDR) = 0;
+    }
+
+    #ifdef GETOPT_DEBUG
+    fprintf(stderr, "\n");
+    #endif
+
+    for (int32_t i = 0; i < argc; i++) {
+        size_t arg_len = strlen(argv[i]);
+        #ifdef GETOPT_DEBUG
+        uint32_t str_addr = MEM_U32(argv_addr + i * sizeof(uint32_t));
+        STRING(str);
+        fprintf(stderr, "%s: argv[i]        %s %p\n", __func__, argv[i], argv[i]);
+        #endif
+
+        // TODO: We need to find optarg
+        for (size_t j = 0; j < arg_len && !optargFound; j++) {
+            if (strcmp(&argv[i][j], optarg) == 0) {
+                uint32_t str_addr = MEM_U32(argv_addr + i * sizeof(uint32_t)) + j;
+                #ifdef GETOPT_DEBUG
+                STRING(str);
+                fprintf(stderr, "%s: argv[i]        found optarg\n", __func__);
+                fprintf(stderr, "%s: str            %s\n", __func__, str);
+                #endif
+
+                MEM_U32(OPTARG_ADDR) = str_addr;
+                optargFound = true;
+            }
+        }
+
+        // find the permuted argvs and put them in a temp array
+        for (int32_t j = 0; j < argc; j++) {
+            uint32_t str_addr = MEM_U32(argv_addr + j * sizeof(uint32_t));
+            STRING(str);
+
+            if ((strcmp(argv[i], str) == 0)) {
+                argv_mem_new[i] = str_addr;
+                break;
+            }
+        }
+    }
+
+    // copy the temp array into the real argv
+    for (int32_t j = 0; j < argc; j++) {
+        MEM_U32(argv_addr + j * sizeof(uint32_t)) = argv_mem_new[j];
+    }
+
+    free_argv(argc, argv);
+
+    return ret;
 }
 
 // https://linux.die.net/man/2/link
