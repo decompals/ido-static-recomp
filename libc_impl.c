@@ -125,9 +125,6 @@ struct FILE_irix {
     uint8_t _flag;
 };
 
-typedef uint64_t (*fptr_trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3,
-                                    uint32_t fp_dest);
-
 static struct {
     struct {
         fptr_trampoline trampoline;
@@ -1388,9 +1385,11 @@ static uint32_t init_file(uint8_t* mem, int fd, int i, const char* path, const c
     } else if (strcmp(mode, "a+") == 0 || strcmp(mode, "a+b") == 0) {
         flags = O_RDWR | O_CREAT | O_APPEND;
     }
+
     if (fd == -1) {
         char rpathname[PATH_MAX + 1];
-        redirect_path(rpathname, path, "/usr/lib", usr_lib_redirect);
+        redirect_path(rpathname, path, "/usr/lib/DCC", usr_lib_redirect);
+        redirect_path(rpathname, rpathname, "/usr/lib", usr_lib_redirect);
 
         fd = open(rpathname, flags, 0666);
 
@@ -2476,15 +2475,13 @@ static void signal_handler(int signum) {
 }
 
 uint32_t wrapper_signal(uint8_t* mem, int signum,
-                        uint64_t (*trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2,
-                                               uint32_t a3, uint32_t fp_dest),
+                        fptr_trampoline trampoline,
                         uint32_t handler_addr, uint32_t sp) {
     return 0;
 }
 
 uint32_t wrapper_sigset(uint8_t* mem, int signum,
-                        uint64_t (*trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2,
-                                               uint32_t a3, uint32_t fp_dest),
+                        fptr_trampoline trampoline,
                         uint32_t disp_addr, uint32_t sp) {
     void (*handler)(int) = signal_handler;
 
@@ -2680,7 +2677,8 @@ int wrapper_execvp(uint8_t* mem, uint32_t file_addr, uint32_t argv_addr) {
     argv[argc] = NULL;
 
     char rfile[PATH_MAX + 1];
-    redirect_path(rfile, file, "/usr/lib", usr_lib_redirect);
+    redirect_path(rfile, file, "/usr/lib/DCC", usr_lib_redirect);
+    redirect_path(rfile, rfile, "/usr/lib", usr_lib_redirect);
 
     execvp(rfile, argv);
 
@@ -2971,33 +2969,101 @@ void wrapper___assert(uint8_t* mem, uint32_t assertion_addr, uint32_t file_addr,
 }
 
 
-// void wrapper_twalk(uint8_t *mem, void *, void *trampoline);
-// int32_t wrapper_msync(uint8_t *mem, void *, uint32_t, int32_t);
-// int32_t wrapper_mkdir(uint8_t *mem, void *, uint32_t);
-// int32_t wrapper_fputc(uint8_t *mem, int32_t, void *);
-// int32_t wrapper_getopt(uint8_t *mem, int32_t, void *, void *);
-// int32_t wrapper_link(uint8_t *mem, void *, void *);
-// int32_t wrapper_vsprintf(uint8_t *mem, void *, void *, void *);
+// https://linux.die.net/man/3/twalk
+void wrapper_twalk(uint8_t *mem, uint32_t root_addr, fptr_trampoline trampoline, uint32_t action_addr, uint32_t sp) {
+    assert(0 && "twalk not implemented");
+}
 
+// https://linux.die.net/man/3/msync
+int32_t wrapper_msync(uint8_t *mem, uint32_t addr_addr, uint32_t len, int32_t flags) {
+    assert(0 && "msync not implemented");
+}
+
+// https://linux.die.net/man/3/mkdir
+int32_t wrapper_mkdir(uint8_t *mem, uint32_t path_addr, uint32_t mode) {
+    assert(0 && "mkdir not implemented");
+}
+
+// https://en.cppreference.com/w/c/io/fputc
+int32_t wrapper_fputc(uint8_t *mem, int32_t ch, uint32_t stream_addr) {
+    assert(0 && "fputc not implemented");
+}
+
+// https://linux.die.net/man/3/getopt
+int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t optstring_addr) {
+    assert(0 && "getopt not implemented");
+}
+
+// https://linux.die.net/man/2/link
+int32_t wrapper_link(uint8_t *mem, uint32_t oldpath_addr, uint32_t newpath_addr) {
+    assert(0 && "link not implemented");
+}
+
+// https://en.cppreference.com/w/c/io/vfprintf
+int32_t wrapper_vsprintf(uint8_t *mem, uint32_t buffer_addr, uint32_t format_addr, uint32_t vlist_addr) {
+    assert(0 && "vsprintf not implemented");
+}
+
+// https://linux.die.net/man/3/fabs
 double wrapper_fabs(uint8_t *mem, double x) {
     return fabs(x);
 }
 
-// int32_t wrapper_sysid(uint8_t *mem, void *);
-// uint32_t wrapper_realpath(uint8_t *mem, void *, void *);
-// int32_t wrapper_fsync(uint8_t *mem, int32_t);
-// uint32_t wrapper_sleep(uint8_t *mem, uint32_t);
-// int32_t wrapper_socket(uint8_t *mem, int32_t, int32_t, int32_t);
-// int32_t wrapper_connect(uint8_t *mem, int32_t, void *, uint32_t);
-// int32_t wrapper_recv(uint8_t *mem, int32_t, void *, uint32_t, int32_t);
-// int32_t wrapper_send(uint8_t *mem, int32_t, void *, uint32_t, int32_t);
-// int32_t wrapper_shutdown(uint8_t *mem, int32_t, int32_t);
-// uint32_t wrapper_sscanf(uint8_t *mem, void *, void *, uint32_t s, void *);
+// Non standard function
+int32_t wrapper_sysid(uint8_t *mem, uint32_t unknown_parameter_addr) {
+    assert(0 && "sysid not implemented");
+}
+
+// https://linux.die.net/man/3/realpath
+uint32_t wrapper_realpath(uint8_t *mem, uint32_t path_addr, uint32_t resolved_path_addr) {
+    assert(0 && "realpath not implemented");
+}
+
+// https://linux.die.net/man/2/fsync
+int32_t wrapper_fsync(uint8_t *mem, int32_t fd) {
+    assert(0 && "fsync not implemented");
+}
+
+// https://linux.die.net/man/3/sleep
+uint32_t wrapper_sleep(uint8_t *mem, uint32_t seconds) {
+    assert(0 && "sleep not implemented");
+}
+
+// https://linux.die.net/man/2/socket
+int32_t wrapper_socket(uint8_t *mem, int32_t domain, int32_t type, int32_t protocol) {
+    assert(0 && "socket not implemented");
+}
+
+// https://linux.die.net/man/2/connect
+int32_t wrapper_connect(uint8_t *mem, int32_t sockfd, uint32_t addr_addr, uint32_t addrlen) {
+    assert(0 && "connect not implemented");
+}
+
+// https://linux.die.net/man/2/recv
+int32_t wrapper_recv(uint8_t *mem, int32_t sockfd, uint32_t buf_addr, uint32_t len, int32_t flags) {
+    assert(0 && "recv not implemented");
+}
+
+// https://linux.die.net/man/2/send
+int32_t wrapper_send(uint8_t *mem, int32_t sockfd, uint32_t buf_addr, uint32_t len, int32_t flags) {
+    assert(0 && "send not implemented");
+}
+
+// https://linux.die.net/man/3/shutdown
+int32_t wrapper_shutdown(uint8_t *mem, int32_t socket, int32_t how) {
+    assert(0 && "shutdown not implemented");
+}
+
+// https://linux.die.net/man/3/sscanf
+int32_t wrapper_sscanf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint32_t sp) {
+    assert(0 && "sscanf not implemented");
+}
 
 // C++ functions
 uint32_t wrapper___nw__FUi(uint8_t *mem, uint32_t size) {
     return wrapper_malloc(mem, size);
 }
+
 void wrapper___dl__FPv(uint8_t *mem, uint32_t data_addr) {
     wrapper_free(mem, data_addr);
 }
