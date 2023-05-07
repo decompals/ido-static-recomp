@@ -245,6 +245,9 @@ $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL).o: $(LIBC_IMPL).c
 $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL).o: $(LIBC_IMPL).c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
 
+$(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
+
 $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
 
