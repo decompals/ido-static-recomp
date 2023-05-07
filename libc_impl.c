@@ -3026,7 +3026,19 @@ int32_t wrapper_mkdir(uint8_t *mem, uint32_t path_addr, uint32_t mode) {
 
 // https://en.cppreference.com/w/c/io/fputc
 int32_t wrapper_fputc(uint8_t *mem, int32_t ch, uint32_t stream_addr) {
-    assert(0 && "fputc not implemented");
+    int32_t ret;
+
+    if (stream_addr == STDOUT_ADDR) {
+        ret = fputc(ch, stdout);
+    } else if (stream_addr == STDERR_ADDR) {
+        ret = fputc(ch, stderr);
+    } else {
+        fprintf(stderr, "%s: ch          %i\n", __func__, ch);
+        fprintf(stderr, "%s: stream_addr %X\n", __func__, stream_addr);
+        assert(0 && "fputc with custom stream is not implemented");
+    }
+
+    return ret;
 }
 
 // https://linux.die.net/man/3/getopt
