@@ -20,7 +20,7 @@ ASAN ?= 0
 ifeq ($(VERSION),7.1)
   IDO_VERSION := IDO71
 # copt currently does not build
-  IDO_TC      := cc acpp as0 as1 cfe ugen ujoin uld umerge uopt usplit upas
+  IDO_TC      := cc acpp as0 as1 cfe ugen ujoin uld umerge uopt usplit upas edgcpfe
 else ifeq ($(VERSION),5.3)
   IDO_VERSION := IDO53
   IDO_TC      := cc strip acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit ld upas
@@ -176,6 +176,10 @@ $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/%
 
 # cc and strip are special and are stored in the `bin` folder instead of the `lib` one
 $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/%
+	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
+
+# IDO 7.1 c++ files are in a different subfolder (`lib/DCC`)
+$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/DCC/%
 	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
 
