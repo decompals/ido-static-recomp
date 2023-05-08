@@ -1558,7 +1558,10 @@ int wrapper_fseek(uint8_t* mem, uint32_t fp_addr, int offset, int origin) {
             f->_ptr_addr = f->_base_addr;
         }
         p = lseek(f->_file, offset, origin);
+    } else {
+        assert(0 && "This code should be unreachable");
     }
+
     if (p < 0) {
         MEM_U32(ERRNO_ADDR) = errno;
         return p;
