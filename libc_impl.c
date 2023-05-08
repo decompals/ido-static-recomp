@@ -1178,7 +1178,7 @@ uint32_t wrapper_strcspn(uint8_t* mem, uint32_t str_addr, uint32_t invalid_addr)
     uint32_t pos = 0;
     char c;
 
-    while ((c = MEM_S8(str_addr)) != 0) {
+    while ((c = MEM_U8(str_addr)) != 0) {
         for (size_t i = 0; i < n; i++) {
             if (c == invalid[i]) {
                 return pos;

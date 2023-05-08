@@ -63,7 +63,7 @@ CSTD         ?= -std=c11
 CFLAGS       ?= -MMD -fno-strict-aliasing -I.
 CXXSTD       ?= -std=c++17
 CXXFLAGS     ?= -MMD
-WARNINGS     ?= -Wall -Wextra
+WARNINGS     ?= -Wall -Wextra -Wimplicit-fallthrough -Wswitch
 LDFLAGS      ?= -lm
 RECOMP_FLAGS ?=
 
