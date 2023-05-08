@@ -426,18 +426,6 @@ static uint32_t strcpy_str2mem(uint8_t* mem, uint32_t dest_addr, const char* str
     }
 }
 
-uint32_t strcpy_mem2mem(uint8_t* mem, uint32_t dest_addr, uint32_t src_addr) {
-    for (;;) {
-        char c = MEM_S8(src_addr);
-        ++src_addr;
-        MEM_S8(dest_addr) = c;
-        ++dest_addr;
-        if (c == '\0') {
-            return dest_addr - 1;
-        }
-    }
-}
-
 static char* strcpy_mem2str(uint8_t* mem, char* dest, uint32_t src_addr) {
     for (;;) {
         char c = MEM_S8(src_addr);
