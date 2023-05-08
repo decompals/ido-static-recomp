@@ -91,6 +91,8 @@
 #define MALLOC_BINS_ADDR custom_libc_data_addr
 #define STRTOK_DATA_ADDR (MALLOC_BINS_ADDR + (30 - 3) * 4)
 #define INTBUF_ADDR (STRTOK_DATA_ADDR + 4)
+// INTBUF has size at least 0x1000 - 4 - (30 - 3) * 4, treat it as having size 0x400
+#define INTBUF_SIZE 0x400
 
 #define SIGNAL_HANDLER_STACK_START LIBC_ADDR
 
@@ -403,6 +405,16 @@ void setup_libc_data(uint8_t* mem) {
     STDERR->_file = 2;
 }
 
+static uint32_t memcpy_str2mem(uint8_t* mem, uint32_t dest_addr, const char* str, size_t count) {
+    uint32_t p = dest_addr;
+
+    while (count--) {
+        MEM_S8(p) = *str++;
+        p++;
+    }
+    return dest_addr;
+}
+
 static uint32_t strcpy_str2mem(uint8_t* mem, uint32_t dest_addr, const char* str) {
     for (;;) {
         char c = *str;
@@ -701,7 +713,6 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
     sp += 8;
 
     int ret = 0;
-    bool float_seen = false;
     uint32_t sp_incr = 4;
     size_t buf_len = 0x1000;
     char* buf = malloc(buf_len);
@@ -781,10 +792,11 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                 step_chars_printed = sprintf(buf, "%c", '%');
                 break;
 
-            case 'd':
-            case 'x':
-            case 'X':
             case 'c':
+            case 'd':
+            case 'i':
+            case 'X':
+            case 'x':
             case 'u':
                 switch (asterisk_count) {
                     case 0: {
@@ -810,13 +822,13 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
 
             case 'F':
             case 'f':
-                if (!float_seen) {
-                    // align to position of float promoted to double
-                    if ((sp % 8) != 0) {
-                        sp += 4;
-                    }
-                    float_seen = true;
-                    sp_incr = 8; // subsequent arguments are also aligned like doubles
+            case 'G':
+            case 'g':
+            case 'E':
+            case 'e':
+                // align to position of float promoted to double
+                if ((sp % 8) != 0) {
+                    sp += 4;
                 }
 
                 switch (asterisk_count) {
@@ -846,23 +858,58 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                 if (strcmp(format_specifier, "%s") == 0) {
                     uint32_t str_addr = MEM_U32(sp);
                     size_t len = wrapper_strlen(mem, str_addr);
-                    prout(mem, out, str_addr, len);
-                    step_chars_printed = len;
+                    step_chars_printed = prout(mem, out, str_addr, len);
                     goto increments;
                 }
 
+                int ast_arg1;
+                int ast_arg2;
+                switch (asterisk_count) {
+                    case 2:
+                        ast_arg1 = MEM_U32(sp);
+                        sp += sp_incr;
+                        ast_arg2 = MEM_U32(sp);
+                        sp += sp_incr;
+                        break;
+                    case 1:
+                        ast_arg1 = MEM_U32(sp);
+                        sp += sp_incr;
+                        break;
+                    default:
+                        break;
+                }
                 step_chars_printed = wrapper_strlen(mem, MEM_U32(sp));
                 if (step_chars_printed + 1 > str_len) {
                     str_len = step_chars_printed + 1;
                     str = realloc(str, str_len);
                 }
                 strcpy_mem2str(mem, str, MEM_U32(sp));
-                step_chars_printed = snprintf(NULL, 0, format_specifier, str);
+                switch (asterisk_count) {
+                    case 0:
+                        step_chars_printed = snprintf(NULL, 0, format_specifier, str);
+                        break;
+                    case 1:
+                        step_chars_printed = snprintf(NULL, 0, format_specifier, ast_arg1, str);
+                        break;
+                    case 2:
+                        step_chars_printed = snprintf(NULL, 0, format_specifier, ast_arg1, ast_arg2, str);
+                        break;
+                }
                 if (step_chars_printed + 1 > buf_len) {
                     buf_len = step_chars_printed + 1;
                     buf = realloc(buf, buf_len);
                 }
-                step_chars_printed = sprintf(buf, format_specifier, str);
+                switch (asterisk_count) {
+                    case 0:
+                        step_chars_printed = sprintf(buf, format_specifier, str);
+                        break;
+                    case 1:
+                        step_chars_printed = sprintf(buf, format_specifier, ast_arg1, str);
+                        break;
+                    case 2:
+                        step_chars_printed = sprintf(buf, format_specifier, ast_arg1, ast_arg2, str);
+                        break;
+                }
                 // fprintf(stderr, "string format specifier \"%s\": ", format_specifier);
                 // fprintf(stderr, format_specifier, str);
                 // fprintf(stderr, "\n");
@@ -876,12 +923,25 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                 break;
         }
 
-        strcpy_str2mem(mem, INTBUF_ADDR, buf);
+        int chars_printed = 0;
+        for (int chars_remaining = step_chars_printed; chars_remaining > 0; chars_remaining -= INTBUF_SIZE) {
+            int count = MIN(INTBUF_SIZE, chars_remaining);
+            memcpy_str2mem(mem, INTBUF_ADDR, buf + chars_printed, count);
+            chars_printed += prout(mem, out, INTBUF_ADDR, count);
+        }
+        if (chars_printed == -1) {
+            fprintf(stderr, "Did not print %s successfully\n", format);
+            return ret;
+        }
+
+#if 0
+        memcpy_str2mem(mem, INTBUF_ADDR, buf, step_chars_printed);
         step_chars_printed = prout(mem, out, INTBUF_ADDR, step_chars_printed);
         if (step_chars_printed == -1) {
             fprintf(stderr, "Did not print %s successfully\n", format);
             return ret;
         }
+#endif
     increments:
         sp += sp_incr;
         ret += step_chars_printed;
