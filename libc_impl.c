@@ -491,7 +491,7 @@ uint32_t wrapper_malloc(uint8_t* mem, uint32_t size) {
     int bin = -1;
 
     for (int i = 3; i < 30; i++) {
-        if (size <= (uint32_t)(1 << i)) {
+        if (size <= (1U << i)) {
             bin = i;
             break;
         }
