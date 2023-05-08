@@ -3171,11 +3171,6 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
     #endif
     ret = getopt(global_args.argc, global_args.argv, optstring);
 
-    fprintf(stderr, "optarg: %s\n", optarg);
-    fprintf(stderr, "optind: %i\n", optind);
-    fprintf(stderr, "c:      %X\n", ret);
-    fprintf(stderr, "\n");
-
     #ifdef GETOPT_DEBUG
     fprintf(stderr, "%s: post getopt\n", __func__);
     fprintf(stderr, "\n");
