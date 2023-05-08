@@ -63,7 +63,7 @@ CSTD         ?= -std=c11
 CFLAGS       ?= -MMD -fno-strict-aliasing -I.
 CXXSTD       ?= -std=c++17
 CXXFLAGS     ?= -MMD
-WARNINGS     ?= -Wall -Wextra
+WARNINGS     ?= -Wall -Wextra -Wpedantic -Wshadow
 LDFLAGS      ?= -lm
 RECOMP_FLAGS ?=
 
@@ -137,9 +137,8 @@ ifeq ($(DETECTED_OS),linux)
 $(RECOMP_ELF): LDFLAGS   += -Wl,-export-dynamic
 endif
 
-$(RECOMP_ELF): WARNINGS  += -Wpedantic -Wshadow
 %/$(LIBC_IMPL_O): CFLAGS   += -D$(IDO_VERSION)
-%/$(LIBC_IMPL_O): WARNINGS += -Wpedantic -Wshadow -Wno-unused-parameter -Wno-deprecated-declarations
+%/$(LIBC_IMPL_O): WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
 
 #### Main Targets ###
 
