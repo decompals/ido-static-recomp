@@ -702,6 +702,39 @@ int prout_mem(uint8_t* mem, uint32_t* dest_addr, uint32_t in_addr, uint32_t coun
     return count;
 }
 
+static uint32_t get_asterisk_args(uint8_t* mem, int count, int args[2], uint32_t sp) {
+    switch (count) {
+        case 1:
+            args[0] = MEM_U32(sp);
+            sp += 4;
+            break;
+
+        case 2:
+            args[0] = MEM_U32(sp);
+            sp += 4;
+            args[1] = MEM_U32(sp);
+            sp += 4;
+            break;
+
+        default:
+            break;
+    }
+    return sp;
+}
+
+#define ASTERISK_PRINTF(num_printed, buf, format_specifier, asterisk_count, ast_args, data) \
+    switch (asterisk_count) {                                                               \
+        case 0:                                                                             \
+            num_printed = sprintf(buf, format_specifier, data);                             \
+            break;                                                                          \
+        case 1:                                                                             \
+            num_printed = sprintf(buf, format_specifier, ast_args[0], data);                \
+            break;                                                                          \
+        case 2:                                                                             \
+            num_printed = sprintf(buf, format_specifier, ast_args[0], ast_args[1], data);   \
+            break;                                                                          \
+    }
+
 // printf internal that takes `mem` as input.
 int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uint32_t sp) {
     STRING(format)
@@ -718,6 +751,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
         uint32_t pos = format_addr;
         char c = MEM_X8(pos);
         int asterisk_count = 0;
+        int ast_args[2] = { 0, 0 };
         char format_specifier[0x100] = { '%' };
         int step_chars_printed = 0;
 
@@ -777,7 +811,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
             }
             i++;
             break;
-        }
+        } /* for (i = 1; c != '\0'; i++) */
         format_specifier[i] = '\0';
 
         // format and print
@@ -792,26 +826,8 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
             case 'X':
             case 'x':
             case 'u':
-                switch (asterisk_count) {
-                    case 0: {
-                        step_chars_printed = sprintf(buf, format_specifier, MEM_U32(sp));
-                        break;
-                    }
-                    case 1: {
-                        int ast_arg = MEM_U32(sp);
-                        sp += sp_incr;
-                        step_chars_printed = sprintf(buf, format_specifier, ast_arg, MEM_U32(sp));
-                        break;
-                    }
-                    case 2: {
-                        int minwidth = MEM_U32(sp);
-                        sp += sp_incr;
-                        int precision = MEM_U32(sp);
-                        sp += sp_incr;
-                        step_chars_printed = sprintf(buf, format_specifier, minwidth, precision, MEM_U32(sp));
-                        break;
-                    }
-                }
+                sp = get_asterisk_args(mem, asterisk_count, ast_args, sp);
+                ASTERISK_PRINTF(step_chars_printed, buf, format_specifier, asterisk_count, ast_args, MEM_U32(sp));
                 break;
 
             case 'F':
@@ -820,36 +836,20 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
             case 'g':
             case 'E':
             case 'e':
+                sp = get_asterisk_args(mem, asterisk_count, ast_args, sp);
+
                 // align to position of float promoted to double
                 if ((sp % 8) != 0) {
                     sp += 4;
                 }
 
-                switch (asterisk_count) {
-                    case 0: {
-                        step_chars_printed = sprintf(buf, format_specifier, MEM_F64(sp));
-                        break;
-                    }
-                    case 1: {
-                        int ast_arg = MEM_U32(sp);
-                        sp += sp_incr;
-                        step_chars_printed = sprintf(buf, format_specifier, ast_arg, MEM_F64(sp));
-                        break;
-                    }
-                    case 2: {
-                        int minwidth = MEM_U32(sp);
-                        sp += sp_incr;
-                        int precision = MEM_U32(sp);
-                        sp += sp_incr;
-                        step_chars_printed = sprintf(buf, format_specifier, minwidth, precision, MEM_F64(sp));
-                        break;
-                    }
-                }
+                ASTERISK_PRINTF(step_chars_printed, buf, format_specifier, asterisk_count, ast_args, MEM_F64(sp));
+
                 // Increment an extra time to leap over the second half of the double
                 sp += sp_incr;
                 break;
 
-            case 's': {
+            case 's':
                 // Special handling for most common case
                 if (strcmp(format_specifier, "%s") == 0) {
                     uint32_t str_addr = MEM_U32(sp);
@@ -858,63 +858,37 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                     goto increments;
                 }
 
-                // Unfortunately we have to do something like this to handle the extra arguments for asterisks
-                int ast_arg1;
-                int ast_arg2;
-                switch (asterisk_count) {
-                    case 1:
-                        ast_arg1 = MEM_U32(sp);
-                        sp += sp_incr;
-                        break;
+                sp = get_asterisk_args(mem, asterisk_count, ast_args, sp);
 
-                    case 2:
-                        ast_arg1 = MEM_U32(sp);
-                        sp += sp_incr;
-                        ast_arg2 = MEM_U32(sp);
-                        sp += sp_incr;
-                        break;
-
-                    default:
-                        break;
-                }
+                // Copy string into normal memory to be able to pass it to normal printf functions
                 step_chars_printed = wrapper_strlen(mem, MEM_U32(sp));
                 if (step_chars_printed + 1 > str_len) {
                     str_len = step_chars_printed + 1;
                     str = realloc(str, str_len);
                 }
                 strcpy_mem2str(mem, str, MEM_U32(sp));
+
+                // Work out the actual length to print
                 switch (asterisk_count) {
                     case 0:
                         step_chars_printed = snprintf(NULL, 0, format_specifier, str);
                         break;
 
                     case 1:
-                        step_chars_printed = snprintf(NULL, 0, format_specifier, ast_arg1, str);
+                        step_chars_printed = snprintf(NULL, 0, format_specifier, ast_args[0], str);
                         break;
 
                     case 2:
-                        step_chars_printed = snprintf(NULL, 0, format_specifier, ast_arg1, ast_arg2, str);
+                        step_chars_printed = snprintf(NULL, 0, format_specifier, ast_args[0], ast_args[1], str);
                         break;
                 }
                 if (step_chars_printed + 1 > buf_len) {
                     buf_len = step_chars_printed + 1;
                     buf = realloc(buf, buf_len);
                 }
-                switch (asterisk_count) {
-                    case 0:
-                        step_chars_printed = sprintf(buf, format_specifier, str);
-                        break;
 
-                    case 1:
-                        step_chars_printed = sprintf(buf, format_specifier, ast_arg1, str);
-                        break;
-
-                    case 2:
-                        step_chars_printed = sprintf(buf, format_specifier, ast_arg1, ast_arg2, str);
-                        break;
-                }
+                ASTERISK_PRINTF(step_chars_printed, buf, format_specifier, asterisk_count, ast_args, str);
                 break;
-            }
 
             default:
                 fprintf(stderr, "missing format: '%s'\n", format);
