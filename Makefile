@@ -73,9 +73,11 @@ endif
 
 ifeq ($(RELEASE),1)
   OPTFLAGS     ?= -Os
+  RAB_DEBUG    := 0
 else
   OPTFLAGS     ?= -Og -g3
   STRIP := @:
+  RAB_DEBUG    := 1
   CFLAGS       += -DDEVELOPMENT=1
   CXXFLAGS     += -DDEVELOPMENT=1
 endif
@@ -146,7 +148,7 @@ $(RECOMP_ELF): WARNINGS  += -Wpedantic -Wshadow
 all: $(TARGET_BINARIES) $(ERR_STRS)
 
 setup:
-	$(MAKE) -C $(RABBITIZER) static CC=$(CC) CXX=$(CXX) DEBUG=$(DEBUG)
+	$(MAKE) -C $(RABBITIZER) static CC=$(CC) CXX=$(CXX) DEBUG=$(RAB_DEBUG)
 	$(MAKE) $(RECOMP_ELF)
 
 clean:
