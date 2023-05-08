@@ -687,7 +687,7 @@ int wrapper_fscanf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_
     return ret;
 }
 
-#define MEM_X8(a) MEM_U8(a)
+/* printf wrappers and auxiliary functions */
 
 typedef int (*prout)(uint8_t* mem, uint32_t* out, uint32_t in_addr, uint32_t count);
 
@@ -697,11 +697,14 @@ int prout_file(uint8_t* mem, uint32_t* fp_addr, uint32_t in_addr, uint32_t count
 
 int prout_mem(uint8_t* mem, uint32_t* dest_addr, uint32_t in_addr, uint32_t count) {
     wrapper_memcpy(mem, *dest_addr, in_addr, count);
-    MEM_X8(*dest_addr + count) = '\0';
+    MEM_U8(*dest_addr + count) = '\0';
     *dest_addr += count;
     return count;
 }
 
+/**
+ * Get the arguments corresponding to the minwidth and precision ("*", ".*" or "*.*")
+ */
 static uint32_t get_asterisk_args(uint8_t* mem, int count, int args[2], uint32_t sp) {
     switch (count) {
         case 1:
@@ -722,6 +725,7 @@ static uint32_t get_asterisk_args(uint8_t* mem, int count, int args[2], uint32_t
     return sp;
 }
 
+// Macro is the only way to pass `data` into sprintf since it can vary in type.
 #define ASTERISK_PRINTF(num_printed, buf, format_specifier, asterisk_count, ast_args, data) \
     switch (asterisk_count) {                                                               \
         case 0:                                                                             \
@@ -735,7 +739,9 @@ static uint32_t get_asterisk_args(uint8_t* mem, int count, int args[2], uint32_t
             break;                                                                          \
     }
 
-// printf internal that takes `mem` as input.
+/**
+ * printf internal that takes `mem` as input.
+ */
 int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uint32_t sp) {
     STRING(format)
     sp += 8;
@@ -749,7 +755,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
 
     while (true) {
         uint32_t pos = format_addr;
-        char c = MEM_X8(pos);
+        char c = MEM_U8(pos);
         int asterisk_count = 0;
         int ast_args[2] = { 0, 0 };
         char format_specifier[0x100] = { '%' };
@@ -758,7 +764,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
         // print non-format parts
         while ((c != '%') && (c != '\0')) {
             pos++;
-            c = MEM_X8(pos);
+            c = MEM_U8(pos);
         }
         if (format_addr != pos) {
             if (prout(mem, out, format_addr, pos - format_addr) != pos - format_addr) {
@@ -775,7 +781,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
         int i;
         for (i = 1; c != '\0'; i++) {
             pos++;
-            c = MEM_X8(pos);
+            c = MEM_U8(pos);
             format_specifier[i] = c;
             switch (c) {
                 // need an extra argument
@@ -898,19 +904,16 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
 
         int chars_printed = 0;
         while (chars_printed < step_chars_printed) {
-            int count = MIN(INTBUF_SIZE, step_chars_printed - chars_printed);
+            int in_count = MIN(INTBUF_SIZE, step_chars_printed - chars_printed);
 
-            memcpy_str2mem(mem, INTBUF_ADDR, buf + chars_printed, count);
-            count = prout(mem, out, INTBUF_ADDR, count);
-            if (count == -1) {
+            memcpy_str2mem(mem, INTBUF_ADDR, buf + chars_printed, in_count);
+
+            int out_count = prout(mem, out, INTBUF_ADDR, in_count);
+            if (out_count != in_count) {
                 fprintf(stderr, "Did not print %s successfully\n", format);
                 return ret;
             }
-            chars_printed += count;
-        }
-        if (chars_printed != step_chars_printed) {
-            fprintf(stderr, "Did not print %s successfully\n", format);
-            return ret;
+            chars_printed += out_count;
         }
 
     increments:
