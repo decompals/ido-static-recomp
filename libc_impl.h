@@ -185,7 +185,7 @@ int32_t wrapper_fputc(uint8_t *mem, int32_t ch, uint32_t stream_addr);
 int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t optstring_addr);
 int32_t wrapper_link(uint8_t *mem, uint32_t oldpath_addr, uint32_t newpath_addr);
 int32_t wrapper_vsprintf(uint8_t *mem, uint32_t buffer_addr, uint32_t format_addr, uint32_t vlist_addr);
-double wrapper_fabs(uint8_t *mem, double x);
+double wrapper_fabs(double x);
 int32_t wrapper_sysid(uint8_t *mem, uint32_t unknown_parameter_addr);
 uint32_t wrapper_realpath(uint8_t *mem, uint32_t path_addr, uint32_t resolved_path_addr);
 int32_t wrapper_fsync(uint8_t *mem, int32_t fd);

@@ -3065,8 +3065,8 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
     assert(argc == global_args.argc);
 
     if ((optarg != NULL) && (MEM_U32(OPTARG_ADDR) != 0)) {
-        bool optarg_from_memory_found = false;
         // optarg points to an old argv value which is no longer valid, we need to update it before calling getopt
+        bool optarg_from_memory_found = false;
         uint32_t optarg_mem_addr = MEM_U32(OPTARG_ADDR);
         STRING(optarg_mem);
 
@@ -3141,7 +3141,7 @@ int32_t wrapper_vsprintf(uint8_t *mem, uint32_t buffer_addr, uint32_t format_add
 }
 
 // https://linux.die.net/man/3/fabs
-double wrapper_fabs(uint8_t *mem, double x) {
+double wrapper_fabs(double x) {
     return fabs(x);
 }
 

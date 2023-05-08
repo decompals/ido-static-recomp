@@ -430,7 +430,7 @@ const struct ExternFunction {
     { "getopt", "iipp", 0 },
     { "link", "ipp", 0 },
     { "vsprintf", "ippp", 0 },
-    { "fabs", "dd", 0 },
+    { "fabs", "dd", FLAG_NO_MEM },
     { "sysid", "ip", 0 },
     { "realpath", "ppp", 0 },
     { "fsync", "ii", 0 },
