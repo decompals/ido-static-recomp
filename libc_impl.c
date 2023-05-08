@@ -856,19 +856,22 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                     goto increments;
                 }
 
+                // Unfortunately we have to do something like this to handle the extra arguments for asterisks
                 int ast_arg1;
                 int ast_arg2;
                 switch (asterisk_count) {
+                    case 1:
+                        ast_arg1 = MEM_U32(sp);
+                        sp += sp_incr;
+                        break;
+
                     case 2:
                         ast_arg1 = MEM_U32(sp);
                         sp += sp_incr;
                         ast_arg2 = MEM_U32(sp);
                         sp += sp_incr;
                         break;
-                    case 1:
-                        ast_arg1 = MEM_U32(sp);
-                        sp += sp_incr;
-                        break;
+
                     default:
                         break;
                 }
@@ -882,9 +885,11 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                     case 0:
                         step_chars_printed = snprintf(NULL, 0, format_specifier, str);
                         break;
+
                     case 1:
                         step_chars_printed = snprintf(NULL, 0, format_specifier, ast_arg1, str);
                         break;
+
                     case 2:
                         step_chars_printed = snprintf(NULL, 0, format_specifier, ast_arg1, ast_arg2, str);
                         break;
@@ -897,15 +902,18 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                     case 0:
                         step_chars_printed = sprintf(buf, format_specifier, str);
                         break;
+
                     case 1:
                         step_chars_printed = sprintf(buf, format_specifier, ast_arg1, str);
                         break;
+
                     case 2:
                         step_chars_printed = sprintf(buf, format_specifier, ast_arg1, ast_arg2, str);
                         break;
                 }
                 break;
             }
+
             default:
                 fprintf(stderr, "missing format: '%s'\n", format);
                 assert(0 && "non-implemented printf format");
