@@ -1,0 +1,3 @@
+set -e
+
+./getopt_example.elf -D_MIPS_FPSET=16 -D_MIPS_ISA=2 -D_ABIO32=1 -D_MIPS_SIM=_ABIO32 -D_MIPS_SZINT=32 -D_MIPS_SZLONG=32 -D_MIPS_SZPTR=32 -YE -D__EXTENSIONS__ -D_LANGUAGE_C_PLUS_PLUS=1 -D__cplusplus=1 -D__ANSI_CPP__=1 -D__INLINE_INTRINSICS -Dsgi -D__sgi -Dunix -Dmips -Dhost_mips -D__unix -D__host_mips -D_SVR4_SOURCE -D_MODERN_C -D_SGI_SOURCE -D_PIC -D__DSO__ -DSYSTYPE_SVR4 -D_SYSTYPE_SVR4 -D_LONGLONG -D__mips=2 -D_MIPSEB -DMIPSEB -D__STDC__=1 -I/usr/include/CC -I/usr/include -v -O -b -Zz -ZO -ZStest_cpp_file.T -u -YNtest_cpp_file.o -YO./ii_files/test_cpp_file.ii -YG0 -Zg0 test_cpp_file.cpp

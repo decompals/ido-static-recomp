@@ -3050,7 +3050,7 @@ int32_t wrapper_fputc(uint8_t *mem, int32_t ch, uint32_t stream_addr) {
     return ret;
 }
 
-#define GETOPT_DEBUG 1
+// #define GETOPT_DEBUG 1
 
 // https://linux.die.net/man/3/getopt
 int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t optstring_addr) {
