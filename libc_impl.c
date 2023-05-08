@@ -705,11 +705,6 @@ int prout_mem(uint8_t* mem, uint32_t* dest_addr, uint32_t in_addr, uint32_t coun
 // printf internal that takes `mem` as input.
 int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uint32_t sp) {
     STRING(format)
-    // if (prout == prout_mem) {
-    //     fprintf(stderr, "Used as sprintf\n");
-    //     fprintf(stderr, "\nformat: %s\n", format);
-    //     // exit(1);
-    // }
     sp += 8;
 
     int ret = 0;
@@ -784,7 +779,6 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
             break;
         }
         format_specifier[i] = '\0';
-        // printf("\nformat spec: %s\n", format_specifier);
 
         // format and print
         switch (c) {
@@ -854,7 +848,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                 break;
 
             case 's': {
-                // fprintf(stderr, "string format specifier \"%s\": ", format_specifier);
+                // Special handling for most common case
                 if (strcmp(format_specifier, "%s") == 0) {
                     uint32_t str_addr = MEM_U32(sp);
                     size_t len = wrapper_strlen(mem, str_addr);
@@ -910,16 +904,11 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                         step_chars_printed = sprintf(buf, format_specifier, ast_arg1, ast_arg2, str);
                         break;
                 }
-                // fprintf(stderr, "string format specifier \"%s\": ", format_specifier);
-                // fprintf(stderr, format_specifier, str);
-                // fprintf(stderr, "\n");
-                // step_chars_printed = 1;
-                // buf[0] = '\0';
                 break;
             }
             default:
                 fprintf(stderr, "missing format: '%s'\n", format);
-                assert(0 && "non-implemented fprintf format");
+                assert(0 && "non-implemented printf format");
                 break;
         }
 
@@ -934,14 +923,6 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
             return ret;
         }
 
-#if 0
-        memcpy_str2mem(mem, INTBUF_ADDR, buf, step_chars_printed);
-        step_chars_printed = prout(mem, out, INTBUF_ADDR, step_chars_printed);
-        if (step_chars_printed == -1) {
-            fprintf(stderr, "Did not print %s successfully\n", format);
-            return ret;
-        }
-#endif
     increments:
         sp += sp_incr;
         ret += step_chars_printed;
@@ -966,333 +947,6 @@ int wrapper_sprintf(uint8_t* mem, uint32_t str_addr, uint32_t format_addr, uint3
     return _mprintf(prout_mem, mem, &str_addr, format_addr, sp);
 }
 
-#if 0
-int wrapper_printf(uint8_t* mem, uint32_t format_addr, uint32_t sp) {
-    return wrapper_fprintf(mem, STDOUT_ADDR, format_addr, sp);
-}
-// #endif
-
-int wrapper_sprintf(uint8_t* mem, uint32_t str_addr, uint32_t format_addr, uint32_t sp) {
-    STRING(format) // for debug
-    char temp[32];
-    // printf("format: %s\n", format);
-    // fflush(stdout);
-
-    if (!strcmp(format, "%.16e")) {
-        union {
-            uint32_t w[2];
-            double d;
-        } d;
-        d.w[1] = MEM_U32(sp + 2 * 4);
-        d.w[0] = MEM_U32(sp + 3 * 4);
-        sprintf(temp, "%.16e", d.d);
-        strcpy_str2mem(mem, str_addr, temp);
-        return 1;
-    }
-    if (!strcmp(format, "\\%03o")) {
-        sprintf(temp, "\\%03o", MEM_U32(sp + 2 * 4));
-        strcpy_str2mem(mem, str_addr, temp);
-        return 1;
-    }
-    if (!strcmp(format, "%*ld=")) {
-        sprintf(temp, "%*d=", MEM_U32(sp + 2 * 4), MEM_U32(sp + 3 * 4));
-        strcpy_str2mem(mem, str_addr, temp);
-        return 1;
-    }
-
-    uint32_t orig_str_addr = str_addr;
-    uint32_t pos = 0;
-    int ret = 0;
-    char c;
-    sp += 2 * 4;
-    for (;;) {
-        c = MEM_S8(format_addr + pos);
-        ++pos;
-        if (c == '%') {
-            bool l = false;
-            c = MEM_S8(format_addr + pos);
-            ++pos;
-            uint32_t zeros = 0;
-            bool zero_prefix = false;
-        continue_format:
-            switch (c) {
-                case '\0':
-                    goto finish_str;
-
-                case '0':
-                    do {
-                        c = MEM_S8(format_addr + pos);
-                        ++pos;
-                        if (c >= '0' && c <= '9') {
-                            zeros *= 10;
-                            zeros += c - '0';
-                        }
-                    } while (c >= '0' && c <= '9');
-                    goto continue_format;
-                case '#':
-                    c = MEM_S8(format_addr + pos);
-                    ++pos;
-                    zero_prefix = true;
-                    goto continue_format;
-                    break;
-                case 'l':
-                    assert(!l && "ll not implemented in fscanf");
-                    c = MEM_S8(format_addr + pos);
-                    ++pos;
-                    l = true;
-                    goto continue_format;
-                    break;
-                case 'd':
-                    if (zeros != 0) {
-                        char temp1[32];
-                        sprintf(temp1, "%%0%dd", zeros);
-                        sprintf(temp, temp1, MEM_S32(sp));
-                    } else {
-                        sprintf(temp, "%d", MEM_S32(sp));
-                    }
-                    sp += 4;
-                    str_addr = strcpy_str2mem(mem, str_addr, temp);
-                    ++ret;
-                    break;
-                case 'o':
-                    if (zero_prefix) {
-                        sprintf(temp, "%#o", MEM_S32(sp));
-                    } else {
-                        sprintf(temp, "%o", MEM_S32(sp));
-                    }
-                    sp += 4;
-                    str_addr = strcpy_str2mem(mem, str_addr, temp);
-                    ++ret;
-                    break;
-                case 'x':
-                    if (zero_prefix) {
-                        sprintf(temp, "%#x", MEM_S32(sp));
-                    } else {
-                        sprintf(temp, "%x", MEM_S32(sp));
-                    }
-                    sp += 4;
-                    str_addr = strcpy_str2mem(mem, str_addr, temp);
-                    ++ret;
-                    break;
-                case 'u':
-                    sprintf(temp, "%u", MEM_S32(sp));
-                    sp += 4;
-                    str_addr = strcpy_str2mem(mem, str_addr, temp);
-                    ++ret;
-                    break;
-                case 's':
-                    str_addr = strcpy_mem2mem(mem, str_addr, MEM_U32(sp));
-                    sp += 4;
-                    ++ret;
-                    break;
-                case 'c':
-                    MEM_S8(str_addr) = (char)MEM_U32(sp);
-                    ++str_addr;
-                    sp += 4;
-                    ++ret;
-                    break;
-                case '%':
-                    MEM_S8(str_addr) = '%';
-                    ++str_addr;
-                    break;
-                default:
-                    fprintf(stderr, "%s\n", format);
-                    assert(0 && "non-implemented sprintf format");
-            }
-        } else if (c == '\0') {
-            break;
-        } else {
-            MEM_S8(str_addr) = c;
-            ++str_addr;
-        }
-    }
-
-finish_str:
-    MEM_S8(str_addr) = '\0';
-    return ret;
-}
-
-// #if 0
-int wrapper_fprintf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_t sp) {
-    struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
-    STRING(format)
-    sp += 8;
-    // fprintf(stderr, "format: %s\n", format);
-
-    int ret = 0;
-    bool float_seen = false;
-    uint32_t sp_incr = 4;
-    char* str = malloc(0x1000);
-    char* buf = malloc(0x1000);
-
-    for (;;) {
-        int width = 1;
-        uint32_t pos = format_addr;
-        char ch = MEM_S8(pos);
-        int asterisk = 0;
-        char formatSpecifier[0x100] = { 0 };
-
-        // print any non-formatting parts
-        while (ch != '%' && ch != '\0') {
-            ++pos;
-            ch = MEM_S8(pos);
-        }
-        if (format_addr != pos) {
-            if (wrapper_fwrite(mem, format_addr, 1, pos - format_addr, fp_addr) != pos - format_addr) {
-                break;
-            }
-        }
-        if (ch == '\0') {
-            break;
-        }
-
-        // read format specifiers
-        format_addr = pos;
-        int i;
-        formatSpecifier[0] = '%';
-        for (i = 1; ch != '\0'; i++) {
-            pos++;
-            ch = MEM_S8(pos);
-            formatSpecifier[i] = ch;
-            switch (ch) {
-                // need an extra argument
-                case '*':
-                    asterisk++;
-                    continue;
-
-                // flags
-                case '+':
-                case '-':
-                case '#':
-                case '0':
-                // precision indicator
-                case '.':
-                // length modifiers (others exist, but only in >=C99)
-                case 'h':
-                case 'l':
-                // minimum field widths
-                case '1':
-                case '2':
-                case '3':
-                case '4':
-                case '5':
-                case '6':
-                case '7':
-                case '8':
-                case '9':
-                    continue;
-
-                default:
-                    break;
-            }
-            i++;
-            break;
-        }
-        formatSpecifier[i] = '\0';
-        // if (asterisk) {
-        //     fprintf(stderr, "format '%s' contains asterisk\n", format);
-        //     assert(0 && "non-implemented fprintf format");
-        // }
-
-        // format and print
-        switch (ch) {
-            case '%':
-                sprintf(buf, "%c", '%');
-                break;
-            case 'd':
-            case 'x':
-            case 'X':
-            case 'c':
-            case 'u':
-                switch (asterisk) {
-                    case 0: {
-                        sprintf(buf, formatSpecifier, MEM_U32(sp));
-                        break;
-                    }
-                    case 1: {
-                        int ast_arg = MEM_U32(sp);
-                        sp += sp_incr;
-                        sprintf(buf, formatSpecifier, ast_arg, MEM_U32(sp));
-                        break;
-                    }
-                    case 2: {
-                        int minwidth = MEM_U32(sp);
-                        sp += sp_incr;
-                        int precision = MEM_U32(sp);
-                        sp += sp_incr;
-                        sprintf(buf, formatSpecifier, minwidth, precision, MEM_U32(sp));
-                        break;
-                    }
-                }
-                break;
-
-            case 'F':
-            case 'f':
-                if (!float_seen) {
-                    // align to position of float promoted to double
-                    if ((sp % 8) != 0) {
-                        sp += 4;
-                    }
-                    float_seen = true;
-                    sp_incr = 8; // subsequent arguments are also aligned like doubles
-                }
-
-                switch (asterisk) {
-                    case 0: {
-                        sprintf(buf, formatSpecifier, MEM_F64(sp));
-                        break;
-                    }
-                    case 1: {
-                        int ast_arg = MEM_U32(sp);
-                        sp += sp_incr;
-                        sprintf(buf, formatSpecifier, ast_arg, MEM_F64(sp));
-                        break;
-                    }
-                    case 2: {
-                        int minwidth = MEM_U32(sp);
-                        sp += sp_incr;
-                        int precision = MEM_U32(sp);
-                        sp += sp_incr;
-                        sprintf(buf, formatSpecifier, minwidth, precision, MEM_F64(sp));
-                        break;
-                    }
-                }
-                break;
-
-            case 's': {
-                size_t len = wrapper_strlen(mem, MEM_U32(sp));
-                if (len + 1 >= 0x1000) {
-                    str = realloc(str, len + 1);
-                }
-                strcpy_mem2str(mem, str, MEM_U32(sp));
-                len = snprintf(NULL, 0, formatSpecifier, str);
-                if (len + 1 >= 0x1000) {
-                    buf = realloc(buf, len + 1);
-                }
-                sprintf(buf, formatSpecifier, str);
-                break;
-            }
-            default:
-                fprintf(stderr, "missing format: '%s'\n", format);
-                assert(0 && "non-implemented fprintf format");
-        }
-
-        strcpy_str2mem(mem, INTBUF_ADDR, buf);
-        int chars_printed = wrapper_fputs(mem, INTBUF_ADDR, fp_addr);
-        if (chars_printed == -1) {
-            return ret;
-        }
-        sp += sp_incr;
-        ret += chars_printed;
-
-        format_addr = ++pos;
-    } /* for (;;) */
-    free(str);
-    free(buf);
-    return ret;
-}
-#endif
-
 int wrapper__doprnt(uint8_t* mem, uint32_t format_addr, uint32_t params_addr, uint32_t fp_addr) {
     assert(0 && "_doprnt not implemented");
     return 0;
@@ -1312,9 +966,6 @@ int wrapper_open(uint8_t* mem, uint32_t pathname_addr, int flags, int mode) {
 
     char rpathname[PATH_MAX + 1];
     redirect_path(rpathname, pathname, "/usr/include", usr_include_redirect);
-
-    // fprintf(stderr, "%s: ", progname);
-    // fprintf(stderr, "%s: file: %s flags: 0x%X, mode: 0%o\n", __func__, rpathname, flags, mode);
 
     int f = flags & O_ACCMODE;
     if (flags & 0x100) {
@@ -1341,8 +992,6 @@ int wrapper_open(uint8_t* mem, uint32_t pathname_addr, int flags, int mode) {
 int wrapper_creat(uint8_t* mem, uint32_t pathname_addr, int mode) {
     STRING(pathname)
 
-    // fprintf(stderr, "%s: ", progname);
-    // fprintf(stderr, "%s: file: %s mode: 0x%X\n", __func__, pathname, mode);
     int ret = creat(pathname, mode);
     if (ret < 0) {
         MEM_U32(ERRNO_ADDR) = errno;
@@ -1750,8 +1399,6 @@ static uint32_t init_file(uint8_t* mem, int fd, int i, const char* path, const c
         char rpathname[PATH_MAX + 1];
         redirect_path(rpathname, path, "/usr/lib", usr_lib_redirect);
 
-        // fprintf(stderr, "%s: ", progname);
-        // fprintf(stderr, "%s: file: %s, flags: 0x%X mode: %s\n", __func__, rpathname, flags, mode);
         fd = open(rpathname, flags, 0666);
 
         if (fd < 0) {
@@ -1789,8 +1436,6 @@ uint32_t wrapper_fopen(uint8_t* mem, uint32_t path_addr, uint32_t mode_addr) {
     STRING(path)
     STRING(mode)
 
-    // fprintf(stderr, "%s: ", progname);
-    // fprintf(stderr, "%s: file: %s mode: %s\n", __func__, path, mode);
     return init_file(mem, -1, -1, path, mode);
 }
 
@@ -1798,8 +1443,6 @@ uint32_t wrapper_freopen(uint8_t* mem, uint32_t path_addr, uint32_t mode_addr, u
     STRING(path)
     STRING(mode)
 
-    // fprintf(stderr, "%s: ", progname);
-    // fprintf(stderr, "%s: file: %s mode: %s\n", __func__, path, mode);
     struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
     wrapper_fclose(mem, fp_addr);
     return init_file(mem, -1, f - (struct FILE_irix*)&MEM_U32(IOB_ADDR), path, mode);
@@ -1971,18 +1614,9 @@ void wrapper_perror(uint8_t* mem, uint32_t str_addr) {
     perror(str);
 }
 
-// #include <sys/param.h>
-// #include <fcntl.h>
-
 int wrapper_fdopen(uint8_t* mem, int fd, uint32_t mode_addr) {
     STRING(mode)
 
-    // fprintf(stderr, "%s: ", progname);
-    // fprintf(stderr, "%s: fd: %X mode: %s\n", __func__, fd, mode);
-    // char filePath[MAXPATHLEN];
-    // if (fcntl(fd, F_GETPATH, filePath) != -1) {
-    //     fprintf(stderr, "filename: %s\n", filePath);
-    // }
     return init_file(mem, fd, -1, NULL, mode);
 }
 
@@ -2049,7 +1683,7 @@ int wrapper_remove(uint8_t* mem, uint32_t path_addr) {
 
 int wrapper_unlink(uint8_t* mem, uint32_t path_addr) {
     if (path_addr == 0) {
-        fprintf(stderr, "Warning: unlink with NULL as arguement\n");
+        fprintf(stderr, "Warning: unlink with NULL as argument\n");
         MEM_U32(ERRNO_ADDR) = EFAULT;
         return -1;
     }
