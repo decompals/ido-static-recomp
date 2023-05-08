@@ -60,9 +60,9 @@ CXX   := g++
 STRIP := strip
 
 CSTD         ?= -std=c11
-CFLAGS       ?= -MMD -fno-strict-aliasing -I. -I$(RABBITIZER)/include
+CFLAGS       ?= -MMD -fno-strict-aliasing -I.
 CXXSTD       ?= -std=c++17
-CXXFLAGS     ?= -MMD -I$(RABBITIZER)/include
+CXXFLAGS     ?= -MMD
 WARNINGS     ?= -Wall -Wextra
 LDFLAGS      ?= -lm
 RECOMP_FLAGS ?=
@@ -123,7 +123,7 @@ $(shell mkdir -p $(BUILT_BIN))
 # to emulate, pass the conservative flag to `recomp`
 $(BUILD_BASE)/5.3/ugen.c: RECOMP_FLAGS := --conservative
 
-$(RECOMP_ELF): CXXFLAGS  += -I$(RABBITIZER)/cplusplus/include
+$(RECOMP_ELF): CXXFLAGS  += -I$(RABBITIZER)/include -I$(RABBITIZER)/cplusplus/include
 $(RECOMP_ELF): LDFLAGS   += -L$(RABBITIZER)/build -lrabbitizerpp
 
 ifneq ($(DETECTED_OS),windows)
@@ -136,10 +136,10 @@ $(RECOMP_ELF): LDFLAGS   += -Wl,-export-dynamic
 endif
 
 # Too many warnings, disable everything for now...
-$(RECOMP_ELF): WARNINGS  += -Wpedantic
+$(RECOMP_ELF): WARNINGS  += -Wpedantic -Wshadow
 %/$(LIBC_IMPL_O): CFLAGS   += -D$(IDO_VERSION)
 # TODO: fix warnings
-%/$(LIBC_IMPL_O): WARNINGS += -Wpedantic -Wno-unused-parameter -Wno-deprecated-declarations
+%/$(LIBC_IMPL_O): WARNINGS += -Wpedantic -Wshadow -Wno-unused-parameter -Wno-deprecated-declarations
 
 #### Main Targets ###
 

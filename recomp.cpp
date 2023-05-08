@@ -808,9 +808,9 @@ void pass1(void) {
                                 exit(EXIT_FAILURE);
                             }
 
-                            for (uint32_t i = 0; i < num_cases; i++) {
+                            for (uint32_t case_index = 0; case_index < num_cases; case_index++) {
                                 uint32_t target_addr =
-                                    read_u32_be(rodata_section + (jtbl_addr - rodata_vaddr) + i * sizeof(uint32_t));
+                                    read_u32_be(rodata_section + (jtbl_addr - rodata_vaddr) + case_index * sizeof(uint32_t));
 
                                 target_addr += gp_value;
                                 // printf("%08X\n", target_addr);
@@ -2189,8 +2189,8 @@ void dump_jal(int i, uint32_t imm) {
             printf(", %s", r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
         }
 
-        for (uint32_t i = 0; i < f.nargs; i++) {
-            printf(", %s", r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + i));
+        for (uint32_t arg_index = 0; arg_index < f.nargs; arg_index++) {
+            printf(", %s", r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + arg_index));
         }
 
         printf(");\n");
@@ -2593,8 +2593,8 @@ void dump_instr(int i) {
 #if 1
                 printf(";static void *const Lswitch%x[] = {\n", insn.jtbl_addr);
 
-                for (uint32_t i = 0; i < insn.num_cases; i++) {
-                    uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + i * sizeof(uint32_t)) + gp_value;
+                for (uint32_t case_index = 0; case_index < insn.num_cases; case_index++) {
+                    uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + case_index * sizeof(uint32_t)) + gp_value;
                     printf("&&L%x,\n", dest_addr);
                     label_addresses.insert(dest_addr);
                 }
@@ -2611,9 +2611,9 @@ void dump_instr(int i) {
                 assert(insns[i + 1].id == MIPS_INS_NOP);
                 printf("switch (%s) {\n", r(insn.index_reg));
 
-                for (uint32_t i = 0; i < insn.num_cases; i++) {
-                    uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + i * sizeof(uint32_t)) + gp_value;
-                    printf("case %u: goto L%x;\n", i, dest_addr);
+                for (uint32_t case_index = 0; case_index < insn.num_cases; case_index++) {
+                    uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + case_index * sizeof(uint32_t)) + gp_value;
+                    printf("case %u: goto L%x;\n", case_index, dest_addr);
                     label_addresses.insert(dest_addr);
                 }
 
@@ -2872,9 +2872,9 @@ void dump_instr(int i) {
 
         case rabbitizer::InstrId::UniqueId::cpu_swl:
             imm = insn.getImmediate();
-            for (int i = 0; i < 4; i++) {
-                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r((int)insn.instruction.GetO32_rs()), imm, i,
-                       r((int)insn.instruction.GetO32_rt()), (3 - i) * 8);
+            for (int j = 0; j < 4; j++) {
+                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r((int)insn.instruction.GetO32_rs()), imm, j,
+                       r((int)insn.instruction.GetO32_rt()), (3 - j) * 8);
             }
             break;
 
@@ -3620,8 +3620,8 @@ void parse_elf(const uint8_t* data, size_t file_len) {
         assert(u32be(shdr->sh_link) == (uint32_t)symtab_section_index);
         assert(u32be(shdr->sh_entsize) == sizeof(Elf32_Rel));
 
-        for (uint32_t i = 0; i < u32be(shdr->sh_size); i += sizeof(Elf32_Rel)) {
-            Elf32_Rel* rel = (Elf32_Rel*)(data + u32be(shdr->sh_offset) + i);
+        for (uint32_t rel_index = 0; rel_index < u32be(shdr->sh_size); rel_index++) {
+            Elf32_Rel* rel = (Elf32_Rel*)(data + u32be(shdr->sh_offset) + rel_index * sizeof(Elf32_Rel));
             uint32_t offset = text_offset + u32be(rel->r_offset);
             uint32_t rtype = ELF32_R_TYPE(u32be(rel->r_info));
 

@@ -147,7 +147,7 @@ static uint32_t custom_libc_data_addr;
 #define _B 0100 /* Blank */
 #define _X 0200 /* heXadecimal digit */
 
-static char ctype[] = {
+static unsigned char ctype[] = {
     0,
     // clang-format off
 /*         00      01      02      03      04      05      06      07  */
