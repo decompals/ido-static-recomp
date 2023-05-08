@@ -845,6 +845,8 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                         break;
                     }
                 }
+                // Increment an extra time to leap over the second half of the double
+                sp += sp_incr;
                 break;
 
             case 's': {
@@ -921,12 +923,18 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
         }
 
         int chars_printed = 0;
-        for (int chars_remaining = step_chars_printed; chars_remaining > 0; chars_remaining -= INTBUF_SIZE) {
-            int count = MIN(INTBUF_SIZE, chars_remaining);
+        while (chars_printed < step_chars_printed) {
+            int count = MIN(INTBUF_SIZE, step_chars_printed - chars_printed);
+
             memcpy_str2mem(mem, INTBUF_ADDR, buf + chars_printed, count);
-            chars_printed += prout(mem, out, INTBUF_ADDR, count);
+            count = prout(mem, out, INTBUF_ADDR, count);
+            if (count == -1) {
+                fprintf(stderr, "Did not print %s successfully\n", format);
+                return ret;
+            }
+            chars_printed += count;
         }
-        if (chars_printed == -1) {
+        if (chars_printed != step_chars_printed) {
             fprintf(stderr, "Did not print %s successfully\n", format);
             return ret;
         }
