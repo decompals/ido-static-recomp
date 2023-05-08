@@ -301,7 +301,7 @@ const struct ExternFunction {
     { "fstat", "iip", 0 },
     { "stat", "ipp", 0 },
     { "ftruncate", "iii", 0 },
-    { "truncate", "ipi", 0},
+    { "truncate", "ipi", 0 },
     { "bcopy", "vppu", 0 },
     { "memcpy", "pppu", 0 },
     { "memccpy", "pppiu", 0 },
@@ -806,7 +806,8 @@ void pass1(void) {
                             // Special hard case in edgcpfe where the initial sltiu is in another basic block
                             if ((lw == 37740) && (addu_index == 37739)) {
                                 // few extra checks to try to ensure we are in edgcpfe
-                                if ((insns[lw].instruction.getRaw() == 0x8C3970A4) && (insns[addu_index].instruction.getRaw() == 0x00390821)) {
+                                if ((insns[lw].instruction.getRaw() == 0x8C3970A4) &&
+                                    (insns[addu_index].instruction.getRaw() == 0x00390821)) {
                                     found = true;
                                     num_cases = 6;
                                 }
@@ -815,7 +816,8 @@ void pass1(void) {
                             // Special hard case in edgcpfe where the initial sltiu is in another basic block
                             if ((lw == 208681) && (addu_index == 208680)) {
                                 // few extra checks to try to ensure we are in edgcpfe
-                                if ((insns[lw].instruction.getRaw() == 0x8C2B227C) && (insns[addu_index].instruction.getRaw() == 0x002B0821)) {
+                                if ((insns[lw].instruction.getRaw() == 0x8C2B227C) &&
+                                    (insns[addu_index].instruction.getRaw() == 0x002B0821)) {
                                     found = true;
                                     num_cases = 8;
                                 }
@@ -2739,8 +2741,9 @@ void dump_instr(int i) {
             imm = insn.getImmediate();
 
             printf("%s = %s + %d; ", reg, r((int)insn.instruction.GetO32_rs()), imm);
-            printf("%s = ((uint32_t)MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + 3);\n", reg,
-                   reg, reg, reg, reg);
+            printf("%s = ((uint32_t)MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + "
+                   "3);\n",
+                   reg, reg, reg, reg, reg);
         } break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwr:

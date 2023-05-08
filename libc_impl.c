@@ -110,11 +110,11 @@
 
 #define NFILE 100
 
-#define IOFBF 0000 /* full buffered */
-#define IOLBF 0100 /* line buffered */
-#define IONBF 0004 /* not buffered */
-#define IOEOF 0020 /* EOF reached on read */
-#define IOERR 0040 /* I/O error from system */
+#define IOFBF 0000   /* full buffered */
+#define IOLBF 0100   /* line buffered */
+#define IONBF 0004   /* not buffered */
+#define IOEOF 0020   /* EOF reached on read */
+#define IOERR 0040   /* I/O error from system */
 
 #define IOREAD 0001  /* currently reading */
 #define IOWRT 0002   /* currently writing */
@@ -361,23 +361,23 @@ void redirect_path(char* out, const char* path, const char* from, const char* to
         }
     } else {
         // memmove instead of strcpy to allow overlapping buffers
-        memmove(out, path, strlen(path)+1);
+        memmove(out, path, strlen(path) + 1);
     }
 }
 
 typedef struct GlobalArgs {
     int argc;
-    char **argv;
+    char** argv;
 } GlobalArgs;
 
 static GlobalArgs global_args = { 0, NULL };
 
-static void init_global_args(int argc, char **argv) {
+static void init_global_args(int argc, char** argv) {
     assert(global_args.argc == 0);
     assert(global_args.argv == NULL);
 
     global_args.argc = argc;
-    global_args.argv = malloc((argc + 1) * sizeof(char *));
+    global_args.argv = malloc((argc + 1) * sizeof(char*));
     for (int i = 0; i < argc; i++) {
         global_args.argv[i] = malloc((strlen(argv[i]) + 1) * sizeof(char));
         strcpy(global_args.argv[i], argv[i]);
@@ -397,8 +397,8 @@ static void destroy_global_args(void) {
     global_args.argc = 0;
 }
 
-static char **make_argv_from_mem(uint8_t* mem, int argc, uint32_t argv_addr) {
-    char **argv = malloc((argc + 1) * sizeof(char *));
+static char** make_argv_from_mem(uint8_t* mem, int argc, uint32_t argv_addr) {
+    char** argv = malloc((argc + 1) * sizeof(char*));
 
     for (uint32_t i = 0; i < argc; i++) {
         uint32_t str_addr = MEM_U32(argv_addr + i * sizeof(uint32_t));
@@ -417,14 +417,13 @@ static char **make_argv_from_mem(uint8_t* mem, int argc, uint32_t argv_addr) {
     return argv;
 }
 
-static void free_argv(int argc, char **argv) {
+static void free_argv(int argc, char** argv) {
     for (uint32_t i = 0; i < argc; i++) {
         free(argv[i]);
     }
 
     free(argv);
 }
-
 
 void final_cleanup(uint8_t* mem) {
     wrapper_fflush(mem, 0);
@@ -433,7 +432,6 @@ void final_cleanup(uint8_t* mem) {
     memory_unmap(mem, MEM_REGION_SIZE);
     destroy_global_args();
 }
-
 
 const char* progname;
 
@@ -2551,15 +2549,11 @@ static void signal_handler(int signum) {
     signal_context.recursion_level--;
 }
 
-uint32_t wrapper_signal(uint8_t* mem, int signum,
-                        fptr_trampoline trampoline,
-                        uint32_t handler_addr, uint32_t sp) {
+uint32_t wrapper_signal(uint8_t* mem, int signum, fptr_trampoline trampoline, uint32_t handler_addr, uint32_t sp) {
     return 0;
 }
 
-uint32_t wrapper_sigset(uint8_t* mem, int signum,
-                        fptr_trampoline trampoline,
-                        uint32_t disp_addr, uint32_t sp) {
+uint32_t wrapper_sigset(uint8_t* mem, int signum, fptr_trampoline trampoline, uint32_t disp_addr, uint32_t sp) {
     void (*handler)(int) = signal_handler;
 
     if ((int)disp_addr >= -1 && (int)disp_addr <= 1) {
@@ -3022,24 +3016,23 @@ void wrapper___assert(uint8_t* mem, uint32_t assertion_addr, uint32_t file_addr,
     __assert(assertion, file, line);
 }
 
-
 // https://linux.die.net/man/3/twalk
-void wrapper_twalk(uint8_t *mem, uint32_t root_addr, fptr_trampoline trampoline, uint32_t action_addr, uint32_t sp) {
+void wrapper_twalk(uint8_t* mem, uint32_t root_addr, fptr_trampoline trampoline, uint32_t action_addr, uint32_t sp) {
     assert(0 && "twalk not implemented");
 }
 
 // https://linux.die.net/man/3/msync
-int32_t wrapper_msync(uint8_t *mem, uint32_t addr_addr, uint32_t len, int32_t flags) {
+int32_t wrapper_msync(uint8_t* mem, uint32_t addr_addr, uint32_t len, int32_t flags) {
     assert(0 && "msync not implemented");
 }
 
 // https://linux.die.net/man/3/mkdir
-int32_t wrapper_mkdir(uint8_t *mem, uint32_t path_addr, uint32_t mode) {
+int32_t wrapper_mkdir(uint8_t* mem, uint32_t path_addr, uint32_t mode) {
     assert(0 && "mkdir not implemented");
 }
 
 // https://en.cppreference.com/w/c/io/fputc
-int32_t wrapper_fputc(uint8_t *mem, int32_t ch, uint32_t stream_addr) {
+int32_t wrapper_fputc(uint8_t* mem, int32_t ch, uint32_t stream_addr) {
     int32_t ret;
 
     if (stream_addr == STDOUT_ADDR) {
@@ -3056,7 +3049,7 @@ int32_t wrapper_fputc(uint8_t *mem, int32_t ch, uint32_t stream_addr) {
 }
 
 // https://linux.die.net/man/3/getopt
-int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t optstring_addr) {
+int32_t wrapper_getopt(uint8_t* mem, int32_t argc, uint32_t argv_addr, uint32_t optstring_addr) {
     bool optargFound = false;
     STRING(optstring);
     int32_t ret;
@@ -3131,12 +3124,12 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
 }
 
 // https://linux.die.net/man/2/link
-int32_t wrapper_link(uint8_t *mem, uint32_t oldpath_addr, uint32_t newpath_addr) {
+int32_t wrapper_link(uint8_t* mem, uint32_t oldpath_addr, uint32_t newpath_addr) {
     assert(0 && "link not implemented");
 }
 
 // https://en.cppreference.com/w/c/io/vfprintf
-int32_t wrapper_vsprintf(uint8_t *mem, uint32_t buffer_addr, uint32_t format_addr, uint32_t vlist_addr) {
+int32_t wrapper_vsprintf(uint8_t* mem, uint32_t buffer_addr, uint32_t format_addr, uint32_t vlist_addr) {
     assert(0 && "vsprintf not implemented");
 }
 
@@ -3146,64 +3139,63 @@ double wrapper_fabs(double x) {
 }
 
 // Non standard function
-int32_t wrapper_sysid(uint8_t *mem, uint32_t unknown_parameter_addr) {
+int32_t wrapper_sysid(uint8_t* mem, uint32_t unknown_parameter_addr) {
     assert(0 && "sysid not implemented");
 }
 
 // https://linux.die.net/man/3/realpath
-uint32_t wrapper_realpath(uint8_t *mem, uint32_t path_addr, uint32_t resolved_path_addr) {
+uint32_t wrapper_realpath(uint8_t* mem, uint32_t path_addr, uint32_t resolved_path_addr) {
     assert(0 && "realpath not implemented");
 }
 
 // https://linux.die.net/man/2/fsync
-int32_t wrapper_fsync(uint8_t *mem, int32_t fd) {
+int32_t wrapper_fsync(uint8_t* mem, int32_t fd) {
     assert(0 && "fsync not implemented");
 }
 
 // https://linux.die.net/man/3/sleep
-uint32_t wrapper_sleep(uint8_t *mem, uint32_t seconds) {
+uint32_t wrapper_sleep(uint8_t* mem, uint32_t seconds) {
     assert(0 && "sleep not implemented");
 }
 
 // https://linux.die.net/man/2/socket
-int32_t wrapper_socket(uint8_t *mem, int32_t domain, int32_t type, int32_t protocol) {
+int32_t wrapper_socket(uint8_t* mem, int32_t domain, int32_t type, int32_t protocol) {
     assert(0 && "socket not implemented");
 }
 
 // https://linux.die.net/man/2/connect
-int32_t wrapper_connect(uint8_t *mem, int32_t sockfd, uint32_t addr_addr, uint32_t addrlen) {
+int32_t wrapper_connect(uint8_t* mem, int32_t sockfd, uint32_t addr_addr, uint32_t addrlen) {
     assert(0 && "connect not implemented");
 }
 
 // https://linux.die.net/man/2/recv
-int32_t wrapper_recv(uint8_t *mem, int32_t sockfd, uint32_t buf_addr, uint32_t len, int32_t flags) {
+int32_t wrapper_recv(uint8_t* mem, int32_t sockfd, uint32_t buf_addr, uint32_t len, int32_t flags) {
     assert(0 && "recv not implemented");
 }
 
 // https://linux.die.net/man/2/send
-int32_t wrapper_send(uint8_t *mem, int32_t sockfd, uint32_t buf_addr, uint32_t len, int32_t flags) {
+int32_t wrapper_send(uint8_t* mem, int32_t sockfd, uint32_t buf_addr, uint32_t len, int32_t flags) {
     assert(0 && "send not implemented");
 }
 
 // https://linux.die.net/man/3/shutdown
-int32_t wrapper_shutdown(uint8_t *mem, int32_t socket, int32_t how) {
+int32_t wrapper_shutdown(uint8_t* mem, int32_t socket, int32_t how) {
     assert(0 && "shutdown not implemented");
 }
 
 // https://linux.die.net/man/3/sscanf
-int32_t wrapper_sscanf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint32_t sp) {
+int32_t wrapper_sscanf(uint8_t* mem, uint32_t str_addr, uint32_t format_addr, uint32_t sp) {
     assert(0 && "sscanf not implemented");
 }
 
 // C++ functions
-uint32_t wrapper___nw__FUi(uint8_t *mem, uint32_t size) {
+uint32_t wrapper___nw__FUi(uint8_t* mem, uint32_t size) {
     return wrapper_malloc(mem, size);
 }
 
-void wrapper___dl__FPv(uint8_t *mem, uint32_t data_addr) {
+void wrapper___dl__FPv(uint8_t* mem, uint32_t data_addr) {
     wrapper_free(mem, data_addr);
 }
-
 
 union host_doubleword {
     uint64_t ww;
