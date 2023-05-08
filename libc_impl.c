@@ -579,7 +579,7 @@ void wrapper_free(uint8_t* mem, uint32_t data_addr) {
     }
     uint32_t list_ptr = MALLOC_BINS_ADDR + (bin - 3) * 4;
     assert(bin >= 3 && bin < 30);
-    assert(size <= (uint32_t)(1 << bin));
+    assert(size <= (1U << bin));
     MEM_U32(node_ptr) = MEM_U32(list_ptr);
     MEM_U32(node_ptr + 4) = 0;
     MEM_U32(list_ptr) = node_ptr;
