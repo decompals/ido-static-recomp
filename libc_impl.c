@@ -3055,39 +3055,14 @@ int32_t wrapper_fputc(uint8_t *mem, int32_t ch, uint32_t stream_addr) {
     return ret;
 }
 
-// #define GETOPT_DEBUG 1
-
 // https://linux.die.net/man/3/getopt
 int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t optstring_addr) {
     bool optargFound = false;
     STRING(optstring);
     int32_t ret;
-    //char **argv;
     uint32_t argv_mem_new[argc];
 
     assert(argc == global_args.argc);
-
-    #ifdef GETOPT_DEBUG
-    fflush(stdout);
-    fflush(stderr);
-
-    fprintf(stderr, "\n");
-    fprintf(stderr, "%s: argc           %i\n", __func__, argc);
-    fprintf(stderr, "%s: argv_addr      %u\n", __func__, argv_addr);
-    fprintf(stderr, "%s: optstring_addr %u\n", __func__, optstring_addr);
-    fprintf(stderr, "%s: optstring      %s\n", __func__, optstring);
-    #endif
-
-    //argv = make_argv_from_mem(mem, argc, argv_addr);
-
-    #ifdef GETOPT_DEBUG
-    for (int32_t i = 0; i < global_args.argc; i++) {
-        fprintf(stderr, "%s: argv[i]        %s\n", __func__, global_args.argv[i]);
-    }
-    fprintf(stderr, "\n");
-
-    fprintf(stderr, "%s: optarg pre getopt %s\n", __func__, optarg);
-    #endif
 
     if ((optarg != NULL) && (MEM_U32(OPTARG_ADDR) != 0)) {
         bool optarg_from_memory_found = false;
@@ -3095,25 +3070,11 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
         uint32_t optarg_mem_addr = MEM_U32(OPTARG_ADDR);
         STRING(optarg_mem);
 
-        #ifdef GETOPT_DEBUG
-        fprintf(stderr, "\n");
-        fprintf(stderr, "%s: starting optarg from memory search\n", __func__);
-        fprintf(stderr, "\n");
-        fprintf(stderr, "%s: optarg_mem     %s\n", __func__, optarg_mem);
-        fprintf(stderr, "\n");
-        #endif
-
         for (int32_t i = 0; i < global_args.argc && !optarg_from_memory_found; i++) {
             size_t arg_len = strlen(global_args.argv[i]);
-            #ifdef GETOPT_DEBUG
-            fprintf(stderr, "%s: argv[i]        %s\n", __func__, global_args.argv[i]);
-            #endif
 
             for (size_t j = 0; j < arg_len; j++) {
                 if (strcmp(&global_args.argv[i][j], optarg_mem) == 0) {
-                    #ifdef GETOPT_DEBUG
-                    fprintf(stderr, "%s: found          %s %i %zu\n", __func__, &global_args.argv[i][j], i, j);
-                    #endif
 
                     optarg = &global_args.argv[i][j];
                     optarg_from_memory_found = true;
@@ -3122,67 +3083,27 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
             }
         }
 
-        #ifdef GETOPT_DEBUG
-        fprintf(stderr, "\n");
-        fprintf(stderr, "%s: finishing optarg from memory search\n", __func__);
-        fprintf(stderr, "\n");
-        #endif
-
         assert(optarg_from_memory_found);
     }
 
-    #ifdef GETOPT_DEBUG
-    fprintf(stderr, "%s: optarg pre getopt, post search %s\n", __func__, optarg);
-    #endif
-
-    #ifdef GETOPT_DEBUG
-    fprintf(stderr, "\n");
-    fprintf(stderr, "%s: pre getopt\n", __func__);
-    #endif
     ret = getopt(global_args.argc, global_args.argv, optstring);
-
-    #ifdef GETOPT_DEBUG
-    fprintf(stderr, "%s: post getopt\n", __func__);
-    fprintf(stderr, "\n");
-    #endif
 
     MEM_S32(OPTERR_ADDR) = opterr;
     MEM_S32(OPTIND_ADDR) = optind;
     MEM_S32(OPTOPT_ADDR) = optopt;
-
-    #ifdef GETOPT_DEBUG
-    fprintf(stderr, "%s: optarg         %s\n", __func__, optarg);
-    fprintf(stderr, "%s: opterr         %i\n", __func__, opterr);
-    fprintf(stderr, "%s: optind         %i\n", __func__, optind);
-    fprintf(stderr, "%s: optopt         %i\n", __func__, optopt);
-    #endif
 
     if (optarg == NULL) {
         optargFound = true;
         MEM_U32(OPTARG_ADDR) = 0;
     }
 
-    #ifdef GETOPT_DEBUG
-    fprintf(stderr, "\n");
-    #endif
-
     for (int32_t i = 0; i < global_args.argc; i++) {
         size_t arg_len = strlen(global_args.argv[i]);
-        #ifdef GETOPT_DEBUG
-        uint32_t str_addr = MEM_U32(argv_addr + i * sizeof(uint32_t));
-        STRING(str);
-        fprintf(stderr, "%s: argv[i]        %s\n", __func__, global_args.argv[i]);
-        #endif
 
-        // TODO: We need to find optarg
+        // We need to find optarg
         for (size_t j = 0; j < arg_len && !optargFound; j++) {
             if (strcmp(&global_args.argv[i][j], optarg) == 0) {
                 uint32_t str_addr = MEM_U32(argv_addr + i * sizeof(uint32_t)) + j;
-                #ifdef GETOPT_DEBUG
-                STRING(str);
-                fprintf(stderr, "%s: argv[i]        found optarg\n", __func__);
-                fprintf(stderr, "%s: str            %s\n", __func__, str);
-                #endif
 
                 MEM_U32(OPTARG_ADDR) = str_addr;
                 optargFound = true;
@@ -3205,8 +3126,6 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
     for (int32_t j = 0; j < global_args.argc; j++) {
         MEM_U32(argv_addr + j * sizeof(uint32_t)) = argv_mem_new[j];
     }
-
-    //free_argv(argc, argv);
 
     return ret;
 }
