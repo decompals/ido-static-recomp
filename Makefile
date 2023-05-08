@@ -137,10 +137,8 @@ ifeq ($(DETECTED_OS),linux)
 $(RECOMP_ELF): LDFLAGS   += -Wl,-export-dynamic
 endif
 
-# Too many warnings, disable everything for now...
 $(RECOMP_ELF): WARNINGS  += -Wpedantic -Wshadow
 %/$(LIBC_IMPL_O): CFLAGS   += -D$(IDO_VERSION)
-# TODO: fix warnings
 %/$(LIBC_IMPL_O): WARNINGS += -Wpedantic -Wshadow -Wno-unused-parameter -Wno-deprecated-declarations
 
 #### Main Targets ###
