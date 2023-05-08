@@ -347,12 +347,6 @@ static void init_redirect_paths(void) {
 void redirect_path(char* out, const char* path, const char* from, const char* to) {
     int from_len = strlen(from);
 
-    //fprintf(stderr, "%s: out:    %s\n", __func__, out);
-    //fprintf(stderr, "%s: path:   %s\n", __func__, path);
-    //fprintf(stderr, "%s: from:   %s\n", __func__, from);
-    //fprintf(stderr, "%s: to:     %s\n", __func__, to);
-    //fprintf(stderr, "\n");
-
     if ((strncmp(path, from, from_len) == 0) && (to[0] != '\0')) {
         char redirected_path[PATH_MAX + 1] = { 0 };
         int n;
@@ -369,8 +363,6 @@ void redirect_path(char* out, const char* path, const char* from, const char* to
         // memmove instead of strcpy to allow overlapping buffers
         memmove(out, path, strlen(path)+1);
     }
-
-    //fprintf(stderr, "\n");
 }
 
 typedef struct GlobalArgs {
@@ -378,9 +370,9 @@ typedef struct GlobalArgs {
     char **argv;
 } GlobalArgs;
 
-GlobalArgs global_args = { 0, NULL };
+static GlobalArgs global_args = { 0, NULL };
 
-void init_global_args(int argc, char **argv) {
+static void init_global_args(int argc, char **argv) {
     assert(global_args.argc == 0);
     assert(global_args.argv == NULL);
 
@@ -393,7 +385,7 @@ void init_global_args(int argc, char **argv) {
     global_args.argv[argc] = NULL;
 }
 
-void destroy_global_args(void) {
+static void destroy_global_args(void) {
     assert(global_args.argc != 0);
     assert(global_args.argv != NULL);
 
@@ -405,13 +397,14 @@ void destroy_global_args(void) {
     global_args.argc = 0;
 }
 
-char **make_argv_from_mem(uint8_t* mem, int argc, uint32_t argv_addr) {
+static char **make_argv_from_mem(uint8_t* mem, int argc, uint32_t argv_addr) {
     char **argv = malloc((argc + 1) * sizeof(char *));
 
     for (uint32_t i = 0; i < argc; i++) {
         uint32_t str_addr = MEM_U32(argv_addr + i * sizeof(uint32_t));
         uint32_t len = wrapper_strlen(mem, str_addr) + 1;
-        argv[i] = (char*)malloc(len);
+
+        argv[i] = malloc(len * sizeof(char));
         char* pos = argv[i];
         while (len--) {
             *pos++ = MEM_S8(str_addr);
@@ -424,7 +417,7 @@ char **make_argv_from_mem(uint8_t* mem, int argc, uint32_t argv_addr) {
     return argv;
 }
 
-void free_argv(int argc, char **argv) {
+static void free_argv(int argc, char **argv) {
     for (uint32_t i = 0; i < argc; i++) {
         free(argv[i]);
     }
@@ -2721,23 +2714,12 @@ int wrapper_execv(uint8_t* mem, uint32_t pathname_addr, uint32_t argv_addr) {
     while (MEM_U32(argv_addr + argc * 4) != 0) {
         ++argc;
     }
-    char* argv[argc + 1];
-    for (uint32_t i = 0; i < argc; i++) {
-        uint32_t str_addr = MEM_U32(argv_addr + i * 4);
-        uint32_t len = wrapper_strlen(mem, str_addr) + 1;
-        argv[i] = (char*)malloc(len);
-        char* pos = argv[i];
-        while (len--) {
-            *pos++ = MEM_S8(str_addr);
-            ++str_addr;
-        }
-    }
-    argv[argc] = NULL;
+    char** argv = make_argv_from_mem(mem, argc, argv_addr);
+
     execv(pathname, argv);
     MEM_U32(ERRNO_ADDR) = errno;
-    for (uint32_t i = 0; i < argc; i++) {
-        free(argv[i]);
-    }
+
+    free_argv(argc, argv);
     return -1;
 }
 
@@ -2747,18 +2729,7 @@ int wrapper_execvp(uint8_t* mem, uint32_t file_addr, uint32_t argv_addr) {
     while (MEM_U32(argv_addr + argc * 4) != 0) {
         ++argc;
     }
-    char* argv[argc + 1];
-    for (uint32_t i = 0; i < argc; i++) {
-        uint32_t str_addr = MEM_U32(argv_addr + i * 4);
-        uint32_t len = wrapper_strlen(mem, str_addr) + 1;
-        argv[i] = (char*)malloc(len);
-        char* pos = argv[i];
-        while (len--) {
-            *pos++ = MEM_S8(str_addr);
-            ++str_addr;
-        }
-    }
-    argv[argc] = NULL;
+    char** argv = make_argv_from_mem(mem, argc, argv_addr);
 
     char rfile[PATH_MAX + 1];
     redirect_path(rfile, file, "/usr/lib/DCC", usr_lib_redirect);
@@ -2767,9 +2738,8 @@ int wrapper_execvp(uint8_t* mem, uint32_t file_addr, uint32_t argv_addr) {
     execvp(rfile, argv);
 
     MEM_U32(ERRNO_ADDR) = errno;
-    for (uint32_t i = 0; i < argc; i++) {
-        free(argv[i]);
-    }
+
+    free_argv(argc, argv);
     return -1;
 }
 
