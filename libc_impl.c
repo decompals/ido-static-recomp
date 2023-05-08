@@ -426,7 +426,7 @@ static uint32_t strcpy_str2mem(uint8_t* mem, uint32_t dest_addr, const char* str
     }
 }
 
-static uint32_t strcpy_mem2mem(uint8_t* mem, uint32_t dest_addr, uint32_t src_addr) {
+uint32_t strcpy_mem2mem(uint8_t* mem, uint32_t dest_addr, uint32_t src_addr) {
     for (;;) {
         char c = MEM_S8(src_addr);
         ++src_addr;
@@ -746,7 +746,7 @@ static uint32_t get_asterisk_args(uint8_t* mem, int count, int args[2], uint32_t
 /**
  * printf internal that takes `mem` as input.
  */
-int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uint32_t sp) {
+int _mprintf(prout prout_func, uint8_t* mem, uint32_t* out, uint32_t format_addr, uint32_t sp) {
     STRING(format)
     sp += 8;
 
@@ -771,7 +771,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
             c = MEM_U8(pos);
         }
         if (format_addr != pos) {
-            if (prout(mem, out, format_addr, pos - format_addr) != pos - format_addr) {
+            if (prout_func(mem, out, format_addr, pos - format_addr) != (int)(pos - format_addr)) {
                 return -1;
             }
         }
@@ -864,7 +864,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                 if (strcmp(format_specifier, "%s") == 0) {
                     uint32_t str_addr = MEM_U32(sp);
                     size_t len = wrapper_strlen(mem, str_addr);
-                    step_chars_printed = prout(mem, out, str_addr, len);
+                    step_chars_printed = prout_func(mem, out, str_addr, len);
                     goto increments;
                 }
 
@@ -872,7 +872,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
 
                 // Copy string into normal memory to be able to pass it to normal printf functions
                 step_chars_printed = wrapper_strlen(mem, MEM_U32(sp));
-                if (step_chars_printed + 1 > str_len) {
+                if (step_chars_printed + 1 > (int)str_len) {
                     str_len = step_chars_printed + 1;
                     str = realloc(str, str_len);
                 }
@@ -892,7 +892,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                         step_chars_printed = snprintf(NULL, 0, format_specifier, ast_args[0], ast_args[1], str);
                         break;
                 }
-                if (step_chars_printed + 1 > buf_len) {
+                if (step_chars_printed + 1 > (int)buf_len) {
                     buf_len = step_chars_printed + 1;
                     buf = realloc(buf, buf_len);
                 }
@@ -912,7 +912,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
 
             memcpy_str2mem(mem, INTBUF_ADDR, buf + chars_printed, in_count);
 
-            int out_count = prout(mem, out, INTBUF_ADDR, in_count);
+            int out_count = prout_func(mem, out, INTBUF_ADDR, in_count);
             if (out_count != in_count) {
                 fprintf(stderr, "Did not print %s successfully\n", format);
                 return ret;
