@@ -166,6 +166,11 @@ void proc_command_line(int argc, char** argv) {
     int c;
 
     while ((c = getopt(argc, argv, "A:BCEHKMNOPTabnsuvwxrmpzV$I:D:U:e:L:X:S:o:i:d:t:F:Y:Z:W:Q:")) != -1) {
+        fprintf(stderr, "optarg: %s\n", optarg);
+        fprintf(stderr, "optind: %i\n", optind);
+        fprintf(stderr, "c:      %X\n", c);
+        fprintf(stderr, "\n");
+
         switch (c) {
             case 0x24:
                 allow_dollar_in_id_chars = 1;

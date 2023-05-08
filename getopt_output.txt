@@ -1,0 +1,192 @@
+/usr/lib/DCC/edgcpfe -D_MIPS_FPSET=16 -D_MIPS_ISA=2 -D_ABIO32=1 -D_MIPS_SIM=_ABIO32 -D_MIPS_SZINT=32 -D_MIPS_SZLONG=32 -D_MIPS_SZPTR=32 -YE -D__EXTENSIONS__ -D_LANGUAGE_C_PLUS_PLUS=1 -D__cplusplus=1 -D__ANSI_CPP__=1 -D__INLINE_INTRINSICS -Dsgi -D__sgi -Dunix -Dmips -Dhost_mips -D__unix -D__host_mips -D_SVR4_SOURCE -D_MODERN_C -D_SGI_SOURCE -D_PIC -D__DSO__ -DSYSTYPE_SVR4 -D_SYSTYPE_SVR4 -D_LONGLONG -D__mips=2 -D_MIPSEB -DMIPSEB -D__STDC__=1 -I/usr/include/CC -I/usr/include -v -O -b -Zz -ZO -ZStest_cpp_file.T -u -YNtest_cpp_file.o -YO./ii_files/test_cpp_file.ii -YG0 -Zg0 test_cpp_file.cpp > test_cpp_file.B 
+optarg: _MIPS_FPSET=16
+optind: 2
+c:      44
+
+optarg: _MIPS_ISA=2
+optind: 3
+c:      44
+
+optarg: _ABIO32=1
+optind: 4
+c:      44
+
+optarg: _MIPS_SIM=_ABIO32
+optind: 5
+c:      44
+
+optarg: _MIPS_SZINT=32
+optind: 6
+c:      44
+
+optarg: _MIPS_SZLONG=32
+optind: 7
+c:      44
+
+optarg: _MIPS_SZPTR=32
+optind: 8
+c:      44
+
+optarg: E
+optind: 9
+c:      59
+
+optarg: __EXTENSIONS__
+optind: 10
+c:      44
+
+optarg: _LANGUAGE_C_PLUS_PLUS=1
+optind: 11
+c:      44
+
+optarg: __cplusplus=1
+optind: 12
+c:      44
+
+optarg: __ANSI_CPP__=1
+optind: 13
+c:      44
+
+optarg: __INLINE_INTRINSICS
+optind: 14
+c:      44
+
+optarg: sgi
+optind: 15
+c:      44
+
+optarg: __sgi
+optind: 16
+c:      44
+
+optarg: unix
+optind: 17
+c:      44
+
+optarg: mips
+optind: 18
+c:      44
+
+optarg: host_mips
+optind: 19
+c:      44
+
+optarg: __unix
+optind: 20
+c:      44
+
+optarg: __host_mips
+optind: 21
+c:      44
+
+optarg: _SVR4_SOURCE
+optind: 22
+c:      44
+
+optarg: _MODERN_C
+optind: 23
+c:      44
+
+optarg: _SGI_SOURCE
+optind: 24
+c:      44
+
+optarg: _PIC
+optind: 25
+c:      44
+
+optarg: __DSO__
+optind: 26
+c:      44
+
+optarg: SYSTYPE_SVR4
+optind: 27
+c:      44
+
+optarg: _SYSTYPE_SVR4
+optind: 28
+c:      44
+
+optarg: _LONGLONG
+optind: 29
+c:      44
+
+optarg: __mips=2
+optind: 30
+c:      44
+
+optarg: _MIPSEB
+optind: 31
+c:      44
+
+optarg: MIPSEB
+optind: 32
+c:      44
+
+optarg: __STDC__=1
+optind: 33
+c:      44
+
+optarg: /usr/include/CC
+optind: 34
+c:      49
+
+optarg: /usr/include
+optind: 35
+c:      49
+
+optarg: (null)
+optind: 36
+c:      76
+
+Edison Design Group C/C++ Front End, version 2.19
+Copyright 1988-1993 Edison Design Group Inc.
+
+optarg: (null)
+optind: 37
+c:      4F
+
+optarg: (null)
+optind: 38
+c:      62
+
+optarg: z
+optind: 39
+c:      5A
+
+optarg: O
+optind: 40
+c:      5A
+
+optarg: Stest_cpp_file.T
+optind: 41
+c:      5A
+
+optarg: (null)
+optind: 42
+c:      75
+
+optarg: Ntest_cpp_file.o
+optind: 43
+c:      59
+
+optarg: O./ii_files/test_cpp_file.ii
+optind: 44
+c:      59
+
+optarg: G0
+optind: 45
+c:      59
+
+optarg: g0
+optind: 46
+c:      5A
+
+optarg: (null)
+optind: 46
+c:      FFFFFFFF
+
+/usr/lib/DCC/ugen -v -G 0 -pic2 -mips2 -EB -g0 -O1 test_cpp_file.B -o test_cpp_file.G -l test_cpp_file.s -t test_cpp_file.T -temp /tmp/ctmgtQFlZgf 
+ugen: __ct__11BoringClassFv __ct__11BoringClassFi __ct__11BoringClassFiT1 __ct__11BoringClassFiN31 __ct__11BoringClassFf __ct__11BoringClassFfT1 __ct__11BoringClassFd __ct__11BoringClassFdT1 __ct__11BoringClassFidsf __dt__11BoringClassFv two__11BoringClassFv two_again__11BoringClassFv number__11BoringClassFf number_again__11BoringClassFf
+/usr/lib/DCC/as1 -t5_ll_sc_bug -elf -pic2 -v -G 0 -p0 -mips2 -EB -g0 -O1 test_cpp_file.G -o test_cpp_file.o -t test_cpp_file.T 
+as1: __ct__11BoringClassFv __ct__11BoringClassFi __ct__11BoringClassFiT1 __ct__11BoringClassFiN31 __ct__11BoringClassFf __ct__11BoringClassFfT1 __ct__11BoringClassFd __ct__11BoringClassFdT1 __ct__11BoringClassFidsf __dt__11BoringClassFv two__11BoringClassFv two_again__11BoringClassFv number__11BoringClassFf number_again__11BoringClassFf 

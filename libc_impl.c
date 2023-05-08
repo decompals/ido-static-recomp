@@ -373,11 +373,36 @@ void redirect_path(char* out, const char* path, const char* from, const char* to
     //fprintf(stderr, "\n");
 }
 
-void final_cleanup(uint8_t* mem) {
-    wrapper_fflush(mem, 0);
-    free_all_file_bufs(mem);
-    mem += MEM_REGION_START;
-    memory_unmap(mem, MEM_REGION_SIZE);
+typedef struct GlobalArgs {
+    int argc;
+    char **argv;
+} GlobalArgs;
+
+GlobalArgs global_args = { 0, NULL };
+
+void init_global_args(int argc, char **argv) {
+    assert(global_args.argc == 0);
+    assert(global_args.argv == NULL);
+
+    global_args.argc = argc;
+    global_args.argv = malloc((argc + 1) * sizeof(char *));
+    for (int i = 0; i < argc; i++) {
+        global_args.argv[i] = malloc((strlen(argv[i]) + 1) * sizeof(char));
+        strcpy(global_args.argv[i], argv[i]);
+    }
+    global_args.argv[argc] = NULL;
+}
+
+void destroy_global_args(void) {
+    assert(global_args.argc != 0);
+    assert(global_args.argv != NULL);
+
+    for (int i = 0; i < global_args.argc; i++) {
+        free(global_args.argv[i]);
+    }
+
+    free(global_args.argv);
+    global_args.argc = 0;
 }
 
 char **make_argv_from_mem(uint8_t* mem, int argc, uint32_t argv_addr) {
@@ -408,6 +433,15 @@ void free_argv(int argc, char **argv) {
 }
 
 
+void final_cleanup(uint8_t* mem) {
+    wrapper_fflush(mem, 0);
+    free_all_file_bufs(mem);
+    mem += MEM_REGION_START;
+    memory_unmap(mem, MEM_REGION_SIZE);
+    destroy_global_args();
+}
+
+
 const char* progname;
 
 int main(int argc, char* argv[]) {
@@ -421,6 +455,7 @@ int main(int argc, char* argv[]) {
 
     uint8_t* mem = memory_map(MEM_REGION_SIZE);
     mem -= MEM_REGION_START;
+    init_global_args(argc, argv);
     int run(uint8_t * mem, int argc, char* argv[]);
     ret = run(mem, argc, argv);
     final_cleanup(mem);
@@ -3057,8 +3092,10 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
     bool optargFound = false;
     STRING(optstring);
     int32_t ret;
-    char **argv;
+    //char **argv;
     uint32_t argv_mem_new[argc];
+
+    assert(argc == global_args.argc);
 
     #ifdef GETOPT_DEBUG
     fflush(stdout);
@@ -3071,11 +3108,11 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
     fprintf(stderr, "%s: optstring      %s\n", __func__, optstring);
     #endif
 
-    argv = make_argv_from_mem(mem, argc, argv_addr);
+    //argv = make_argv_from_mem(mem, argc, argv_addr);
 
     #ifdef GETOPT_DEBUG
-    for (int32_t i = 0; i < argc; i++) {
-        fprintf(stderr, "%s: argv[i]        %s\n", __func__, argv[i]);
+    for (int32_t i = 0; i < global_args.argc; i++) {
+        fprintf(stderr, "%s: argv[i]        %s\n", __func__, global_args.argv[i]);
     }
     fprintf(stderr, "\n");
 
@@ -3096,19 +3133,19 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
         fprintf(stderr, "\n");
         #endif
 
-        for (int32_t i = 0; i < argc && !optarg_from_memory_found; i++) {
-            size_t arg_len = strlen(argv[i]);
+        for (int32_t i = 0; i < global_args.argc && !optarg_from_memory_found; i++) {
+            size_t arg_len = strlen(global_args.argv[i]);
             #ifdef GETOPT_DEBUG
-            fprintf(stderr, "%s: argv[i]        %s\n", __func__, argv[i]);
+            fprintf(stderr, "%s: argv[i]        %s\n", __func__, global_args.argv[i]);
             #endif
 
             for (size_t j = 0; j < arg_len; j++) {
-                if (strcmp(&argv[i][j], optarg_mem) == 0) {
+                if (strcmp(&global_args.argv[i][j], optarg_mem) == 0) {
                     #ifdef GETOPT_DEBUG
-                    fprintf(stderr, "%s: found          %s %i %zu\n", __func__, &argv[i][j], i, j);
+                    fprintf(stderr, "%s: found          %s %i %zu\n", __func__, &global_args.argv[i][j], i, j);
                     #endif
 
-                    optarg = &argv[i][j];
+                    optarg = &global_args.argv[i][j];
                     optarg_from_memory_found = true;
                     break;
                 }
@@ -3132,7 +3169,13 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
     fprintf(stderr, "\n");
     fprintf(stderr, "%s: pre getopt\n", __func__);
     #endif
-    ret = getopt(argc, argv, optstring);
+    ret = getopt(global_args.argc, global_args.argv, optstring);
+
+    fprintf(stderr, "optarg: %s\n", optarg);
+    fprintf(stderr, "optind: %i\n", optind);
+    fprintf(stderr, "c:      %X\n", ret);
+    fprintf(stderr, "\n");
+
     #ifdef GETOPT_DEBUG
     fprintf(stderr, "%s: post getopt\n", __func__);
     fprintf(stderr, "\n");
@@ -3158,17 +3201,17 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
     fprintf(stderr, "\n");
     #endif
 
-    for (int32_t i = 0; i < argc; i++) {
-        size_t arg_len = strlen(argv[i]);
+    for (int32_t i = 0; i < global_args.argc; i++) {
+        size_t arg_len = strlen(global_args.argv[i]);
         #ifdef GETOPT_DEBUG
         uint32_t str_addr = MEM_U32(argv_addr + i * sizeof(uint32_t));
         STRING(str);
-        fprintf(stderr, "%s: argv[i]        %s\n", __func__, argv[i]);
+        fprintf(stderr, "%s: argv[i]        %s\n", __func__, global_args.argv[i]);
         #endif
 
         // TODO: We need to find optarg
         for (size_t j = 0; j < arg_len && !optargFound; j++) {
-            if (strcmp(&argv[i][j], optarg) == 0) {
+            if (strcmp(&global_args.argv[i][j], optarg) == 0) {
                 uint32_t str_addr = MEM_U32(argv_addr + i * sizeof(uint32_t)) + j;
                 #ifdef GETOPT_DEBUG
                 STRING(str);
@@ -3182,11 +3225,11 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
         }
 
         // find the permuted argvs and put them in a temp array
-        for (int32_t j = 0; j < argc; j++) {
+        for (int32_t j = 0; j < global_args.argc; j++) {
             uint32_t str_addr = MEM_U32(argv_addr + j * sizeof(uint32_t));
             STRING(str);
 
-            if ((strcmp(argv[i], str) == 0)) {
+            if ((strcmp(global_args.argv[i], str) == 0)) {
                 argv_mem_new[i] = str_addr;
                 break;
             }
@@ -3194,11 +3237,11 @@ int32_t wrapper_getopt(uint8_t *mem, int32_t argc, uint32_t argv_addr, uint32_t 
     }
 
     // copy the temp array into the real argv
-    for (int32_t j = 0; j < argc; j++) {
+    for (int32_t j = 0; j < global_args.argc; j++) {
         MEM_U32(argv_addr + j * sizeof(uint32_t)) = argv_mem_new[j];
     }
 
-    free_argv(argc, argv);
+    //free_argv(argc, argv);
 
     return ret;
 }
