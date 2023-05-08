@@ -97,11 +97,11 @@
 
 #define NFILE 100
 
-#define IOFBF 0000 /* full buffered */
-#define IOLBF 0100 /* line buffered */
-#define IONBF 0004 /* not buffered */
-#define IOEOF 0020 /* EOF reached on read */
-#define IOERR 0040 /* I/O error from system */
+#define IOFBF 0000   /* full buffered */
+#define IOLBF 0100   /* line buffered */
+#define IONBF 0004   /* not buffered */
+#define IOEOF 0020   /* EOF reached on read */
+#define IOERR 0040   /* I/O error from system */
 
 #define IOREAD 0001  /* currently reading */
 #define IOWRT 0002   /* currently writing */
@@ -600,7 +600,7 @@ void wrapper_free(uint8_t* mem, uint32_t data_addr) {
 
 int wrapper_fscanf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_t sp) {
 #ifdef DEVELOPMENT
-    UNUSED struct FILE_irix *f = (struct FILE_irix *)&MEM_U32(fp_addr);
+    UNUSED struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
     STRING(format)
     (void)format;
 #endif

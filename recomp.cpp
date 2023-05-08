@@ -301,7 +301,7 @@ const struct ExternFunction {
     { "fstat", "iip", 0 },
     { "stat", "ipp", 0 },
     { "ftruncate", "iii", 0 },
-    { "truncate", "ipi", 0},
+    { "truncate", "ipi", 0 },
     { "bcopy", "vppu", 0 },
     { "memcpy", "pppu", 0 },
     { "memccpy", "pppiu", 0 },
@@ -809,8 +809,8 @@ void pass1(void) {
                             }
 
                             for (uint32_t case_index = 0; case_index < num_cases; case_index++) {
-                                uint32_t target_addr =
-                                    read_u32_be(rodata_section + (jtbl_addr - rodata_vaddr) + case_index * sizeof(uint32_t));
+                                uint32_t target_addr = read_u32_be(rodata_section + (jtbl_addr - rodata_vaddr) +
+                                                                   case_index * sizeof(uint32_t));
 
                                 target_addr += gp_value;
                                 // printf("%08X\n", target_addr);
@@ -2594,7 +2594,8 @@ void dump_instr(int i) {
                 printf(";static void *const Lswitch%x[] = {\n", insn.jtbl_addr);
 
                 for (uint32_t case_index = 0; case_index < insn.num_cases; case_index++) {
-                    uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + case_index * sizeof(uint32_t)) + gp_value;
+                    uint32_t dest_addr =
+                        read_u32_be(rodata_section + jtbl_pos + case_index * sizeof(uint32_t)) + gp_value;
                     printf("&&L%x,\n", dest_addr);
                     label_addresses.insert(dest_addr);
                 }
@@ -2612,7 +2613,8 @@ void dump_instr(int i) {
                 printf("switch (%s) {\n", r(insn.index_reg));
 
                 for (uint32_t case_index = 0; case_index < insn.num_cases; case_index++) {
-                    uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + case_index * sizeof(uint32_t)) + gp_value;
+                    uint32_t dest_addr =
+                        read_u32_be(rodata_section + jtbl_pos + case_index * sizeof(uint32_t)) + gp_value;
                     printf("case %u: goto L%x;\n", case_index, dest_addr);
                     label_addresses.insert(dest_addr);
                 }
@@ -2698,8 +2700,9 @@ void dump_instr(int i) {
             imm = insn.getImmediate();
 
             printf("%s = %s + %d; ", reg, r((int)insn.instruction.GetO32_rs()), imm);
-            printf("%s = ((uint32_t)MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + 3);\n", reg,
-                   reg, reg, reg, reg);
+            printf("%s = ((uint32_t)MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + "
+                   "3);\n",
+                   reg, reg, reg, reg, reg);
         } break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwr:
