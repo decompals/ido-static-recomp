@@ -52,6 +52,15 @@ else
   $(error Unsupported host OS for Makefile)
 endif
 
+# check if in a git repository
+ifeq ($(shell git rev-parse --is-inside-work-tree >/dev/null 2>/dev/null; echo $$?),0)
+  PACKAGE_VERSION := git --git-dir .git describe --tags --dirty
+endif
+
+# Get the current date and time in ISO 8601 format
+DATETIME := date +'%F %T UTC%z'
+
+
 RABBITIZER := tools/rabbitizer
 RABBITIZER_LIB := $(RABBITIZER)/build/librabbitizerpp.a
 
@@ -107,6 +116,7 @@ ERR_STRS        := $(BUILT_BIN)/err.english.cc
 
 RECOMP_ELF      := $(BUILD_BASE)/recomp.elf
 LIBC_IMPL_O     := libc_impl.o
+VERSION_INFO_O  := version_info.o
 
 TARGET_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/$(binary))
 O_FILES         := $(foreach binary,$(IDO_TC),$(BUILD_DIR)/$(binary).o)
@@ -137,7 +147,9 @@ endif
 
 # Too many warnings, disable everything for now...
 $(RECOMP_ELF): WARNINGS  += -Wpedantic -Wno-shadow -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-implicit-fallthrough
-%/$(LIBC_IMPL_O): CFLAGS   += -D$(IDO_VERSION)
+%/$(LIBC_IMPL_O): CFLAGS    += -D$(IDO_VERSION)
+%/$(VERSION_INFO_O): CFLAGS += -D$(IDO_VERSION) \
+                               -DPACKAGE_VERSION="\"`LC_ALL=C $(PACKAGE_VERSION)`\""
 # TODO: fix warnings
 %/$(LIBC_IMPL_O): WARNINGS += -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-sign-compare -Wno-deprecated-declarations
 
@@ -199,11 +211,11 @@ $(BUILT_BIN)/%: $(BUILD_DIR)/arm64-apple-macos11/% $(BUILD_DIR)/x86_64-apple-mac
 	lipo -create -output $@ $^
 
 
-$(BUILD_DIR)/arm64-apple-macos11/%: $(BUILD_DIR)/arm64-apple-macos11/%.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL_O) | $(ERR_STRS)
+$(BUILD_DIR)/arm64-apple-macos11/%: $(BUILD_DIR)/arm64-apple-macos11/%.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL_O) $(BUILD_DIR)/arm64-apple-macos11/$(VERSION_INFO_O) | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
-$(BUILD_DIR)/x86_64-apple-macos10.14/%: $(BUILD_DIR)/x86_64-apple-macos10.14/%.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL_O) | $(ERR_STRS)
+$(BUILD_DIR)/x86_64-apple-macos10.14/%: $(BUILD_DIR)/x86_64-apple-macos10.14/%.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL_O) $(BUILD_DIR)/x86_64-apple-macos10.14/$(VERSION_INFO_O) | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
@@ -220,8 +232,14 @@ $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL_O): libc_impl.c
 $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL_O): libc_impl.c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
 
+$(BUILD_DIR)/arm64-apple-macos11/$(VERSION_INFO_O): version_info.c $(O_FILES) $(BUILD_DIR)/$(LIBC_IMPL_O)
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
+
+$(BUILD_DIR)/x86_64-apple-macos10.14/$(VERSION_INFO_O): version_info.c $(O_FILES) $(BUILD_DIR)/$(LIBC_IMPL_O)
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
+
 else
-$(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL_O) | $(ERR_STRS)
+$(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL_O) $(BUILD_DIR)/$(VERSION_INFO_O) | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
@@ -230,6 +248,9 @@ $(BUILD_DIR)/%.o: $(BUILD_DIR)/%.c
 
 
 $(BUILD_DIR)/$(LIBC_IMPL_O): libc_impl.c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -o $@ $<
+
+$(BUILD_DIR)/$(VERSION_INFO_O): version_info.c $(O_FILES) $(BUILD_DIR)/$(LIBC_IMPL_O)
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -o $@ $<
 endif
 

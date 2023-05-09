@@ -362,11 +362,19 @@ void final_cleanup(uint8_t* mem) {
     memory_unmap(mem, MEM_REGION_SIZE);
 }
 
+void print_version_info(void);
 const char* progname;
 
 int main(int argc, char* argv[]) {
     int ret;
     progname = argv[0];
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--version") == 0) {
+            print_version_info();
+            return 0;
+        }
+    }
 
     init_redirect_paths();
 #ifdef RUNTIME_PAGESIZE
