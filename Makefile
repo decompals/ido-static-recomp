@@ -232,10 +232,10 @@ $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL_O): libc_impl.c
 $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL_O): libc_impl.c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
 
-$(BUILD_DIR)/arm64-apple-macos11/$(VERSION_INFO_O): version_info.c $(O_FILES) $(BUILD_DIR)/$(LIBC_IMPL_O)
+$(BUILD_DIR)/arm64-apple-macos11/$(VERSION_INFO_O): version_info.c $(O_FILES) $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL_O)
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
 
-$(BUILD_DIR)/x86_64-apple-macos10.14/$(VERSION_INFO_O): version_info.c $(O_FILES) $(BUILD_DIR)/$(LIBC_IMPL_O)
+$(BUILD_DIR)/x86_64-apple-macos10.14/$(VERSION_INFO_O): version_info.c $(O_FILES) $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL_O)
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
 
 else
