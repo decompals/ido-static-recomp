@@ -56,7 +56,8 @@
 extern char* progname;
 
 void print_version_info(void) {
-    char* buf = strdup(progname);
+    char* buf = malloc(strlen(progname));
+    strcpy(buf, progname);
     char* name = basename(buf);
 
     printf("%s `%s` static recompilation, Decompals version\n", IDO_VERSION, name);
