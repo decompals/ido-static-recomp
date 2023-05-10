@@ -1034,7 +1034,7 @@ void pass2(void) {
 
                 insns[i].patchAddress(rabbitizer::InstrId::UniqueId::cpu_jal, alloc_new_addr);
 
-                assert(symbol_names.count(alloc_new_addr) && symbol_names[alloc_new_addr] == "alloc_new");
+                assert(symbol_names.at(alloc_new_addr) == "alloc_new");
                 i++;
 
                 // LA
@@ -1067,12 +1067,12 @@ void pass2(void) {
                 uint32_t alloc_dispose_addr = text_vaddr + (i + 4) * 4;
 
                 if (symbol_names.count(alloc_dispose_addr + 4) &&
-                    symbol_names[alloc_dispose_addr + 4] == "alloc_dispose") {
+                    symbol_names.at(alloc_dispose_addr + 4) == "alloc_dispose") {
                     alloc_dispose_addr += 4;
                 }
 
                 insns[i].patchAddress(rabbitizer::InstrId::UniqueId::cpu_jal, alloc_dispose_addr);
-                assert(symbol_names.count(alloc_dispose_addr) && symbol_names[alloc_dispose_addr] == "alloc_dispose");
+                assert(symbol_names.at(alloc_dispose_addr) == "alloc_dispose");
                 i++;
 
                 insns[i] = insns[i + 2];
@@ -2210,7 +2210,7 @@ void dump_instr(int i) {
 
     const char* symbol_name = NULL;
     if (symbol_names.count(text_vaddr + i * sizeof(uint32_t)) != 0) {
-        symbol_name = symbol_names[text_vaddr + i * sizeof(uint32_t)].c_str();
+        symbol_name = symbol_names.at(text_vaddr + i * sizeof(uint32_t)).c_str();
         printf("//%s:\n", symbol_name);
     }
 
