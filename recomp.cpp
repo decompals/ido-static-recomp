@@ -301,7 +301,7 @@ const struct ExternFunction {
     { "fstat", "iip", 0 },
     { "stat", "ipp", 0 },
     { "ftruncate", "iii", 0 },
-    { "truncate", "ipi", 0},
+    { "truncate", "ipi", 0 },
     { "bcopy", "vppu", 0 },
     { "memcpy", "pppu", 0 },
     { "memccpy", "pppiu", 0 },
@@ -449,7 +449,7 @@ void disassemble(void) {
 
 void add_function(uint32_t addr) {
     if (addr >= text_vaddr && addr < text_vaddr + text_section_len) {
-        functions.insert({addr, {}});
+        functions.insert({ addr, {} });
     }
 }
 
@@ -2699,8 +2699,9 @@ void dump_instr(int i) {
             imm = insn.getImmediate();
 
             printf("%s = %s + %d; ", reg, r((int)insn.instruction.GetO32_rs()), imm);
-            printf("%s = ((uint32_t)MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + 3);\n", reg,
-                   reg, reg, reg, reg);
+            printf("%s = ((uint32_t)MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + "
+                   "3);\n",
+                   reg, reg, reg, reg, reg);
         } break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwr:
@@ -2953,14 +2954,6 @@ void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const
     for (uint32_t i = 0; i < len; i += 4) {
         uint32_t addr = read_u32_be(section + i);
 
-        #if 0
-        // somehow breaks cfe and acpp in both 5.3 and 7.1
-        if (label_addresses.count(addr) != 0) {
-            // This is a plain label, not a function pointer
-            continue;
-        }
-        #endif
-
         if (addr == 0x430b00 || addr == 0x433b00) {
             // in as1, not function pointers (normal integers)
             continue;
@@ -2982,7 +2975,6 @@ void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const
             fprintf(stderr, "assuming function pointer 0x%x at 0x%x\n", addr, section_vaddr + i);
 #endif
             ret.push_back(make_pair(section_vaddr + i, addr));
-            label_addresses.insert(addr);
             add_function(addr);
             functions.at(addr).referenced_by_function_pointer = true;
         }
