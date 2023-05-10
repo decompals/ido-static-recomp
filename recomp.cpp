@@ -40,7 +40,7 @@
 #endif
 
 // set this to 1 when testing a new program, to verify that no false function pointers are found
-#define INSPECT_FUNCTION_POINTERS 0
+#define INSPECT_FUNCTION_POINTERS 1
 
 #ifndef TRACE
 #define TRACE 0
@@ -449,7 +449,7 @@ void disassemble(void) {
 
 void add_function(uint32_t addr) {
     if (addr >= text_vaddr && addr < text_vaddr + text_section_len) {
-        functions[addr];
+        functions.insert({addr, {}});
     }
 }
 
@@ -2975,6 +2975,7 @@ void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const
 #endif
             ret.push_back(make_pair(section_vaddr + i, addr));
             label_addresses.insert(addr);
+            add_function(addr);
             functions.at(addr).referenced_by_function_pointer = true;
         }
     }
