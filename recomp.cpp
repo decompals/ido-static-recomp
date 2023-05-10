@@ -40,7 +40,7 @@
 #endif
 
 // set this to 1 when testing a new program, to verify that no false function pointers are found
-#define INSPECT_FUNCTION_POINTERS 1
+#define INSPECT_FUNCTION_POINTERS 0
 
 #ifndef TRACE
 #define TRACE 0
@@ -220,7 +220,7 @@ uint32_t bss_section_len;
 uint32_t bss_vaddr;
 
 vector<Insn> insns;
-set<uint32_t> label_addresses;
+set<uint32_t> label_addresses; // labels, both branch labels and jump table labels
 vector<uint32_t> got_globals;
 vector<uint32_t> got_locals;
 uint32_t gp_value;
@@ -2952,6 +2952,11 @@ void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const
                                     uint32_t section_vaddr, uint32_t len) {
     for (uint32_t i = 0; i < len; i += 4) {
         uint32_t addr = read_u32_be(section + i);
+
+        if (label_addresses.count(addr) != 0) {
+            // This is a plain label, not a function pointer
+            continue;
+        }
 
         if (addr == 0x430b00 || addr == 0x433b00) {
             // in as1, not function pointers (normal integers)
