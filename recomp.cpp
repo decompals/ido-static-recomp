@@ -2953,10 +2953,13 @@ void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const
     for (uint32_t i = 0; i < len; i += 4) {
         uint32_t addr = read_u32_be(section + i);
 
+        #if 0
+        // somehow breaks cfe and acpp in both 5.3 and 7.1
         if (label_addresses.count(addr) != 0) {
             // This is a plain label, not a function pointer
             continue;
         }
+        #endif
 
         if (addr == 0x430b00 || addr == 0x433b00) {
             // in as1, not function pointers (normal integers)
