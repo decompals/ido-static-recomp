@@ -999,7 +999,7 @@ void pass2(void) {
 
             if ((text_vaddr <= faddr) && (faddr < text_vaddr + text_section_len)) {
                 la_function_pointers.insert(faddr);
-                functions[faddr].referenced_by_function_pointer = true;
+                functions.at(faddr).referenced_by_function_pointer = true;
 #if INSPECT_FUNCTION_POINTERS
                 fprintf(stderr, "la function pointer: 0x%x at 0x%x\n", faddr, addr);
 #endif
@@ -1615,13 +1615,13 @@ void pass5(void) {
 
     assert(functions.count(main_addr));
 
-    q = functions[main_addr].returns;
+    q = functions.at(main_addr).returns;
     for (auto addr : q) {
         insns[addr_to_i(addr)].b_liveout = 1U | map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0);
     }
 
     for (auto& it : data_function_pointers) {
-        for (auto addr : functions[it.second].returns) {
+        for (auto addr : functions.at(it.second).returns) {
             q.push_back(addr);
             insns[addr_to_i(addr)].b_liveout = 1U | map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0) |
                                                map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v1);
@@ -1629,7 +1629,7 @@ void pass5(void) {
     }
 
     for (auto& func_addr : la_function_pointers) {
-        for (auto addr : functions[func_addr].returns) {
+        for (auto addr : functions.at(func_addr).returns) {
             q.push_back(addr);
             insns[addr_to_i(addr)].b_liveout = 1U | map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0) |
                                                map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v1);
@@ -2975,7 +2975,7 @@ void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const
 #endif
             ret.push_back(make_pair(section_vaddr + i, addr));
             label_addresses.insert(addr);
-            functions[addr].referenced_by_function_pointer = true;
+            functions.at(addr).referenced_by_function_pointer = true;
         }
     }
 }
@@ -3180,7 +3180,7 @@ void dump_c(void) {
 
     printf("int ret = f_main(mem, 0x%x", stack_bottom);
 
-    Function& main_func = functions[main_addr];
+    Function& main_func = functions.at(main_addr);
 
     if (main_func.nargs >= 1) {
         printf(", argc");
