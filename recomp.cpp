@@ -220,7 +220,7 @@ uint32_t bss_section_len;
 uint32_t bss_vaddr;
 
 vector<Insn> insns;
-set<uint32_t> label_addresses;
+set<uint32_t> label_addresses; // labels, both branch labels and jump table labels
 vector<uint32_t> got_globals;
 vector<uint32_t> got_locals;
 uint32_t gp_value;
@@ -301,7 +301,7 @@ const struct ExternFunction {
     { "fstat", "iip", 0 },
     { "stat", "ipp", 0 },
     { "ftruncate", "iii", 0 },
-    { "truncate", "ipi", 0},
+    { "truncate", "ipi", 0 },
     { "bcopy", "vppu", 0 },
     { "memcpy", "pppu", 0 },
     { "memccpy", "pppiu", 0 },
@@ -449,7 +449,7 @@ void disassemble(void) {
 
 void add_function(uint32_t addr) {
     if (addr >= text_vaddr && addr < text_vaddr + text_section_len) {
-        functions[addr];
+        functions.insert({ addr, {} });
     }
 }
 
@@ -999,7 +999,7 @@ void pass2(void) {
 
             if ((text_vaddr <= faddr) && (faddr < text_vaddr + text_section_len)) {
                 la_function_pointers.insert(faddr);
-                functions[faddr].referenced_by_function_pointer = true;
+                functions.at(faddr).referenced_by_function_pointer = true;
 #if INSPECT_FUNCTION_POINTERS
                 fprintf(stderr, "la function pointer: 0x%x at 0x%x\n", faddr, addr);
 #endif
@@ -1034,7 +1034,7 @@ void pass2(void) {
 
                 insns[i].patchAddress(rabbitizer::InstrId::UniqueId::cpu_jal, alloc_new_addr);
 
-                assert(symbol_names.count(alloc_new_addr) && symbol_names[alloc_new_addr] == "alloc_new");
+                assert(symbol_names.at(alloc_new_addr) == "alloc_new");
                 i++;
 
                 // LA
@@ -1067,12 +1067,12 @@ void pass2(void) {
                 uint32_t alloc_dispose_addr = text_vaddr + (i + 4) * 4;
 
                 if (symbol_names.count(alloc_dispose_addr + 4) &&
-                    symbol_names[alloc_dispose_addr + 4] == "alloc_dispose") {
+                    symbol_names.at(alloc_dispose_addr + 4) == "alloc_dispose") {
                     alloc_dispose_addr += 4;
                 }
 
                 insns[i].patchAddress(rabbitizer::InstrId::UniqueId::cpu_jal, alloc_dispose_addr);
-                assert(symbol_names.count(alloc_dispose_addr) && symbol_names[alloc_dispose_addr] == "alloc_dispose");
+                assert(symbol_names.at(alloc_dispose_addr) == "alloc_dispose");
                 i++;
 
                 insns[i] = insns[i + 2];
@@ -1615,13 +1615,13 @@ void pass5(void) {
 
     assert(functions.count(main_addr));
 
-    q = functions[main_addr].returns;
+    q = functions.at(main_addr).returns;
     for (auto addr : q) {
         insns[addr_to_i(addr)].b_liveout = 1U | map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0);
     }
 
     for (auto& it : data_function_pointers) {
-        for (auto addr : functions[it.second].returns) {
+        for (auto addr : functions.at(it.second).returns) {
             q.push_back(addr);
             insns[addr_to_i(addr)].b_liveout = 1U | map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0) |
                                                map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v1);
@@ -1629,7 +1629,7 @@ void pass5(void) {
     }
 
     for (auto& func_addr : la_function_pointers) {
-        for (auto addr : functions[func_addr].returns) {
+        for (auto addr : functions.at(func_addr).returns) {
             q.push_back(addr);
             insns[addr_to_i(addr)].b_liveout = 1U | map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0) |
                                                map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_v1);
@@ -2210,7 +2210,7 @@ void dump_instr(int i) {
 
     const char* symbol_name = NULL;
     if (symbol_names.count(text_vaddr + i * sizeof(uint32_t)) != 0) {
-        symbol_name = symbol_names[text_vaddr + i * sizeof(uint32_t)].c_str();
+        symbol_name = symbol_names.at(text_vaddr + i * sizeof(uint32_t)).c_str();
         printf("//%s:\n", symbol_name);
     }
 
@@ -2699,8 +2699,9 @@ void dump_instr(int i) {
             imm = insn.getImmediate();
 
             printf("%s = %s + %d; ", reg, r((int)insn.instruction.GetO32_rs()), imm);
-            printf("%s = ((uint32_t)MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + 3);\n", reg,
-                   reg, reg, reg, reg);
+            printf("%s = ((uint32_t)MEM_U8(%s) << 24) | (MEM_U8(%s + 1) << 16) | (MEM_U8(%s + 2) << 8) | MEM_U8(%s + "
+                   "3);\n",
+                   reg, reg, reg, reg, reg);
         } break;
 
         case rabbitizer::InstrId::UniqueId::cpu_lwr:
@@ -2974,8 +2975,8 @@ void inspect_data_function_pointers(vector<pair<uint32_t, uint32_t>>& ret, const
             fprintf(stderr, "assuming function pointer 0x%x at 0x%x\n", addr, section_vaddr + i);
 #endif
             ret.push_back(make_pair(section_vaddr + i, addr));
-            label_addresses.insert(addr);
-            functions[addr].referenced_by_function_pointer = true;
+            add_function(addr);
+            functions.at(addr).referenced_by_function_pointer = true;
         }
     }
 }
@@ -3180,7 +3181,7 @@ void dump_c(void) {
 
     printf("int ret = f_main(mem, 0x%x", stack_bottom);
 
-    Function& main_func = functions[main_addr];
+    Function& main_func = functions.at(main_addr);
 
     if (main_func.nargs >= 1) {
         printf(", argc");
