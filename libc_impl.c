@@ -150,7 +150,7 @@ static uint32_t custom_libc_data_addr;
 #define _B 0100 /* Blank */
 #define _X 0200 /* heXadecimal digit */
 
-static char ctype[] = {
+static unsigned char ctype[] = {
     0,
     // clang-format off
 /*         00      01      02      03      04      05      06      07  */
@@ -395,7 +395,7 @@ void mmap_initial_data_range(uint8_t* mem, uint32_t start, uint32_t end) {
 void setup_libc_data(uint8_t* mem) {
     memory_allocate(mem, LIBC_ADDR, (LIBC_ADDR + LIBC_SIZE));
     for (size_t i = 0; i < sizeof(ctype); i++) {
-        MEM_S8(CTYPE_ADDR + i) = ctype[i];
+        MEM_U8(CTYPE_ADDR + i) = ctype[i];
     }
     STDIN->_flag = IOREAD;
     STDIN->_file = 0;
@@ -744,7 +744,6 @@ static uint32_t get_asterisk_args(uint8_t* mem, int count, int args[2], uint32_t
  */
 int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uint32_t sp) {
     STRING(format)
-    sp += 8;
 
     int ret = 0;
     uint32_t sp_incr = 4;
@@ -929,14 +928,19 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
 }
 
 int wrapper_fprintf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_t sp) {
+    sp += 8;
     return _mprintf(prout_file, mem, &fp_addr, format_addr, sp);
 }
 
 int wrapper_printf(uint8_t* mem, uint32_t format_addr, uint32_t sp) {
-    return wrapper_fprintf(mem, STDOUT_ADDR, format_addr, sp);
+    uint32_t fp_addr = STDOUT_ADDR;
+
+    sp += 4;
+    return _mprintf(prout_file, mem, &fp_addr, format_addr, sp);
 }
 
 int wrapper_sprintf(uint8_t* mem, uint32_t str_addr, uint32_t format_addr, uint32_t sp) {
+    sp += 8;
     return _mprintf(prout_mem, mem, &str_addr, format_addr, sp);
 }
 
