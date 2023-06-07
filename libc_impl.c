@@ -2131,6 +2131,12 @@ uint32_t wrapper_fread(uint8_t* mem, uint32_t data_addr, uint32_t size, uint32_t
     struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
     int nleft = count * size;
     int n;
+
+    // Special case for reading 0 bytes
+    if (nleft == 0) {
+        return 0;
+    }
+
     for (;;) {
         if (f->_cnt <= 0) {
             if (wrapper___filbuf(mem, fp_addr) == -1) {
