@@ -829,6 +829,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
             case 'c':
             case 'd':
             case 'i':
+            case 'o':
             case 'X':
             case 'x':
             case 'u':
