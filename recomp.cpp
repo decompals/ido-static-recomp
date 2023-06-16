@@ -808,9 +808,9 @@ void pass1(void) {
                                 exit(EXIT_FAILURE);
                             }
 
-                            for (uint32_t i = 0; i < num_cases; i++) {
-                                uint32_t target_addr =
-                                    read_u32_be(rodata_section + (jtbl_addr - rodata_vaddr) + i * sizeof(uint32_t));
+                            for (uint32_t case_index = 0; case_index < num_cases; case_index++) {
+                                uint32_t target_addr = read_u32_be(rodata_section + (jtbl_addr - rodata_vaddr) +
+                                                                   case_index * sizeof(uint32_t));
 
                                 target_addr += gp_value;
                                 // printf("%08X\n", target_addr);
@@ -1133,7 +1133,6 @@ void add_edge(uint32_t from, uint32_t to, bool function_entry = false, bool func
 void pass3(void) {
     // Build graph
     for (size_t i = 0; i < insns.size(); i++) {
-        uint32_t addr = text_vaddr + i * 4;
         Insn& insn = insns[i];
 
         if (insn.no_following_successor) {
@@ -1429,8 +1428,11 @@ uint64_t get_all_source_reg_mask(const rabbitizer::InstructionCpu& instr) {
     switch (instr.getUniqueId()) {
         case rabbitizer::InstrId::UniqueId::cpu_mflo:
             ret |= map_reg(GPR_O32_lo);
+            break;
+
         case rabbitizer::InstrId::UniqueId::cpu_mfhi:
             ret |= map_reg(GPR_O32_hi);
+            break;
 
         default:
             break;
@@ -1521,7 +1523,6 @@ void pass4(void) {
                 function_entry = true;
             } else if (e.extern_function) {
                 string_view name;
-                size_t extern_function_id;
                 uint32_t address = insns[i - 1].getAddress();
 
                 // TODO: Can this only ever be a J-type instruction?
@@ -1697,7 +1698,6 @@ void pass5(void) {
                             map_reg(rabbitizer::Registers::Cpu::GprO32::GPR_O32_sp);
             } else if (e.extern_function) {
                 string_view name;
-                size_t extern_function_id;
                 const ExternFunction* found_fn = nullptr;
                 uint32_t address = insns[i - 2].getAddress();
                 // TODO: Can this only ever be a J-type instruction?
@@ -2189,8 +2189,8 @@ void dump_jal(int i, uint32_t imm) {
             printf(", %s", r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_v0));
         }
 
-        for (uint32_t i = 0; i < f.nargs; i++) {
-            printf(", %s", r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + i));
+        for (uint32_t arg_index = 0; arg_index < f.nargs; arg_index++) {
+            printf(", %s", r((int)rabbitizer::Registers::Cpu::GprO32::GPR_O32_a0 + arg_index));
         }
 
         printf(");\n");
@@ -2255,7 +2255,6 @@ void dump_instr(int i) {
     }
 
     int32_t imm;
-    char buf[0x100];
     switch (insn.instruction.getUniqueId()) {
         case rabbitizer::InstrId::UniqueId::cpu_add:
         case rabbitizer::InstrId::UniqueId::cpu_addu:
@@ -2594,8 +2593,9 @@ void dump_instr(int i) {
 #if 1
                 printf(";static void *const Lswitch%x[] = {\n", insn.jtbl_addr);
 
-                for (uint32_t i = 0; i < insn.num_cases; i++) {
-                    uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + i * sizeof(uint32_t)) + gp_value;
+                for (uint32_t case_index = 0; case_index < insn.num_cases; case_index++) {
+                    uint32_t dest_addr =
+                        read_u32_be(rodata_section + jtbl_pos + case_index * sizeof(uint32_t)) + gp_value;
                     printf("&&L%x,\n", dest_addr);
                     label_addresses.insert(dest_addr);
                 }
@@ -2612,9 +2612,10 @@ void dump_instr(int i) {
                 assert(insns[i + 1].id == MIPS_INS_NOP);
                 printf("switch (%s) {\n", r(insn.index_reg));
 
-                for (uint32_t i = 0; i < insn.num_cases; i++) {
-                    uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + i * sizeof(uint32_t)) + gp_value;
-                    printf("case %u: goto L%x;\n", i, dest_addr);
+                for (uint32_t case_index = 0; case_index < insn.num_cases; case_index++) {
+                    uint32_t dest_addr =
+                        read_u32_be(rodata_section + jtbl_pos + case_index * sizeof(uint32_t)) + gp_value;
+                    printf("case %u: goto L%x;\n", case_index, dest_addr);
                     label_addresses.insert(dest_addr);
                 }
 
@@ -2874,9 +2875,9 @@ void dump_instr(int i) {
 
         case rabbitizer::InstrId::UniqueId::cpu_swl:
             imm = insn.getImmediate();
-            for (int i = 0; i < 4; i++) {
-                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r((int)insn.instruction.GetO32_rs()), imm, i,
-                       r((int)insn.instruction.GetO32_rt()), (3 - i) * 8);
+            for (int j = 0; j < 4; j++) {
+                printf("MEM_U8(%s + %d + %d) = (uint8_t)(%s >> %d);\n", r((int)insn.instruction.GetO32_rs()), imm, j,
+                       r((int)insn.instruction.GetO32_rt()), (3 - j) * 8);
             }
             break;
 
@@ -3240,12 +3241,13 @@ void dump_c(void) {
         }
 
         for (size_t i = addr_to_i(start_addr), end_i = addr_to_i(end_addr); i < end_i; i++) {
-            Insn& insn = insns[i];
             uint32_t vaddr = text_vaddr + i * 4;
+
             if (label_addresses.count(vaddr)) {
                 printf("L%x:\n", vaddr);
             }
 #if DUMP_INSTRUCTIONS
+            Insn& insn = insns[i];
             printf("// %s:\n", insn.disassemble().c_str());
 #endif
             dump_instr(i);
@@ -3621,18 +3623,10 @@ void parse_elf(const uint8_t* data, size_t file_len) {
         assert(u32be(shdr->sh_link) == (uint32_t)symtab_section_index);
         assert(u32be(shdr->sh_entsize) == sizeof(Elf32_Rel));
 
-        for (uint32_t i = 0; i < u32be(shdr->sh_size); i += sizeof(Elf32_Rel)) {
-            Elf32_Rel* rel = (Elf32_Rel*)(data + u32be(shdr->sh_offset) + i);
+        for (uint32_t rel_index = 0; rel_index < u32be(shdr->sh_size); rel_index++) {
+            Elf32_Rel* rel = (Elf32_Rel*)(data + u32be(shdr->sh_offset) + rel_index * sizeof(Elf32_Rel));
             uint32_t offset = text_offset + u32be(rel->r_offset);
-            uint32_t symIndex = ELF32_R_SYM(u32be(rel->r_info));
             uint32_t rtype = ELF32_R_TYPE(u32be(rel->r_info));
-            const char* symName = "0";
-
-            if (symIndex != STN_UNDEF) {
-                Elf32_Sym* sym = (Elf32_Sym*)(data + u32be(sym_shdr->sh_offset) + symIndex * sizeof(Elf32_Sym));
-
-                symName = STR(sym_strtab, u32be(sym->st_name));
-            }
 
             if (rtype == R_MIPS_HI16) {
                 if (prevHi != NULL) {
@@ -3651,17 +3645,14 @@ void parse_elf(const uint8_t* data, size_t file_len) {
                     uint32_t offset2 = text_offset + u32be(prevHi->r_offset);
 
                     addend += (uint32_t)((data[offset2 + 2] << 8) + data[offset2 + 3]) << 16;
-                    // add_reloc(state, offset2, symName, addend, out_range.vaddr);
                 }
                 prevHi = NULL;
-                // add_reloc(state, offset, symName, addend, out_range.vaddr);
             } else if (rtype == R_MIPS_26) {
                 int32_t addend = (u32be(*(uint32_t*)(data + offset)) & ((1 << 26) - 1)) << 2;
 
                 if (addend >= (1 << 27)) {
                     addend -= 1 << 28;
                 }
-                // add_reloc(state, offset, symName, addend, out_range.vaddr);
             }
 
             else {
@@ -3783,7 +3774,7 @@ void crashHandler(int sig) {
 int main(int argc, char* argv[]) {
     const char* filename = argv[1];
 
-    if (strcmp(filename, "--conservative") == 0) {
+    if ((argc > 2) && (strcmp(filename, "--conservative") == 0)) {
         conservative = true;
         filename = argv[2];
     }
