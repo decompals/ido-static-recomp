@@ -587,11 +587,9 @@ void wrapper_free(uint8_t* mem, uint32_t data_addr) {
 }
 
 int wrapper_fscanf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_t sp) {
-#ifdef DEVELOPMENT
     UNUSED struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
     STRING(format)
     (void)format;
-#endif
 
     int ret = 0;
     char c;
