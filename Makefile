@@ -78,8 +78,6 @@ else
   OPTFLAGS     ?= -Og -g3
   STRIP := @:
   RAB_DEBUG    := 1
-  CFLAGS       += -DDEVELOPMENT=1
-  CXXFLAGS     += -DDEVELOPMENT=1
 endif
 
 ifneq ($(ASAN),0)
