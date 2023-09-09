@@ -6,7 +6,7 @@
 #### Defaults ####
 
 # select the version and binaries of IDO toolchain to recompile
-VERSION ?= 5.3
+VERSION ?= 7.1
 # if WERROR is 1, pass -Werror to CC, so warnings would be treated as errors
 WERROR ?= 0
 # if RELEASE is 1 strip binaries as well as enable optimizations
