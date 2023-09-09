@@ -21,9 +21,11 @@ ifeq ($(VERSION),7.1)
   IDO_VERSION := IDO71
 # copt currently does not build
   IDO_TC      := cc acpp as0 as1 cfe ugen ujoin uld umerge uopt usplit upas
+  IDO_LIBS    :=
 else ifeq ($(VERSION),5.3)
   IDO_VERSION := IDO53
   IDO_TC      := cc strip acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit ld upas
+  IDO_LIBS    := crt1.o crtn.o libc.so libc.so.1 libexc.so libgen.so libm.so
 else
   $(error Unknown or unsupported IDO version - $(VERSION))
 endif
@@ -104,6 +106,7 @@ IRIX_USR_DIR ?= $(IRIX_BASE)/$(VERSION)/usr
 
 # -- Location of the irix tool chain error messages
 ERR_STRS        := $(BUILT_BIN)/err.english.cc
+LIBS            := $(foreach lib,$(IDO_LIBS),$(BUILT_BIN)/$(lib))
 
 RECOMP_ELF      := $(BUILD_BASE)/recomp.elf
 LIBC_IMPL_O     := libc_impl.o
@@ -140,7 +143,7 @@ endif
 
 #### Main Targets ###
 
-all: $(TARGET_BINARIES) $(ERR_STRS)
+all: $(TARGET_BINARIES) $(ERR_STRS) $(LIBS)
 
 setup:
 	$(MAKE) -C $(RABBITIZER) static CC=$(CC) CXX=$(CXX) DEBUG=$(RAB_DEBUG)
@@ -177,6 +180,15 @@ $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/%
 
 
 $(BUILT_BIN)/%.cc: $(IRIX_USR_DIR)/lib/%.cc
+	cp $^ $@
+
+$(BUILT_BIN)/%.o: $(IRIX_USR_DIR)/lib/%.o
+	cp $^ $@
+
+$(BUILT_BIN)/%.so: $(IRIX_USR_DIR)/lib/%.so
+	cp $^ $@
+
+$(BUILT_BIN)/%.so.1: $(IRIX_USR_DIR)/lib/%.so.1
 	cp $^ $@
 
 
