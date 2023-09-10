@@ -24,10 +24,10 @@ ifeq ($(VERSION),7.1)
   IDO_LIBS    :=
 else ifeq ($(VERSION),5.3)
   IDO_VERSION := IDO53
-  IDO_TC      := cc strip acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit ld upas
+  IDO_TC      := cc strip acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit ld upas c++filt
   IDO_LIBS    := crt1.o crtn.o libc.so libc.so.1 libexc.so libgen.so libm.so
 else
-  $(error Unknown or unsupported IDO version - $(VERSION))
+$(error Unknown or unsupported IDO version - $(VERSION))
 endif
 
 
@@ -176,6 +176,14 @@ $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/%
 
 # cc and strip are special and are stored in the `bin` folder instead of the `lib` one
 $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/%
+	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
+
+# IDO c++ files are in a different subfolder (`lib/DCC` and `lib/c++`)
+$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/DCC/%
+	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
+
+# IDO c++ files are in a different subfolder (`lib/DCC` and `lib/c++`)
+$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/c++/%
 	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
 

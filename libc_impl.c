@@ -734,7 +734,6 @@ static uint32_t get_asterisk_args(uint8_t* mem, int count, int args[2], uint32_t
  */
 int _mprintf(prout prout_func, uint8_t* mem, uint32_t* out, uint32_t format_addr, uint32_t sp) {
     STRING(format)
-    sp += 8;
 
     int ret = 0;
     uint32_t sp_incr = 4;
@@ -920,14 +919,19 @@ int _mprintf(prout prout_func, uint8_t* mem, uint32_t* out, uint32_t format_addr
 }
 
 int wrapper_fprintf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_t sp) {
+    sp += 8;
     return _mprintf(prout_file, mem, &fp_addr, format_addr, sp);
 }
 
 int wrapper_printf(uint8_t* mem, uint32_t format_addr, uint32_t sp) {
-    return wrapper_fprintf(mem, STDOUT_ADDR, format_addr, sp);
+    uint32_t fp_addr = STDOUT_ADDR;
+
+    sp += 4;
+    return _mprintf(prout_file, mem, &fp_addr, format_addr, sp);
 }
 
 int wrapper_sprintf(uint8_t* mem, uint32_t str_addr, uint32_t format_addr, uint32_t sp) {
+    sp += 8;
     return _mprintf(prout_mem, mem, &str_addr, format_addr, sp);
 }
 
