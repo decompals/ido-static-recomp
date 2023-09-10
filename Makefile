@@ -273,6 +273,7 @@ $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
 $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
 
+# $(VERSION_INFO).o is set to depend on every other .o file to ensure the version information is always up to date
 $(BUILD_DIR)/arm64-apple-macos11/$(VERSION_INFO).o: $(VERSION_INFO).c $(O_FILES) $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL).o
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
 
@@ -304,6 +305,7 @@ $(BUILD_DIR)/$(LIBC_IMPL).o: $(LIBC_IMPL).c
 $(BUILD_DIR)/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -o $@ $<
 
+# $(VERSION_INFO).o is set to depend on every other .o file to ensure the version information is always up to date
 $(BUILD_DIR)/$(VERSION_INFO).o: $(VERSION_INFO).c $(O_FILES) $(BUILD_DIR)/$(LIBC_IMPL).o $(BUILD_DIR)/$(LIBC_IMPL)_53.o
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -o $@ $<
 endif
