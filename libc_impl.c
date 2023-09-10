@@ -35,7 +35,6 @@
 
 #include "libc_impl.h"
 #include "helpers.h"
-#include "header.h"
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -61,6 +60,10 @@
 #define CTYPE_ADDR 0x0fb504f0
 #define LIBC_ADDR 0x0fb50000
 #define LIBC_SIZE 0x3000
+#define OPTERR_ADDR 0x0fb522e0
+#define OPTIND_ADDR 0x0fb522e4
+#define OPTOPT_ADDR 0x0fb522e8
+#define OPTARG_ADDR 0x0fb522ec
 #endif
 
 #ifdef IDO71
@@ -70,6 +73,10 @@
 #define CTYPE_ADDR 0x0fb4cba0
 #define LIBC_ADDR 0x0fb4c000
 #define LIBC_SIZE 0x3000
+#define OPTERR_ADDR 0x0fb436a0
+#define OPTIND_ADDR 0x0fb436a4
+#define OPTOPT_ADDR 0x0fb436a8
+#define OPTARG_ADDR 0x0fb436ac
 #endif
 
 #ifdef IDO72
@@ -79,6 +86,10 @@
 #define CTYPE_ADDR 0x0fb46db0
 #define LIBC_ADDR 0x0fb46000
 #define LIBC_SIZE 0x4000
+// #define OPTERR_ADDR
+// #define OPTIND_ADDR
+// #define OPTOPT_ADDR
+// #define OPTARG_ADDR
 #endif
 
 #define STDIN_ADDR IOB_ADDR
@@ -98,11 +109,11 @@
 
 #define NFILE 100
 
-#define IOFBF 0000 /* full buffered */
-#define IOLBF 0100 /* line buffered */
-#define IONBF 0004 /* not buffered */
-#define IOEOF 0020 /* EOF reached on read */
-#define IOERR 0040 /* I/O error from system */
+#define IOFBF 0000   /* full buffered */
+#define IOLBF 0100   /* line buffered */
+#define IONBF 0004   /* not buffered */
+#define IOEOF 0020   /* EOF reached on read */
+#define IOERR 0040   /* I/O error from system */
 
 #define IOREAD 0001  /* currently reading */
 #define IOWRT 0002   /* currently writing */
@@ -124,9 +135,6 @@ struct FILE_irix {
     uint8_t _file;
     uint8_t _flag;
 };
-
-typedef uint64_t (*fptr_trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3,
-                                    uint32_t fp_dest);
 
 static struct {
     struct {
@@ -150,7 +158,7 @@ static uint32_t custom_libc_data_addr;
 #define _B 0100 /* Blank */
 #define _X 0200 /* heXadecimal digit */
 
-static char ctype[] = {
+static unsigned char ctype[] = {
     0,
     // clang-format off
 /*         00      01      02      03      04      05      06      07  */
@@ -338,21 +346,82 @@ static void init_redirect_paths(void) {
 void redirect_path(char* out, const char* path, const char* from, const char* to) {
     int from_len = strlen(from);
 
-    if (!strncmp(path, from, from_len) && (to[0] != '\0')) {
+    if ((strncmp(path, from, from_len) == 0) && (to[0] != '\0')) {
         char redirected_path[PATH_MAX + 1] = { 0 };
         int n;
 
         n = snprintf(redirected_path, sizeof(redirected_path), "%s%s", to, path + from_len);
 
-        if (n >= 0 && n < sizeof(redirected_path)) {
+        if ((n >= 0) && ((size_t)n < sizeof(redirected_path))) {
             strcpy(out, redirected_path);
         } else {
             fprintf(stderr, "Error: Unable to redirect %s->%s for %s\n", from, to, path);
             exit(1);
         }
     } else {
-        strcpy(out, path);
+        // memmove instead of strcpy to allow overlapping buffers
+        memmove(out, path, strlen(path) + 1);
     }
+}
+
+typedef struct GlobalArgs {
+    int argc;
+    char** argv;
+} GlobalArgs;
+
+static GlobalArgs global_args = { 0, NULL };
+
+static void init_global_args(int argc, char** argv) {
+    assert(global_args.argc == 0);
+    assert(global_args.argv == NULL);
+
+    global_args.argc = argc;
+    global_args.argv = malloc((argc + 1) * sizeof(char*));
+    for (int i = 0; i < argc; i++) {
+        global_args.argv[i] = malloc((strlen(argv[i]) + 1) * sizeof(char));
+        strcpy(global_args.argv[i], argv[i]);
+    }
+    global_args.argv[argc] = NULL;
+}
+
+static void destroy_global_args(void) {
+    assert(global_args.argc != 0);
+    assert(global_args.argv != NULL);
+
+    for (int i = 0; i < global_args.argc; i++) {
+        free(global_args.argv[i]);
+    }
+
+    free(global_args.argv);
+    global_args.argc = 0;
+}
+
+static char** make_argv_from_mem(uint8_t* mem, int argc, uint32_t argv_addr) {
+    char** argv = malloc((argc + 1) * sizeof(char*));
+
+    for (uint32_t i = 0; i < argc; i++) {
+        uint32_t str_addr = MEM_U32(argv_addr + i * sizeof(uint32_t));
+        uint32_t len = wrapper_strlen(mem, str_addr) + 1;
+
+        argv[i] = malloc(len * sizeof(char));
+        char* pos = argv[i];
+        while (len--) {
+            *pos++ = MEM_S8(str_addr);
+            ++str_addr;
+        }
+    }
+
+    argv[argc] = NULL;
+
+    return argv;
+}
+
+static void free_argv(int argc, char** argv) {
+    for (uint32_t i = 0; i < argc; i++) {
+        free(argv[i]);
+    }
+
+    free(argv);
 }
 
 void final_cleanup(uint8_t* mem) {
@@ -360,6 +429,7 @@ void final_cleanup(uint8_t* mem) {
     free_all_file_bufs(mem);
     mem += MEM_REGION_START;
     memory_unmap(mem, MEM_REGION_SIZE);
+    destroy_global_args();
 }
 
 void print_version_info(void);
@@ -383,6 +453,7 @@ int main(int argc, char* argv[]) {
 
     uint8_t* mem = memory_map(MEM_REGION_SIZE);
     mem -= MEM_REGION_START;
+    init_global_args(argc, argv);
     int run(uint8_t * mem, int argc, char* argv[]);
     ret = run(mem, argc, argv);
     final_cleanup(mem);
@@ -403,7 +474,7 @@ void mmap_initial_data_range(uint8_t* mem, uint32_t start, uint32_t end) {
 void setup_libc_data(uint8_t* mem) {
     memory_allocate(mem, LIBC_ADDR, (LIBC_ADDR + LIBC_SIZE));
     for (size_t i = 0; i < sizeof(ctype); i++) {
-        MEM_S8(CTYPE_ADDR + i) = ctype[i];
+        MEM_U8(CTYPE_ADDR + i) = ctype[i];
     }
     STDIN->_flag = IOREAD;
     STDIN->_file = 0;
@@ -427,18 +498,6 @@ static uint32_t strcpy_str2mem(uint8_t* mem, uint32_t dest_addr, const char* str
     for (;;) {
         char c = *str;
         ++str;
-        MEM_S8(dest_addr) = c;
-        ++dest_addr;
-        if (c == '\0') {
-            return dest_addr - 1;
-        }
-    }
-}
-
-static uint32_t strcpy_mem2mem(uint8_t* mem, uint32_t dest_addr, uint32_t src_addr) {
-    for (;;) {
-        char c = MEM_S8(src_addr);
-        ++src_addr;
         MEM_S8(dest_addr) = c;
         ++dest_addr;
         if (c == '\0') {
@@ -510,12 +569,14 @@ size_t num_sbrks;
 size_t num_allocs;
 uint32_t wrapper_malloc(uint8_t* mem, uint32_t size) {
     int bin = -1;
+
     for (int i = 3; i < 30; i++) {
-        if (size <= (1 << i)) {
+        if (size <= (1U << i)) {
             bin = i;
             break;
         }
     }
+
     if (bin == -1) {
         return 0;
     }
@@ -598,7 +659,7 @@ void wrapper_free(uint8_t* mem, uint32_t data_addr) {
     }
     uint32_t list_ptr = MALLOC_BINS_ADDR + (bin - 3) * 4;
     assert(bin >= 3 && bin < 30);
-    assert(size <= (1 << bin));
+    assert(size <= (1U << bin));
     MEM_U32(node_ptr) = MEM_U32(list_ptr);
     MEM_U32(node_ptr + 4) = 0;
     MEM_U32(list_ptr) = node_ptr;
@@ -606,8 +667,9 @@ void wrapper_free(uint8_t* mem, uint32_t data_addr) {
 }
 
 int wrapper_fscanf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_t sp) {
-    struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
-    STRING(format) // for debug
+    UNUSED struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
+    STRING(format)
+    (void)format;
 
     int ret = 0;
     char c;
@@ -750,9 +812,8 @@ static uint32_t get_asterisk_args(uint8_t* mem, int count, int args[2], uint32_t
 /**
  * printf internal that takes `mem` as input.
  */
-int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uint32_t sp) {
+int _mprintf(prout prout_func, uint8_t* mem, uint32_t* out, uint32_t format_addr, uint32_t sp) {
     STRING(format)
-    sp += 8;
 
     int ret = 0;
     uint32_t sp_incr = 4;
@@ -775,7 +836,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
             c = MEM_U8(pos);
         }
         if (format_addr != pos) {
-            if (prout(mem, out, format_addr, pos - format_addr) != pos - format_addr) {
+            if (prout_func(mem, out, format_addr, pos - format_addr) != (int)(pos - format_addr)) {
                 return -1;
             }
         }
@@ -837,6 +898,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
             case 'c':
             case 'd':
             case 'i':
+            case 'o':
             case 'X':
             case 'x':
             case 'u':
@@ -868,7 +930,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                 if (strcmp(format_specifier, "%s") == 0) {
                     uint32_t str_addr = MEM_U32(sp);
                     size_t len = wrapper_strlen(mem, str_addr);
-                    step_chars_printed = prout(mem, out, str_addr, len);
+                    step_chars_printed = prout_func(mem, out, str_addr, len);
                     goto increments;
                 }
 
@@ -876,7 +938,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
 
                 // Copy string into normal memory to be able to pass it to normal printf functions
                 step_chars_printed = wrapper_strlen(mem, MEM_U32(sp));
-                if (step_chars_printed + 1 > str_len) {
+                if (step_chars_printed + 1 > (int)str_len) {
                     str_len = step_chars_printed + 1;
                     str = realloc(str, str_len);
                 }
@@ -896,7 +958,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
                         step_chars_printed = snprintf(NULL, 0, format_specifier, ast_args[0], ast_args[1], str);
                         break;
                 }
-                if (step_chars_printed + 1 > buf_len) {
+                if (step_chars_printed + 1 > (int)buf_len) {
                     buf_len = step_chars_printed + 1;
                     buf = realloc(buf, buf_len);
                 }
@@ -916,7 +978,7 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
 
             memcpy_str2mem(mem, INTBUF_ADDR, buf + chars_printed, in_count);
 
-            int out_count = prout(mem, out, INTBUF_ADDR, in_count);
+            int out_count = prout_func(mem, out, INTBUF_ADDR, in_count);
             if (out_count != in_count) {
                 fprintf(stderr, "Did not print %s successfully\n", format);
                 return ret;
@@ -937,14 +999,19 @@ int _mprintf(prout prout, uint8_t* mem, uint32_t* out, uint32_t format_addr, uin
 }
 
 int wrapper_fprintf(uint8_t* mem, uint32_t fp_addr, uint32_t format_addr, uint32_t sp) {
+    sp += 8;
     return _mprintf(prout_file, mem, &fp_addr, format_addr, sp);
 }
 
 int wrapper_printf(uint8_t* mem, uint32_t format_addr, uint32_t sp) {
-    return wrapper_fprintf(mem, STDOUT_ADDR, format_addr, sp);
+    uint32_t fp_addr = STDOUT_ADDR;
+
+    sp += 4;
+    return _mprintf(prout_file, mem, &fp_addr, format_addr, sp);
 }
 
 int wrapper_sprintf(uint8_t* mem, uint32_t str_addr, uint32_t format_addr, uint32_t sp) {
+    sp += 8;
     return _mprintf(prout_mem, mem, &str_addr, format_addr, sp);
 }
 
@@ -967,6 +1034,8 @@ int wrapper_open(uint8_t* mem, uint32_t pathname_addr, int flags, int mode) {
 
     char rpathname[PATH_MAX + 1];
     redirect_path(rpathname, pathname, "/usr/include", usr_include_redirect);
+    redirect_path(rpathname, pathname, "/usr/lib", usr_lib_redirect);
+    redirect_path(rpathname, pathname, "/lib", usr_lib_redirect);
 
     int f = flags & O_ACCMODE;
     if (flags & 0x100) {
@@ -1190,11 +1259,12 @@ uint32_t wrapper_strrchr(uint8_t* mem, uint32_t str_addr, int c) {
 
 uint32_t wrapper_strcspn(uint8_t* mem, uint32_t str_addr, uint32_t invalid_addr) {
     STRING(invalid)
-    uint32_t n = strlen(invalid);
+    size_t n = strlen(invalid);
     uint32_t pos = 0;
     char c;
-    while ((c = MEM_S8(str_addr)) != 0) {
-        for (int i = 0; i < n; i++) {
+
+    while ((c = MEM_U8(str_addr)) != 0) {
+        for (size_t i = 0; i < n; i++) {
             if (c == invalid[i]) {
                 return pos;
             }
@@ -1207,10 +1277,11 @@ uint32_t wrapper_strcspn(uint8_t* mem, uint32_t str_addr, uint32_t invalid_addr)
 
 uint32_t wrapper_strpbrk(uint8_t* mem, uint32_t str_addr, uint32_t accept_addr) {
     STRING(accept)
-    uint32_t n = strlen(accept);
+    size_t n = strlen(accept);
     char c;
+
     while ((c = MEM_S8(str_addr)) != 0) {
-        for (int i = 0; i < n; i++) {
+        for (size_t i = 0; i < n; i++) {
             if (c == accept[i]) {
                 return str_addr;
             }
@@ -1396,9 +1467,11 @@ static uint32_t init_file(uint8_t* mem, int fd, int i, const char* path, const c
     } else if (strcmp(mode, "a+") == 0 || strcmp(mode, "a+b") == 0) {
         flags = O_RDWR | O_CREAT | O_APPEND;
     }
+
     if (fd == -1) {
         char rpathname[PATH_MAX + 1];
-        redirect_path(rpathname, path, "/usr/lib", usr_lib_redirect);
+        redirect_path(rpathname, path, "/usr/lib/DCC", usr_lib_redirect);
+        redirect_path(rpathname, rpathname, "/usr/lib", usr_lib_redirect);
 
         fd = open(rpathname, flags, 0666);
 
@@ -1431,7 +1504,9 @@ static uint32_t init_file(uint8_t* mem, int fd, int i, const char* path, const c
 }
 
 uint32_t wrapper_fopen(uint8_t* mem, uint32_t path_addr, uint32_t mode_addr) {
-    assert(path_addr != 0);
+    if (path_addr == 0) {
+        return 0;
+    }
     assert(mode_addr != 0);
 
     STRING(path)
@@ -1541,12 +1616,14 @@ int wrapper_fseek(uint8_t* mem, uint32_t fp_addr, int offset, int origin) {
         if (origin < SEEK_END && f->_base_addr && !(f->_flag & IONBF)) {
             c = f->_cnt;
             p = offset;
+
             if (origin == SEEK_SET) {
                 p += c - lseek(f->_file, 0L, SEEK_CUR);
             } else {
                 offset -= c;
             }
-            if (!(f->_flag & IORW) && c > 0 && p <= c && p >= f->_base_addr - f->_ptr_addr) {
+
+            if (!(f->_flag & IORW) && c > 0 && p <= c && (uint32_t)p >= f->_base_addr - f->_ptr_addr) {
                 f->_ptr_addr += p;
                 f->_cnt -= p;
                 return 0;
@@ -1901,21 +1978,12 @@ uint32_t wrapper_strftime(uint8_t* mem, uint32_t ptr_addr, uint32_t maxsize, uin
 }
 
 int wrapper_times(uint8_t* mem, uint32_t buffer_addr) {
-    struct tms_irix {
-        int tms_utime;
-        int tms_stime;
-        int tms_cutime;
-        int tms_cstime;
-    } r;
     struct tms t;
     clock_t ret = times(&t);
+
     if (ret == (clock_t)-1) {
         MEM_U32(ERRNO_ADDR) = errno;
     } else {
-        r.tms_utime = t.tms_utime;
-        r.tms_stime = t.tms_stime;
-        r.tms_cutime = t.tms_cutime;
-        r.tms_cstime = t.tms_cstime;
         MEM_U32(buffer_addr + 0x0) = t.tms_utime;
         MEM_U32(buffer_addr + 0x4) = t.tms_stime;
         MEM_U32(buffer_addr + 0x8) = t.tms_cutime;
@@ -2139,6 +2207,12 @@ uint32_t wrapper_fread(uint8_t* mem, uint32_t data_addr, uint32_t size, uint32_t
     struct FILE_irix* f = (struct FILE_irix*)&MEM_U32(fp_addr);
     int nleft = count * size;
     int n;
+
+    // Special case for reading 0 bytes
+    if (nleft == 0) {
+        return 0;
+    }
+
     for (;;) {
         if (f->_cnt <= 0) {
             if (wrapper___filbuf(mem, fp_addr) == -1) {
@@ -2415,7 +2489,7 @@ uint32_t wrapper_setlocale(uint8_t* mem, int category, uint32_t locale_addr) {
     assert(locale_addr != 0);
     STRING(locale)
     assert(category == 6); // LC_ALL
-    char* ret = setlocale(LC_ALL, locale);
+    UNUSED char* ret = setlocale(LC_ALL, locale);
     // Let's hope the caller doesn't use the return value
     return 0;
 }
@@ -2483,17 +2557,11 @@ static void signal_handler(int signum) {
     signal_context.recursion_level--;
 }
 
-uint32_t wrapper_signal(uint8_t* mem, int signum,
-                        uint64_t (*trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2,
-                                               uint32_t a3, uint32_t fp_dest),
-                        uint32_t handler_addr, uint32_t sp) {
+uint32_t wrapper_signal(uint8_t* mem, int signum, fptr_trampoline trampoline, uint32_t handler_addr, uint32_t sp) {
     return 0;
 }
 
-uint32_t wrapper_sigset(uint8_t* mem, int signum,
-                        uint64_t (*trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2,
-                                               uint32_t a3, uint32_t fp_dest),
-                        uint32_t disp_addr, uint32_t sp) {
+uint32_t wrapper_sigset(uint8_t* mem, int signum, fptr_trampoline trampoline, uint32_t disp_addr, uint32_t sp) {
     void (*handler)(int) = signal_handler;
 
     if ((int)disp_addr >= -1 && (int)disp_addr <= 1) {
@@ -2599,7 +2667,8 @@ uint32_t wrapper_tmpfile(uint8_t* mem) {
 
     char name[PATH_MAX + 1] = { 0 };
     int n = snprintf(name, sizeof(name), "%s/copt_temp_XXXXXX", tmpdir);
-    if (n < 0 || n >= sizeof(name)) {
+
+    if (n < 0 || (size_t)n >= sizeof(name)) {
         // This isn't the best errno code, but it is one that can be returned by tmpfile
         MEM_U32(ERRNO_ADDR) = EACCES;
         return 0;
@@ -2648,23 +2717,12 @@ int wrapper_execv(uint8_t* mem, uint32_t pathname_addr, uint32_t argv_addr) {
     while (MEM_U32(argv_addr + argc * 4) != 0) {
         ++argc;
     }
-    char* argv[argc + 1];
-    for (uint32_t i = 0; i < argc; i++) {
-        uint32_t str_addr = MEM_U32(argv_addr + i * 4);
-        uint32_t len = wrapper_strlen(mem, str_addr) + 1;
-        argv[i] = (char*)malloc(len);
-        char* pos = argv[i];
-        while (len--) {
-            *pos++ = MEM_S8(str_addr);
-            ++str_addr;
-        }
-    }
-    argv[argc] = NULL;
+    char** argv = make_argv_from_mem(mem, argc, argv_addr);
+
     execv(pathname, argv);
     MEM_U32(ERRNO_ADDR) = errno;
-    for (uint32_t i = 0; i < argc; i++) {
-        free(argv[i]);
-    }
+
+    free_argv(argc, argv);
     return -1;
 }
 
@@ -2674,28 +2732,17 @@ int wrapper_execvp(uint8_t* mem, uint32_t file_addr, uint32_t argv_addr) {
     while (MEM_U32(argv_addr + argc * 4) != 0) {
         ++argc;
     }
-    char* argv[argc + 1];
-    for (uint32_t i = 0; i < argc; i++) {
-        uint32_t str_addr = MEM_U32(argv_addr + i * 4);
-        uint32_t len = wrapper_strlen(mem, str_addr) + 1;
-        argv[i] = (char*)malloc(len);
-        char* pos = argv[i];
-        while (len--) {
-            *pos++ = MEM_S8(str_addr);
-            ++str_addr;
-        }
-    }
-    argv[argc] = NULL;
+    char** argv = make_argv_from_mem(mem, argc, argv_addr);
 
     char rfile[PATH_MAX + 1];
-    redirect_path(rfile, file, "/usr/lib", usr_lib_redirect);
+    redirect_path(rfile, file, "/usr/lib/DCC", usr_lib_redirect);
+    redirect_path(rfile, rfile, "/usr/lib", usr_lib_redirect);
 
     execvp(rfile, argv);
 
     MEM_U32(ERRNO_ADDR) = errno;
-    for (uint32_t i = 0; i < argc; i++) {
-        free(argv[i]);
-    }
+
+    free_argv(argc, argv);
     return -1;
 }
 
@@ -2968,6 +3015,7 @@ uint32_t wrapper_regcmp(uint8_t* mem, uint32_t string1_addr, uint32_t sp) {
 
 uint32_t wrapper_regex(uint8_t* mem, uint32_t re_addr, uint32_t subject_addr, uint32_t sp) {
     STRING(subject);
+    (void)subject;
     assert(0 && "regex not implemented");
     return 0;
 }
@@ -2976,6 +3024,187 @@ void wrapper___assert(uint8_t* mem, uint32_t assertion_addr, uint32_t file_addr,
     STRING(assertion)
     STRING(file)
     __assert(assertion, file, line);
+}
+
+// https://linux.die.net/man/3/twalk
+void wrapper_twalk(uint8_t* mem, uint32_t root_addr, fptr_trampoline trampoline, uint32_t action_addr, uint32_t sp) {
+    assert(0 && "twalk not implemented");
+}
+
+// https://linux.die.net/man/3/msync
+int32_t wrapper_msync(uint8_t* mem, uint32_t addr_addr, uint32_t len, int32_t flags) {
+    assert(0 && "msync not implemented");
+}
+
+// https://linux.die.net/man/3/mkdir
+int32_t wrapper_mkdir(uint8_t* mem, uint32_t path_addr, uint32_t mode) {
+    assert(0 && "mkdir not implemented");
+}
+
+// https://en.cppreference.com/w/c/io/fputc
+int32_t wrapper_fputc(uint8_t* mem, int32_t ch, uint32_t stream_addr) {
+    int32_t ret;
+
+    if (stream_addr == STDOUT_ADDR) {
+        ret = fputc(ch, stdout);
+    } else if (stream_addr == STDERR_ADDR) {
+        ret = fputc(ch, stderr);
+    } else {
+        fprintf(stderr, "%s: ch          %i\n", __func__, ch);
+        fprintf(stderr, "%s: stream_addr %X\n", __func__, stream_addr);
+        assert(0 && "fputc with custom stream is not implemented");
+    }
+
+    return ret;
+}
+
+// https://linux.die.net/man/3/getopt
+int32_t wrapper_getopt(uint8_t* mem, int32_t argc, uint32_t argv_addr, uint32_t optstring_addr) {
+    bool optargFound = false;
+    STRING(optstring);
+    int32_t ret;
+    uint32_t argv_mem_new[argc];
+
+    assert(argc == global_args.argc);
+
+    if ((optarg != NULL) && (MEM_U32(OPTARG_ADDR) != 0)) {
+        // optarg points to an old argv value which is no longer valid, we need to update it before calling getopt
+        bool optarg_from_memory_found = false;
+        uint32_t optarg_mem_addr = MEM_U32(OPTARG_ADDR);
+        STRING(optarg_mem);
+
+        for (int32_t i = 0; i < global_args.argc && !optarg_from_memory_found; i++) {
+            size_t arg_len = strlen(global_args.argv[i]);
+
+            for (size_t j = 0; j < arg_len; j++) {
+                if (strcmp(&global_args.argv[i][j], optarg_mem) == 0) {
+
+                    optarg = &global_args.argv[i][j];
+                    optarg_from_memory_found = true;
+                    break;
+                }
+            }
+        }
+
+        assert(optarg_from_memory_found);
+    }
+
+    ret = getopt(global_args.argc, global_args.argv, optstring);
+
+    MEM_S32(OPTERR_ADDR) = opterr;
+    MEM_S32(OPTIND_ADDR) = optind;
+    MEM_S32(OPTOPT_ADDR) = optopt;
+
+    if (optarg == NULL) {
+        optargFound = true;
+        MEM_U32(OPTARG_ADDR) = 0;
+    }
+
+    for (int32_t i = 0; i < global_args.argc; i++) {
+        size_t arg_len = strlen(global_args.argv[i]);
+
+        // We need to find optarg
+        for (size_t j = 0; j < arg_len && !optargFound; j++) {
+            if (strcmp(&global_args.argv[i][j], optarg) == 0) {
+                uint32_t str_addr = MEM_U32(argv_addr + i * sizeof(uint32_t)) + j;
+
+                MEM_U32(OPTARG_ADDR) = str_addr;
+                optargFound = true;
+            }
+        }
+
+        // find the permuted argvs and put them in a temp array
+        for (int32_t j = 0; j < global_args.argc; j++) {
+            uint32_t str_addr = MEM_U32(argv_addr + j * sizeof(uint32_t));
+            STRING(str);
+
+            if ((strcmp(global_args.argv[i], str) == 0)) {
+                argv_mem_new[i] = str_addr;
+                break;
+            }
+        }
+    }
+
+    // copy the temp array into the real argv
+    for (int32_t j = 0; j < global_args.argc; j++) {
+        MEM_U32(argv_addr + j * sizeof(uint32_t)) = argv_mem_new[j];
+    }
+
+    return ret;
+}
+
+// https://linux.die.net/man/2/link
+int32_t wrapper_link(uint8_t* mem, uint32_t oldpath_addr, uint32_t newpath_addr) {
+    assert(0 && "link not implemented");
+}
+
+// https://en.cppreference.com/w/c/io/vfprintf
+int32_t wrapper_vsprintf(uint8_t* mem, uint32_t buffer_addr, uint32_t format_addr, uint32_t vlist_addr) {
+    assert(0 && "vsprintf not implemented");
+}
+
+// https://linux.die.net/man/3/fabs
+double wrapper_fabs(double x) {
+    return fabs(x);
+}
+
+// Non standard function
+int32_t wrapper_sysid(uint8_t* mem, uint32_t unknown_parameter_addr) {
+    assert(0 && "sysid not implemented");
+}
+
+// https://linux.die.net/man/3/realpath
+uint32_t wrapper_realpath(uint8_t* mem, uint32_t path_addr, uint32_t resolved_path_addr) {
+    assert(0 && "realpath not implemented");
+}
+
+// https://linux.die.net/man/2/fsync
+int32_t wrapper_fsync(uint8_t* mem, int32_t fd) {
+    assert(0 && "fsync not implemented");
+}
+
+// https://linux.die.net/man/3/sleep
+uint32_t wrapper_sleep(uint8_t* mem, uint32_t seconds) {
+    assert(0 && "sleep not implemented");
+}
+
+// https://linux.die.net/man/2/socket
+int32_t wrapper_socket(uint8_t* mem, int32_t domain, int32_t type, int32_t protocol) {
+    assert(0 && "socket not implemented");
+}
+
+// https://linux.die.net/man/2/connect
+int32_t wrapper_connect(uint8_t* mem, int32_t sockfd, uint32_t addr_addr, uint32_t addrlen) {
+    assert(0 && "connect not implemented");
+}
+
+// https://linux.die.net/man/2/recv
+int32_t wrapper_recv(uint8_t* mem, int32_t sockfd, uint32_t buf_addr, uint32_t len, int32_t flags) {
+    assert(0 && "recv not implemented");
+}
+
+// https://linux.die.net/man/2/send
+int32_t wrapper_send(uint8_t* mem, int32_t sockfd, uint32_t buf_addr, uint32_t len, int32_t flags) {
+    assert(0 && "send not implemented");
+}
+
+// https://linux.die.net/man/3/shutdown
+int32_t wrapper_shutdown(uint8_t* mem, int32_t socket, int32_t how) {
+    assert(0 && "shutdown not implemented");
+}
+
+// https://linux.die.net/man/3/sscanf
+int32_t wrapper_sscanf(uint8_t* mem, uint32_t str_addr, uint32_t format_addr, uint32_t sp) {
+    assert(0 && "sscanf not implemented");
+}
+
+// C++ functions
+uint32_t wrapper___nw__FUi(uint8_t* mem, uint32_t size) {
+    return wrapper_malloc(mem, size);
+}
+
+void wrapper___dl__FPv(uint8_t* mem, uint32_t data_addr) {
+    wrapper_free(mem, data_addr);
 }
 
 union host_doubleword {
