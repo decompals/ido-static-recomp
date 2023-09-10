@@ -50,7 +50,7 @@
 
 /* Date and time */
 #ifndef DATETIME
-#define DATETIME "xxxx-xx-xx xx:xx:xx UTC+xxxx"
+#define DATETIME "Unknown date"
 #endif
 
 extern char* progname;
