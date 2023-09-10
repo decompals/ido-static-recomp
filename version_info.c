@@ -1,7 +1,7 @@
 /**
  * Function that prints version info. This file should be compiled with the following defined:
  * - PACKAGE_VERSION, e.g. with `-DPACKAGE_VERSION="\"$(LC_ALL=C git --git-dir .git describe --tags --dirty)\""`
- * - DATETIME, e.g. with `-DDATETIME=$(date +'%F %T UTC%z')`
+ * - DATETIME, e.g. with `-DDATETIME="\"$(date +'%F %T UTC%z')\""`
  *
  * The code in this file is mostly taken from 
  * - CPython: https://github.com/python/cpython/, licensed under the PSF, available here: https://docs.python.org/3/license.html
