@@ -14,6 +14,7 @@ Wrapper functions implementing this redirection:
 
 * `init_file`
 * `wrapper_execvp`
+* `wrapper_open`
 
 ### `/usr/include`
 
