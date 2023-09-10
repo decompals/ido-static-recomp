@@ -21,9 +21,11 @@ ifeq ($(VERSION),7.1)
   IDO_VERSION := IDO71
 # copt currently does not build
   IDO_TC      := cc acpp as0 as1 cfe ugen ujoin uld umerge uopt usplit upas edgcpfe NCC
+  IDO_LIBS    :=
 else ifeq ($(VERSION),5.3)
   IDO_VERSION := IDO53
   IDO_TC      := cc strip acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit ld upas
+  IDO_LIBS    := crt1.o crtn.o libc.so libc.so.1 libexc.so libgen.so libm.so
 else
   $(error Unknown or unsupported IDO version - $(VERSION))
 endif
@@ -63,7 +65,7 @@ CSTD         ?= -std=c11
 CFLAGS       ?= -MMD -fno-strict-aliasing -I.
 CXXSTD       ?= -std=c++17
 CXXFLAGS     ?= -MMD
-WARNINGS     ?= -Wall -Wextra
+WARNINGS     ?= -Wall -Wextra -Wpedantic -Wshadow
 LDFLAGS      ?= -lm
 RECOMP_FLAGS ?=
 
@@ -104,6 +106,7 @@ IRIX_USR_DIR ?= $(IRIX_BASE)/$(VERSION)/usr
 
 # -- Location of the irix tool chain error messages
 ERR_STRS        := $(BUILT_BIN)/err.english.cc
+LIBS            := $(foreach lib,$(IDO_LIBS),$(BUILT_BIN)/$(lib))
 
 RECOMP_ELF      := $(BUILD_BASE)/recomp.elf
 LIBC_IMPL       := libc_impl
@@ -135,15 +138,12 @@ ifeq ($(DETECTED_OS),linux)
 $(RECOMP_ELF): LDFLAGS   += -Wl,-export-dynamic
 endif
 
-# Too many warnings, disable everything for now...
-$(RECOMP_ELF): WARNINGS  += -Wpedantic -Wno-shadow -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-implicit-fallthrough
-# TODO: fix warnings
-%/$(LIBC_IMPL).o: WARNINGS += -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-sign-compare -Wno-deprecated-declarations
-%/$(LIBC_IMPL)_53.o: WARNINGS += -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -Wno-sign-compare -Wno-deprecated-declarations
+%/$(LIBC_IMPL).o: WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
+%/$(LIBC_IMPL)_53.o: WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
 
 #### Main Targets ###
 
-all: $(TARGET_BINARIES) $(ERR_STRS)
+all: $(TARGET_BINARIES) $(ERR_STRS) $(LIBS)
 
 setup:
 	$(MAKE) -C $(RABBITIZER) static CC=$(CC) CXX=$(CXX) DEBUG=$(RAB_DEBUG)
@@ -184,6 +184,15 @@ $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/DCC/%
 
 
 $(BUILT_BIN)/%.cc: $(IRIX_USR_DIR)/lib/%.cc
+	cp $^ $@
+
+$(BUILT_BIN)/%.o: $(IRIX_USR_DIR)/lib/%.o
+	cp $^ $@
+
+$(BUILT_BIN)/%.so: $(IRIX_USR_DIR)/lib/%.so
+	cp $^ $@
+
+$(BUILT_BIN)/%.so.1: $(IRIX_USR_DIR)/lib/%.so.1
 	cp $^ $@
 
 
