@@ -54,6 +54,18 @@ else
   $(error Unsupported host OS for Makefile)
 endif
 
+# check if in a git repository
+ifeq ($(shell git rev-parse --is-inside-work-tree >/dev/null 2>/dev/null; echo $$?),0)
+  PACKAGE_VERSION := $(shell LC_ALL=C git --git-dir .git describe --tags --always --dirty)
+endif
+
+# Get the current date and time in ISO 8601 format
+DATETIME := $(shell date +'%F %T UTC%z')
+
+$(info Package version $(PACKAGE_VERSION))
+$(info Build date $(DATETIME))
+
+
 RABBITIZER := tools/rabbitizer
 RABBITIZER_LIB := $(RABBITIZER)/build/librabbitizerpp.a
 
@@ -110,9 +122,11 @@ LIBS            := $(foreach lib,$(IDO_LIBS),$(BUILT_BIN)/$(lib))
 
 RECOMP_ELF      := $(BUILD_BASE)/recomp.elf
 LIBC_IMPL       := libc_impl
+VERSION_INFO    := version_info
 
 TARGET_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/$(binary))
-O_FILES         := $(foreach binary,$(IDO_TC),$(BUILD_DIR)/$(binary).o)
+# NCC is filtered out since it isn't an actual program, but a symlink to cc
+O_FILES         := $(foreach binary,$(filter-out NCC, $(IDO_TC)),$(BUILD_DIR)/$(binary).o)
 C_FILES         := $(O_FILES:.o=.c)
 
 # Automatic dependency files
@@ -137,6 +151,8 @@ ifeq ($(DETECTED_OS),linux)
 # For traceback
 $(RECOMP_ELF): LDFLAGS   += -Wl,-export-dynamic
 endif
+
+CFLAGS    += -DPACKAGE_VERSION="\"$(PACKAGE_VERSION)\"" -DDATETIME="\"$(DATETIME)\""
 
 %/$(LIBC_IMPL).o: WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
 %/$(LIBC_IMPL)_53.o: WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
@@ -220,25 +236,26 @@ $(BUILT_BIN)/%: $(BUILD_DIR)/arm64-apple-macos11/% $(BUILD_DIR)/x86_64-apple-mac
 
 ### Built programs ###
 
-$(BUILD_DIR)/arm64-apple-macos11/%: $(BUILD_DIR)/arm64-apple-macos11/%.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL).o | $(ERR_STRS)
+$(BUILD_DIR)/arm64-apple-macos11/%: $(BUILD_DIR)/arm64-apple-macos11/%.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL).o $(BUILD_DIR)/arm64-apple-macos11/$(VERSION_INFO).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
-$(BUILD_DIR)/x86_64-apple-macos10.14/%: $(BUILD_DIR)/x86_64-apple-macos10.14/%.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL).o | $(ERR_STRS)
+$(BUILD_DIR)/x86_64-apple-macos10.14/%: $(BUILD_DIR)/x86_64-apple-macos10.14/%.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL).o $(BUILD_DIR)/x86_64-apple-macos10.14/$(VERSION_INFO).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
+# NCC 7.1 is just a renamed cc
 $(BUILD_BASE)/7.1/arm64-apple-macos11/NCC: $(BUILD_BASE)/7.1/arm64-apple-macos11/cc
 	cp $^ $@
 
 $(BUILD_BASE)/7.1/x86_64-apple-macos10.14/NCC: $(BUILD_BASE)/7.1/x86_64-apple-macos10.14/cc
 	cp $^ $@
 
-$(BUILD_DIR)/arm64-apple-macos11/edgcpfe: $(BUILD_DIR)/arm64-apple-macos11/edgcpfe.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL)_53.o | $(ERR_STRS)
+$(BUILD_DIR)/arm64-apple-macos11/edgcpfe: $(BUILD_DIR)/arm64-apple-macos11/edgcpfe.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL)_53.o $(BUILD_DIR)/arm64-apple-macos11/$(VERSION_INFO).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
-$(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe: $(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL)_53.o | $(ERR_STRS)
+$(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe: $(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL)_53.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(VERSION_INFO).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
@@ -264,10 +281,17 @@ $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
 $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
 
+# $(VERSION_INFO).o is set to depend on every other .o file to ensure the version information is always up to date
+$(BUILD_DIR)/arm64-apple-macos11/$(VERSION_INFO).o: $(VERSION_INFO).c $(O_FILES) $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL).o
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
+
+$(BUILD_DIR)/x86_64-apple-macos10.14/$(VERSION_INFO).o: $(VERSION_INFO).c $(O_FILES) $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL).o
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
+
 else
 ### Built programs ###
 
-$(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL).o | $(ERR_STRS)
+$(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL).o $(BUILD_DIR)/$(VERSION_INFO).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
@@ -276,7 +300,7 @@ $(BUILD_BASE)/7.1/out/NCC: $(BUILD_BASE)/7.1/out/cc
 	cp $^ $@
 
 # edgcpfe 7.1 uses libc 5.3, so we need to hack a way to link a libc_impl file with the 5.3 stuff
-$(BUILT_BIN)/edgcpfe: $(BUILD_DIR)/edgcpfe.o $(BUILD_DIR)/$(LIBC_IMPL)_53.o | $(ERR_STRS)
+$(BUILT_BIN)/edgcpfe: $(BUILD_DIR)/edgcpfe.o $(BUILD_DIR)/$(LIBC_IMPL)_53.o $(BUILD_DIR)/$(VERSION_INFO).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
@@ -292,6 +316,10 @@ $(BUILD_DIR)/$(LIBC_IMPL).o: $(LIBC_IMPL).c
 
 $(BUILD_DIR)/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -o $@ $<
+
+# $(VERSION_INFO).o is set to depend on every other .o file to ensure the version information is always up to date
+$(BUILD_DIR)/$(VERSION_INFO).o: $(VERSION_INFO).c $(O_FILES) $(BUILD_DIR)/$(LIBC_IMPL).o $(BUILD_DIR)/$(LIBC_IMPL)_53.o
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -o $@ $<
 endif
 
 # Remove built-in rules, to improve performance

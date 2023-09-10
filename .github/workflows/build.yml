@@ -13,7 +13,9 @@ jobs:
 
     name: Recompiling ido ${{ matrix.ido }} for ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Ubuntu
       - name: Install dependencies (Ubuntu)
