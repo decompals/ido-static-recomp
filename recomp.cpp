@@ -423,6 +423,28 @@ const struct ExternFunction {
     { "regcmp", "pp", FLAG_VARARG },
     { "regex", "ppp", FLAG_VARARG },
     { "__assert", "vppi", 0 },
+    { "twalk", "vpt", 0 },
+    { "msync", "ipui", 0 },
+    { "mkdir", "ipu", 0 },
+    { "fputc", "iip", 0 },
+    { "getopt", "iipp", 0 },
+    { "link", "ipp", 0 },
+    { "vsprintf", "ippp", 0 },
+    { "fabs", "dd", FLAG_NO_MEM },
+    { "sysid", "ip", 0 },
+    { "realpath", "ppp", 0 },
+    { "fsync", "ii", 0 },
+    { "sleep", "uu", 0 },
+    { "socket", "iiii", 0 },
+    { "connect", "iipu", 0 },
+    { "recv", "iipui", 0 },
+    { "send", "iipui", 0 },
+    { "shutdown", "iii", 0 },
+    { "sscanf", "ipp", FLAG_VARARG },
+
+    // C++ functions
+    { "__nw__FUi", "pu", 0 },
+    { "__dl__FPv", "vp", 0 },
 };
 
 void disassemble(void) {
@@ -780,6 +802,26 @@ void pass1(void) {
                             // Special hard case in copt where the initial sltiu is in another basic block
                             found = true;
                             num_cases = 12;
+                        } else if (i == 37743) {
+                            // Special hard case in edgcpfe where the initial sltiu is in another basic block
+                            if ((lw == 37740) && (addu_index == 37739)) {
+                                // few extra checks to try to ensure we are in edgcpfe
+                                if ((insns[lw].instruction.getRaw() == 0x8C3970A4) &&
+                                    (insns[addu_index].instruction.getRaw() == 0x00390821)) {
+                                    found = true;
+                                    num_cases = 6;
+                                }
+                            }
+                        } else if (i == 208684) {
+                            // Special hard case in edgcpfe where the initial sltiu is in another basic block
+                            if ((lw == 208681) && (addu_index == 208680)) {
+                                // few extra checks to try to ensure we are in edgcpfe
+                                if ((insns[lw].instruction.getRaw() == 0x8C2B227C) &&
+                                    (insns[addu_index].instruction.getRaw() == 0x002B0821)) {
+                                    found = true;
+                                    num_cases = 8;
+                                }
+                            }
                         }
 
                         if (found) {

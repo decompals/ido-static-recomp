@@ -20,7 +20,7 @@ ASAN ?= 0
 ifeq ($(VERSION),7.1)
   IDO_VERSION := IDO71
 # copt currently does not build
-  IDO_TC      := cc acpp as0 as1 cfe ugen ujoin uld umerge uopt usplit upas
+  IDO_TC      := cc acpp as0 as1 cfe ugen ujoin uld umerge uopt usplit upas edgcpfe NCC
   IDO_LIBS    :=
 else ifeq ($(VERSION),5.3)
   IDO_VERSION := IDO53
@@ -109,7 +109,7 @@ ERR_STRS        := $(BUILT_BIN)/err.english.cc
 LIBS            := $(foreach lib,$(IDO_LIBS),$(BUILT_BIN)/$(lib))
 
 RECOMP_ELF      := $(BUILD_BASE)/recomp.elf
-LIBC_IMPL_O     := libc_impl.o
+LIBC_IMPL       := libc_impl
 
 TARGET_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/$(binary))
 O_FILES         := $(foreach binary,$(IDO_TC),$(BUILD_DIR)/$(binary).o)
@@ -138,8 +138,8 @@ ifeq ($(DETECTED_OS),linux)
 $(RECOMP_ELF): LDFLAGS   += -Wl,-export-dynamic
 endif
 
-%/$(LIBC_IMPL_O): CFLAGS   += -D$(IDO_VERSION)
-%/$(LIBC_IMPL_O): WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
+%/$(LIBC_IMPL).o: WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
+%/$(LIBC_IMPL)_53.o: WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
 
 #### Main Targets ###
 
@@ -212,17 +212,38 @@ $(shell mkdir -p $(FAT_FOLDERS))
 FAT_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/arm64-apple-macos11/$(binary)) \
                 $(foreach binary,$(IDO_TC),$(BUILT_BIN)/x86_64-apple-macos10.14/$(binary))
 
+### Fat ###
+
 $(BUILT_BIN)/%: $(BUILD_DIR)/arm64-apple-macos11/% $(BUILD_DIR)/x86_64-apple-macos10.14/% | $(ERR_STRS)
 	lipo -create -output $@ $^
 
 
-$(BUILD_DIR)/arm64-apple-macos11/%: $(BUILD_DIR)/arm64-apple-macos11/%.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL_O) | $(ERR_STRS)
+### Built programs ###
+
+$(BUILD_DIR)/arm64-apple-macos11/%: $(BUILD_DIR)/arm64-apple-macos11/%.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
-$(BUILD_DIR)/x86_64-apple-macos10.14/%: $(BUILD_DIR)/x86_64-apple-macos10.14/%.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL_O) | $(ERR_STRS)
+$(BUILD_DIR)/x86_64-apple-macos10.14/%: $(BUILD_DIR)/x86_64-apple-macos10.14/%.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
+
+$(BUILD_BASE)/7.1/arm64-apple-macos11/NCC: $(BUILD_BASE)/7.1/arm64-apple-macos11/cc
+	cp $^ $@
+
+$(BUILD_BASE)/7.1/x86_64-apple-macos10.14/NCC: $(BUILD_BASE)/7.1/x86_64-apple-macos10.14/cc
+	cp $^ $@
+
+$(BUILD_DIR)/arm64-apple-macos11/edgcpfe: $(BUILD_DIR)/arm64-apple-macos11/edgcpfe.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL)_53.o | $(ERR_STRS)
+	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $^ $(LDFLAGS)
+	$(STRIP) $@
+
+$(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe: $(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL)_53.o | $(ERR_STRS)
+	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $^ $(LDFLAGS)
+	$(STRIP) $@
+
+
+### Intermediary steps ###
 
 $(BUILD_DIR)/arm64-apple-macos11/%.o: $(BUILD_DIR)/%.c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $<
@@ -231,23 +252,46 @@ $(BUILD_DIR)/x86_64-apple-macos10.14/%.o: $(BUILD_DIR)/%.c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $<
 
 
-$(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL_O): libc_impl.c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
+$(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL).o: $(LIBC_IMPL).c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
 
-$(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL_O): libc_impl.c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
+$(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL).o: $(LIBC_IMPL).c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
+
+$(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
+
+$(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
 
 else
-$(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL_O) | $(ERR_STRS)
+### Built programs ###
+
+$(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
+
+# NCC 7.1 is just a renamed cc
+$(BUILD_BASE)/7.1/out/NCC: $(BUILD_BASE)/7.1/out/cc
+	cp $^ $@
+
+# edgcpfe 7.1 uses libc 5.3, so we need to hack a way to link a libc_impl file with the 5.3 stuff
+$(BUILT_BIN)/edgcpfe: $(BUILD_DIR)/edgcpfe.o $(BUILD_DIR)/$(LIBC_IMPL)_53.o | $(ERR_STRS)
+	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(STRIP) $@
+
+
+### Intermediary steps ###
 
 $(BUILD_DIR)/%.o: $(BUILD_DIR)/%.c
 	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $<
 
 
-$(BUILD_DIR)/$(LIBC_IMPL_O): libc_impl.c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) $(WARNINGS) -o $@ $<
+$(BUILD_DIR)/$(LIBC_IMPL).o: $(LIBC_IMPL).c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -o $@ $<
+
+$(BUILD_DIR)/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
+	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -o $@ $<
 endif
 
 # Remove built-in rules, to improve performance
