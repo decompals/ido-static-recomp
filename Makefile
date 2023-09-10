@@ -60,7 +60,10 @@ ifeq ($(shell git rev-parse --is-inside-work-tree >/dev/null 2>/dev/null; echo $
 endif
 
 # Get the current date and time in ISO 8601 format
-DATETIME := date +'%F %T UTC%z'
+DATETIME := $(shell date +'%F %T UTC%z')
+
+$(info Package version $(PACKAGE_VERSION))
+$(info Build date $(DATETIME))
 
 
 RABBITIZER := tools/rabbitizer
@@ -148,7 +151,7 @@ ifeq ($(DETECTED_OS),linux)
 $(RECOMP_ELF): LDFLAGS   += -Wl,-export-dynamic
 endif
 
-CFLAGS    += -DPACKAGE_VERSION="\"$(PACKAGE_VERSION)\""
+CFLAGS    += -DPACKAGE_VERSION="\"$(PACKAGE_VERSION)\"" -DDATETIME="\"$(DATETIME)\""
 
 %/$(LIBC_IMPL).o: WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
 %/$(LIBC_IMPL)_53.o: WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
