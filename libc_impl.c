@@ -42,8 +42,8 @@
 #define STRING(param)                                       \
     size_t param##_len = wrapper_strlen(mem, param##_addr); \
     char param[param##_len + 1];                            \
-    for (size_t i = 0; i <= param##_len; i++) {             \
-        param[i] = MEM_S8(param##_addr + i);                \
+    for (size_t __i = 0; __i <= param##_len; __i++) {       \
+        param[__i] = MEM_S8(param##_addr + __i);            \
     }
 
 #if !defined(IDO53) && !defined(IDO71) && !defined(IDO72)
@@ -399,7 +399,7 @@ static void destroy_global_args(void) {
 static char** make_argv_from_mem(uint8_t* mem, int argc, uint32_t argv_addr) {
     char** argv = malloc((argc + 1) * sizeof(char*));
 
-    for (uint32_t i = 0; i < argc; i++) {
+    for (int i = 0; i < argc; i++) {
         uint32_t str_addr = MEM_U32(argv_addr + i * sizeof(uint32_t));
         uint32_t len = wrapper_strlen(mem, str_addr) + 1;
 
@@ -417,7 +417,7 @@ static char** make_argv_from_mem(uint8_t* mem, int argc, uint32_t argv_addr) {
 }
 
 static void free_argv(int argc, char** argv) {
-    for (uint32_t i = 0; i < argc; i++) {
+    for (int i = 0; i < argc; i++) {
         free(argv[i]);
     }
 

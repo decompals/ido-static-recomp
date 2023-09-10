@@ -56,7 +56,7 @@ endif
 
 # check if in a git repository
 ifeq ($(shell git rev-parse --is-inside-work-tree >/dev/null 2>/dev/null; echo $$?),0)
-  PACKAGE_VERSION := git --git-dir .git describe --tags --always --dirty
+  PACKAGE_VERSION := $(shell LC_ALL=C git --git-dir .git describe --tags --always --dirty)
 endif
 
 # Get the current date and time in ISO 8601 format
@@ -148,7 +148,7 @@ ifeq ($(DETECTED_OS),linux)
 $(RECOMP_ELF): LDFLAGS   += -Wl,-export-dynamic
 endif
 
-CFLAGS    += -DPACKAGE_VERSION="\"`LC_ALL=C $(PACKAGE_VERSION)`\""
+CFLAGS    += -DPACKAGE_VERSION="\"$(PACKAGE_VERSION)\""
 
 %/$(LIBC_IMPL).o: WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
 %/$(LIBC_IMPL)_53.o: WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
