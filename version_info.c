@@ -1,12 +1,6 @@
 /**
  * Function that prints version info. This file should be compiled with the following defined:
- * - PACKAGE_VERSION
- * e.g. with
- * ```
- * PACKAGE_VERSION := git --git-dir .git describe --tags --dirty
- * [...]
- *      -DPACKAGE_VERSION="\"`LC_ALL=C $(PACKAGE_VERSION)`\"" \
- * ```
+ * - PACKAGE_VERSION, e.g. with `-DPACKAGE_VERSION="\"$(LC_ALL=C git --git-dir .git describe --tags --dirty)\""`
  * - DATETIME, e.g. with `-DDATETIME=$(date +'%F %T UTC%z')`
  *
  * The code in this file is mostly taken from 
