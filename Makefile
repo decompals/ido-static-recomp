@@ -240,11 +240,11 @@ $(BUILD_DIR)/x86_64-apple-macos10.14/%: $(BUILD_DIR)/x86_64-apple-macos10.14/%.o
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
-$(BUILD_DIR)/arm64-apple-macos11/edgcpfe: $(BUILD_DIR)/arm64-apple-macos11/edgcpfe.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL)_53.o $(BUILD_DIR)/$(VERSION_INFO).o | $(ERR_STRS)
+$(BUILD_DIR)/arm64-apple-macos11/edgcpfe: $(BUILD_DIR)/arm64-apple-macos11/edgcpfe.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL)_53.o $(BUILD_DIR)/arm64-apple-macos11/$(VERSION_INFO).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
-$(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe: $(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL)_53.o $(BUILD_DIR)/$(VERSION_INFO).o | $(ERR_STRS)
+$(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe: $(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL)_53.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(VERSION_INFO).o | $(ERR_STRS)
 	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $^ $(LDFLAGS)
 	$(STRIP) $@
 
