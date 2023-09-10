@@ -56,7 +56,7 @@
 extern char* progname;
 
 void print_version_info(void) {
-    char* buf = malloc(strlen(progname));
+    char* buf = malloc(strlen(progname) + 1);
     strcpy(buf, progname);
     char* name = basename(buf);
 
