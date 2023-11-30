@@ -464,6 +464,8 @@ void mmap_initial_data_range(uint8_t* mem, uint32_t start, uint32_t end) {
     custom_libc_data_addr = end;
 #ifdef __APPLE__
     end += vm_page_size;
+#elif defined RUNTIME_PAGESIZE
+    end += g_Pagesize;
 #else
     end += 4096;
 #endif /* __APPLE__ */
