@@ -345,7 +345,6 @@ static void init_redirect_paths(void) {
  */
 bool redirect_path(char* out, const char* path, const char* from, const char* to) {
     int from_len = strlen(from);
-    bool redirected = false;
 
     if ((strncmp(path, from, from_len) == 0) && (to[0] != '\0')) {
         char redirected_path[PATH_MAX + 1] = { 0 };
@@ -355,14 +354,15 @@ bool redirect_path(char* out, const char* path, const char* from, const char* to
 
         if ((n >= 0) && ((size_t)n < sizeof(redirected_path))) {
             strcpy(out, redirected_path);
-            redirected = true;
-        } else {
-            fprintf(stderr, "Error: Unable to redirect %s->%s for %s\n", from, to, path);
-            exit(1);
+            return true;
         }
+
+        // Redirection failed
+        fprintf(stderr, "Error: Unable to redirect %s->%s for %s\n", from, to, path);
+        exit(1);
     }
 
-    return redirected;
+    return false;
 }
 
 typedef struct GlobalArgs {
@@ -1036,10 +1036,12 @@ int wrapper_open(uint8_t* mem, uint32_t path_addr, int flags, int mode) {
     STRING(path)
 
     char rpath[PATH_MAX + 1];
-    if(!redirect_path(rpath, path, "/usr/include", usr_include_redirect) &&
-        !redirect_path(rpath, path, "/usr/lib", usr_lib_redirect) &&
-        !redirect_path(rpath, path, "/lib", usr_lib_redirect) ) {
-        memmove(rpath, path, strlen(path) + 1);
+    char* pathPtr = path;
+
+    if (redirect_path(rpath, path, "/usr/include", usr_include_redirect) ||
+        redirect_path(rpath, path, "/usr/lib", usr_lib_redirect) ||
+        redirect_path(rpath, path, "/lib", usr_lib_redirect) ) {
+        pathPtr = rpath;
     }
 
     int f = flags & O_ACCMODE;
@@ -1059,7 +1061,7 @@ int wrapper_open(uint8_t* mem, uint32_t path_addr, int flags, int mode) {
         f |= O_APPEND;
     }
 
-    int fd = open(rpath, f, mode);
+    int fd = open(pathPtr, f, mode);
     MEM_U32(ERRNO_ADDR) = errno;
     return fd;
 }
@@ -1475,12 +1477,14 @@ static uint32_t init_file(uint8_t* mem, int fd, int i, const char* path, const c
 
     if (fd == -1) {
         char rpath[PATH_MAX + 1];
-        if (!redirect_path(rpath, path, "/usr/lib/DCC", usr_lib_redirect) &&
-            !redirect_path(rpath, path, "/usr/lib", usr_lib_redirect)) {
-            memmove(rpath, path, strlen(path) + 1);
+        const char* pathPtr = path;
+
+        if (redirect_path(rpath, path, "/usr/lib/DCC", usr_lib_redirect) ||
+            redirect_path(rpath, path, "/usr/lib", usr_lib_redirect)) {
+            pathPtr = rpath;
         }
 
-        fd = open(rpath, flags, 0666);
+        fd = open(pathPtr, flags, 0666);
 
         if (fd < 0) {
             MEM_U32(ERRNO_ADDR) = errno;
@@ -2742,12 +2746,14 @@ int wrapper_execvp(uint8_t* mem, uint32_t file_addr, uint32_t argv_addr) {
     char** argv = make_argv_from_mem(mem, argc, argv_addr);
 
     char rfile[PATH_MAX + 1];
-    if (!redirect_path(rfile, file, "/usr/lib/DCC", usr_lib_redirect) &&
-        !redirect_path(rfile, file, "/usr/lib", usr_lib_redirect)) {
-        memmove(rfile, file, strlen(file) + 1);
+    char* filePtr = file;
+
+    if (redirect_path(rfile, file, "/usr/lib/DCC", usr_lib_redirect) ||
+        redirect_path(rfile, file, "/usr/lib", usr_lib_redirect)) {
+        filePtr = rfile;
     }
 
-    execvp(rfile, argv);
+    execvp(filePtr, argv);
 
     MEM_U32(ERRNO_ADDR) = errno;
 
