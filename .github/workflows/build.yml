@@ -20,6 +20,10 @@ jobs:
           {
             name: windows,
             runner: windows-latest
+          },
+          {
+            name: linux-arm,
+            runner: ubuntu-20.04
           }
         ]
         ido: [5.3, 7.1]
@@ -49,6 +53,25 @@ jobs:
         if: matrix.os.name == 'linux'
         run: |
           make -j $(nproc) RELEASE=1 VERSION=${{ matrix.ido }}
+
+      - name: Install dependencies (Linux ARM64)
+        shell: bash
+        if: matrix.os.name == 'linux-arm'
+        run: |
+          sudo apt update
+          sudo apt install gcc-aarch64-linux-gnu 
+
+      - name: Build recomp binary (Linux ARM64)
+        shell: bash
+        if: matrix.os.name == 'linux-arm'
+        run: |
+          make -j $(nproc) RELEASE=1 setup
+
+      - name: Run the build script (Linux)
+        shell: bash
+        if: matrix.os.name == 'linux-arm'
+        run: |
+          make -j $(nproc) RELEASE=1 VERSION=${{ matrix.ido }} CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ STRIP=aarch64-linux-gnu-strip
 
       # MacOS
       - name: Install dependencies (MacOS)
