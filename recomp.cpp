@@ -209,6 +209,7 @@ struct Function {
 };
 
 bool conservative;
+bool n32;
 
 const uint8_t* text_section;
 uint32_t text_section_len;
@@ -3869,12 +3870,24 @@ void crashHandler(int sig) {
 #endif
 
 int main(int argc, char* argv[]) {
-    const char* filename = argv[1];
+    int argi;
 
-    if ((argc > 2) && (strcmp(filename, "--conservative") == 0)) {
-        conservative = true;
-        filename = argv[2];
+    for (argi = 1; argi < argc; argi++) {
+        if (strcmp(argv[argi], "--conservative") == 0) {
+            conservative = true;
+        } else if (strcmp(argv[argi], "--n32") == 0) {
+            n32 = true;
+        } else {
+            break;
+        }
     }
+
+    if (argi != argc - 1) {
+        fprintf(stderr, "Usage: %s [--conservative] [--n32] <elf_file>\n", argv[0]);
+        return 1;
+    }
+
+    const char* filename = argv[argi];
 
 #ifdef UNIX_PLATFORM
     signal(SIGSEGV, crashHandler);
