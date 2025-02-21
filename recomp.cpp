@@ -225,6 +225,17 @@ uint32_t data_vaddr;
 uint32_t bss_section_len;
 uint32_t bss_vaddr;
 
+const uint8_t* srdata_section;
+uint32_t srdata_section_len;
+uint32_t srdata_vaddr;
+
+const uint8_t* sdata_section;
+uint32_t sdata_section_len;
+uint32_t sdata_vaddr;
+
+uint32_t sbss_section_len;
+uint32_t sbss_vaddr;
+
 vector<Insn> insns;
 set<uint32_t> label_addresses; // labels, both branch labels and jump table labels
 vector<uint32_t> got_globals;
@@ -3204,9 +3215,21 @@ void dump_c(void) {
         min_addr = std::min(min_addr, rodata_vaddr);
         max_addr = std::max(max_addr, rodata_vaddr + rodata_section_len);
     }
-    if (bss_section_len) {
+    if (bss_section_len > 0) {
         min_addr = std::min(min_addr, bss_vaddr);
         max_addr = std::max(max_addr, bss_vaddr + bss_section_len);
+    }
+    if (sdata_section_len > 0) {
+        min_addr = std::min(min_addr, sdata_vaddr);
+        max_addr = std::max(max_addr, sdata_vaddr + sdata_section_len);
+    }
+    if (srdata_section_len > 0) {
+        min_addr = std::min(min_addr, srdata_vaddr);
+        max_addr = std::max(max_addr, srdata_vaddr + srdata_section_len);
+    }
+    if (sbss_section_len > 0) {
+        min_addr = std::min(min_addr, sbss_vaddr);
+        max_addr = std::max(max_addr, sbss_vaddr + sbss_section_len);
     }
 
     // 64 kB. Supposedly the worst-case smallest permitted page size, increase if necessary.
@@ -3227,20 +3250,34 @@ void dump_c(void) {
         printf("static uint64_t s0, s1, s2, s3, s4, s5, s6, s7, fp;\n");
     }
 
-    printf("static const uint32_t rodata[] = {\n");
-
-    for (size_t i = 0; i < rodata_section_len; i += 4) {
-        printf("0x%x,%s", read_u32_be(rodata_section + i), i % 32 == 28 ? "\n" : "");
+    if (rodata_section_len > 0) {
+        printf("static const uint32_t rodata[] = {\n");
+        for (size_t i = 0; i < rodata_section_len; i += 4) {
+            printf("0x%x,%s", read_u32_be(rodata_section + i), i % 32 == 28 ? "\n" : "");
+        }
+        printf("};\n");
     }
-
-    printf("};\n");
-    printf("static const uint32_t data[] = {\n");
-
-    for (size_t i = 0; i < data_section_len; i += 4) {
-        printf("0x%x,%s", read_u32_be(data_section + i), i % 32 == 28 ? "\n" : "");
+    if (data_section_len > 0) {
+        printf("static const uint32_t data[] = {\n");
+        for (size_t i = 0; i < data_section_len; i += 4) {
+            printf("0x%x,%s", read_u32_be(data_section + i), i % 32 == 28 ? "\n" : "");
+        }
+        printf("};\n");
     }
-
-    printf("};\n");
+    if (srdata_section_len > 0) {
+        printf("static const uint32_t srdata[] = {\n");
+        for (size_t i = 0; i < srdata_section_len; i += 4) {
+            printf("0x%x,%s", read_u32_be(srdata_section + i), i % 32 == 28 ? "\n" : "");
+        }
+        printf("};\n");
+    }
+    if (sdata_section_len > 0) {
+        printf("static const uint32_t sdata[] = {\n");
+        for (size_t i = 0; i < sdata_section_len; i += 4) {
+            printf("0x%x,%s", read_u32_be(sdata_section + i), i % 32 == 28 ? "\n" : "");
+        }
+        printf("};\n");
+    }
 
     /* if (!data_function_pointers.empty()) {
         printf("static const struct { uint32_t orig_addr; void *recompiled_addr; } data_function_pointers[] = {\n");
@@ -3315,8 +3352,18 @@ void dump_c(void) {
     printf("int run(uint8_t *mem, int argc, char *argv[]) {\n");
     printf("mmap_initial_data_range(mem, 0x%x, 0x%x);\n", min_addr, max_addr);
 
-    printf("memcpy(mem + 0x%x, rodata, 0x%x);\n", rodata_vaddr, rodata_section_len);
-    printf("memcpy(mem + 0x%x, data, 0x%x);\n", data_vaddr, data_section_len);
+    if (rodata_section_len > 0) {
+        printf("memcpy(mem + 0x%x, rodata, 0x%x);\n", rodata_vaddr, rodata_section_len);
+    }
+    if (data_section_len > 0) {
+        printf("memcpy(mem + 0x%x, data, 0x%x);\n", data_vaddr, data_section_len);
+    }
+    if (srdata_section_len > 0) {
+        printf("memcpy(mem + 0x%x, srdata, 0x%x);\n", srdata_vaddr, srdata_section_len);
+    }
+    if (sdata_section_len > 0) {
+        printf("memcpy(mem + 0x%x, sdata, 0x%x);\n", sdata_vaddr, sdata_section_len);
+    }
 
     /* if (!data_function_pointers.empty()) {
         if (!LABELS_64_BIT) {
@@ -3432,6 +3479,9 @@ void parse_elf(const uint8_t* data, size_t file_len) {
     int rodata_section_index = -1;
     int data_section_index = -1;
     int bss_section_index = -1;
+    int srdata_section_index = -1;
+    int sdata_section_index = -1;
+    int sbss_section_index = -1;
     uint32_t text_offset = 0;
     uint32_t vaddr_adj = 0;
 
@@ -3501,6 +3551,18 @@ void parse_elf(const uint8_t* data, size_t file_len) {
         if (strcmp(name, ".bss") == 0) {
             bss_section_index = i;
         }
+
+        if (strcmp(name, ".srdata") == 0) {
+            srdata_section_index = i;
+        }
+
+        if (strcmp(name, ".sdata") == 0) {
+            sdata_section_index = i;
+        }
+
+        if (strcmp(name, ".sbss") == 0) {
+            sbss_section_index = i;
+        }
     }
 
     if (text_section_index == -1) {
@@ -3530,14 +3592,6 @@ void parse_elf(const uint8_t* data, size_t file_len) {
         }
     }
 
-    if (rodata_section_index != -1) {
-        shdr = SECTION(rodata_section_index);
-        uint32_t size = u32be(shdr->sh_size);
-        rodata_section = data + u32be(shdr->sh_offset);
-        rodata_section_len = size;
-        rodata_vaddr = u32be(shdr->sh_addr);
-    }
-
     if (data_section_index != -1) {
         shdr = SECTION(data_section_index);
         uint32_t size = u32be(shdr->sh_size);
@@ -3551,6 +3605,37 @@ void parse_elf(const uint8_t* data, size_t file_len) {
         uint32_t size = u32be(shdr->sh_size);
         bss_section_len = size;
         bss_vaddr = u32be(shdr->sh_addr);
+    }
+
+    if (rodata_section_index != -1) {
+        shdr = SECTION(rodata_section_index);
+        uint32_t size = u32be(shdr->sh_size);
+        rodata_section = data + u32be(shdr->sh_offset);
+        rodata_section_len = size;
+        rodata_vaddr = u32be(shdr->sh_addr);
+    }
+
+    if (srdata_section_index != -1) {
+        shdr = SECTION(srdata_section_index);
+        uint32_t size = u32be(shdr->sh_size);
+        srdata_section = data + u32be(shdr->sh_offset);
+        srdata_section_len = size;
+        srdata_vaddr = u32be(shdr->sh_addr);
+    }
+
+    if (sdata_section_index != -1) {
+        shdr = SECTION(sdata_section_index);
+        uint32_t size = u32be(shdr->sh_size);
+        sdata_section = data + u32be(shdr->sh_offset);
+        sdata_section_len = size;
+        sdata_vaddr = u32be(shdr->sh_addr);
+    }
+
+    if (sbss_section_index != -1) {
+        shdr = SECTION(sbss_section_index);
+        uint32_t size = u32be(shdr->sh_size);
+        sbss_section_len = size;
+        sbss_vaddr = u32be(shdr->sh_addr);
     }
 
     // add symbols
