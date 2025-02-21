@@ -1885,6 +1885,14 @@ void pass6(void) {
         uint32_t addr = it.first;
         Function& f = it.second;
 
+        // Hardcode type of main to avoid relying on analyzing __start
+        if (addr == main_addr) {
+            f.nargs = 2;
+            f.nret = 1;
+            f.v0_in = false;
+            continue;
+        }
+
         for (uint32_t ret : f.returns) {
             Insn& i = insns[addr_to_i(ret)];
 
@@ -3342,19 +3350,7 @@ void dump_c(void) {
 
     // printf("gp = 0x%x;\n", gp_value); // only to recreate the outcome when ugen reads uninitialized stack memory
 
-    printf("int ret = f_main(mem, 0x%x", stack_bottom);
-
-    Function& main_func = functions.at(main_addr);
-
-    if (main_func.nargs >= 1) {
-        printf(", argc");
-    }
-
-    if (main_func.nargs >= 2) {
-        printf(", arg_addr");
-    }
-
-    printf(");\n");
+    printf("int ret = f_main(mem, 0x%x, argc, arg_addr);\n", stack_bottom);
 
     if (TRACE) {
         printf("end: fprintf(stderr, \"cnt: %%llu\\n\", cnt);\n");
