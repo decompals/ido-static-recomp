@@ -2783,13 +2783,13 @@ void dump_instr(int i) {
 
         case rabbitizer::InstrId::UniqueId::cpu_mult:
             printf("lo = %s * %s;\n", r((int)insn.instruction.GetO32_rs()), r((int)insn.instruction.GetO32_rt()));
-            printf("hi = (int64_t)%s * (int64_t)%s >> 32;\n",
+            printf("hi = (int64_t)(int32_t)%s * (int64_t)(int32_t)%s >> 32;\n",
                    r((int)insn.instruction.GetO32_rs()), r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_multu:
             printf("lo = %s * %s;\n", r((int)insn.instruction.GetO32_rs()), r((int)insn.instruction.GetO32_rt()));
-            printf("hi = (uint64_t)%s * (uint64_t)%s >> 32;\n", r((int)insn.instruction.GetO32_rs()),
+            printf("hi = (uint64_t)(uint32_t)%s * (uint64_t)(uint32_t)%s >> 32;\n", r((int)insn.instruction.GetO32_rs()),
                    r((int)insn.instruction.GetO32_rt()));
             break;
 
