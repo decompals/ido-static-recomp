@@ -163,7 +163,6 @@ all: $(TARGET_BINARIES) $(ERR_STRS) $(LIBS)
 
 setup:
 	$(MAKE) -C $(RABBITIZER) static CC=$(CC) CXX=$(CXX) DEBUG=$(RAB_DEBUG)
-	$(MAKE) $(RECOMP_ELF)
 
 clean:
 	$(RM) -r $(BUILD_DIR)
@@ -187,19 +186,19 @@ $(BUILD_BASE)/%.elf: %.cpp
 	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) -o $@ $^ $(LDFLAGS)
 
 
-$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/%
+$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/% $(RECOMP_ELF)
 	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
 # cc and strip are special and are stored in the `bin` folder instead of the `lib` one
-$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/%
+$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/bin/% $(RECOMP_ELF)
 	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
 # IDO c++ files are in a different subfolder (`lib/DCC` and `lib/c++`)
-$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/DCC/%
+$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/DCC/% $(RECOMP_ELF)
 	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
 # IDO c++ files are in a different subfolder (`lib/DCC` and `lib/c++`)
-$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/c++/%
+$(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/c++/% $(RECOMP_ELF)
 	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
 
 
