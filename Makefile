@@ -281,8 +281,9 @@ $(eval $(call compile_template,default,))
 endif
 
 
-# Remove built-in rules, to improve performance
+# Remove built-in rules
 MAKEFLAGS += --no-builtin-rules
+.SUFFIXES:
 
 # --- Debugging
 # run `make print-VARIABLE` to debug that variable
