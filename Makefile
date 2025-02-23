@@ -116,21 +116,12 @@ BUILT_BIN  := $(BUILD_DIR)/out
 IRIX_BASE    ?= ido
 IRIX_USR_DIR ?= $(IRIX_BASE)/$(VERSION)/usr
 
-# -- Location of the irix tool chain error messages
-ERR_STRS        := $(BUILT_BIN)/err.english.cc
-LIBS            := $(foreach lib,$(IDO_LIBS),$(BUILT_BIN)/$(lib))
+# -- IRIX toolchain error messages and libraries for linking
+RUNTIME_DEPS    := $(BUILT_BIN)/err.english.cc $(foreach lib,$(IDO_LIBS),$(BUILT_BIN)/$(lib))
 
 RECOMP_ELF      := $(BUILD_BASE)/recomp.elf
-LIBC_IMPL       := libc_impl
-VERSION_INFO    := version_info
 
 TARGET_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/$(binary))
-# NCC is filtered out since it isn't an actual program, but a symlink to cc
-O_FILES         := $(foreach binary,$(filter-out NCC, $(IDO_TC)),$(BUILD_DIR)/$(binary).o)
-C_FILES         := $(O_FILES:.o=.c)
-
-# Automatic dependency files
-DEP_FILES := $(O_FILES:.o=.d)
 
 # create build directories
 $(shell mkdir -p $(BUILT_BIN))
@@ -152,14 +143,20 @@ ifeq ($(DETECTED_OS),linux)
 $(RECOMP_ELF): LDFLAGS   += -Wl,-export-dynamic
 endif
 
-CFLAGS    += -DPACKAGE_VERSION="\"$(PACKAGE_VERSION)\"" -DDATETIME="\"$(DATETIME)\""
+LIBC_WARNINGS := $(WARNINGS) -Wno-unused-parameter -Wno-deprecated-declarations
 
-%/$(LIBC_IMPL).o: WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
-%/$(LIBC_IMPL)_53.o: WARNINGS += -Wno-unused-parameter -Wno-deprecated-declarations
+LIBC_IMPLS    := libc_impl_53 libc_impl_71
+LIBC_IMPL     := libc_impl_$(subst .,,$(VERSION))
+
+%/libc_impl_53.o: CFLAGS += -DIDO53
+%/libc_impl_71.o: CFLAGS += -DIDO71
+
+# edgcpfe 7.1 uses libc 5.3
+%/7.1/out/edgcpfe:: LIBC_IMPL := libc_impl_53
 
 #### Main Targets ###
 
-all: $(TARGET_BINARIES) $(ERR_STRS) $(LIBS)
+all: $(TARGET_BINARIES) $(RUNTIME_DEPS)
 
 # Build the recompiler binary on a separate step.
 # Currently this is needed to avoid Windows and Linux ARM CIs from dying.
@@ -174,10 +171,10 @@ distclean:
 	$(RM) -r $(BUILD_BASE)
 	$(MAKE) -C $(RABBITIZER) distclean
 
-c_files: $(C_FILES)
+# Build only the C files (dependencies set below)
+c_files:
 
-
-.PHONY: all clean distclean setup
+.PHONY: all setup clean distclean c_files
 .DEFAULT_GOAL := all
 # Prevent removing intermediate files
 .SECONDARY:
@@ -221,116 +218,71 @@ $(BUILT_BIN)/%.so.1: $(IRIX_USR_DIR)/lib/%.so.1
 	cp $^ $@
 
 
-ifeq ($(TARGET),universal)
-MACOS_FAT_TARGETS ?= arm64-apple-macos11 x86_64-apple-macos10.14
-
-FAT_FOLDERS  := $(foreach target,$(MACOS_FAT_TARGETS),$(BUILD_DIR)/$(target))
-
-# create build directories
-$(shell mkdir -p $(FAT_FOLDERS))
-
-# TODO: simplify
-FAT_BINARIES := $(foreach binary,$(IDO_TC),$(BUILT_BIN)/arm64-apple-macos11/$(binary)) \
-                $(foreach binary,$(IDO_TC),$(BUILT_BIN)/x86_64-apple-macos10.14/$(binary))
-
-### Fat ###
-
-$(BUILT_BIN)/%: $(BUILD_DIR)/arm64-apple-macos11/% $(BUILD_DIR)/x86_64-apple-macos10.14/% | $(ERR_STRS)
-	lipo -create -output $@ $^
-
-
-### Built programs ###
-
-$(BUILD_DIR)/arm64-apple-macos11/%: $(BUILD_DIR)/arm64-apple-macos11/%.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL).o $(BUILD_DIR)/arm64-apple-macos11/$(VERSION_INFO).o | $(ERR_STRS)
-	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $^ $(LDFLAGS)
-	$(STRIP) $@
-
-$(BUILD_DIR)/x86_64-apple-macos10.14/%: $(BUILD_DIR)/x86_64-apple-macos10.14/%.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL).o $(BUILD_DIR)/x86_64-apple-macos10.14/$(VERSION_INFO).o | $(ERR_STRS)
-	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $^ $(LDFLAGS)
-	$(STRIP) $@
-
-# NCC 7.1 is just a renamed cc
-$(BUILD_BASE)/7.1/arm64-apple-macos11/NCC: $(BUILD_BASE)/7.1/arm64-apple-macos11/cc
-	cp $^ $@
-
-$(BUILD_BASE)/7.1/x86_64-apple-macos10.14/NCC: $(BUILD_BASE)/7.1/x86_64-apple-macos10.14/cc
-	cp $^ $@
-
-$(BUILD_DIR)/arm64-apple-macos11/edgcpfe: $(BUILD_DIR)/arm64-apple-macos11/edgcpfe.o $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL)_53.o $(BUILD_DIR)/arm64-apple-macos11/$(VERSION_INFO).o | $(ERR_STRS)
-	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $^ $(LDFLAGS)
-	$(STRIP) $@
-
-$(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe: $(BUILD_DIR)/x86_64-apple-macos10.14/edgcpfe.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL)_53.o $(BUILD_DIR)/x86_64-apple-macos10.14/$(VERSION_INFO).o | $(ERR_STRS)
-	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $^ $(LDFLAGS)
-	$(STRIP) $@
-
-
-### Intermediary steps ###
-
-$(BUILD_DIR)/arm64-apple-macos11/%.o: $(BUILD_DIR)/%.c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -target arm64-apple-macos11 -o $@ $<
-
-$(BUILD_DIR)/x86_64-apple-macos10.14/%.o: $(BUILD_DIR)/%.c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -target x86_64-apple-macos10.14 -o $@ $<
-
-
-$(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL).o: $(LIBC_IMPL).c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
-
-$(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL).o: $(LIBC_IMPL).c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
-
-$(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
-
-$(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
-
-# $(VERSION_INFO).o is set to depend on every other .o file to ensure the version information is always up to date
-$(BUILD_DIR)/arm64-apple-macos11/$(VERSION_INFO).o: $(VERSION_INFO).c $(O_FILES) $(BUILD_DIR)/arm64-apple-macos11/$(LIBC_IMPL).o
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -target arm64-apple-macos11 -o $@ $<
-
-$(BUILD_DIR)/x86_64-apple-macos10.14/$(VERSION_INFO).o: $(VERSION_INFO).c $(O_FILES) $(BUILD_DIR)/x86_64-apple-macos10.14/$(LIBC_IMPL).o
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -target x86_64-apple-macos10.14 -o $@ $<
-
-else
-### Built programs ###
-
-$(BUILT_BIN)/%: $(BUILD_DIR)/%.o $(BUILD_DIR)/$(LIBC_IMPL).o $(BUILD_DIR)/$(VERSION_INFO).o | $(ERR_STRS)
-	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-	$(STRIP) $@
-
 # NCC 7.1 is just a renamed cc
 $(BUILD_BASE)/7.1/out/NCC: $(BUILD_BASE)/7.1/out/cc
 	cp $^ $@
 
-# edgcpfe 7.1 uses libc 5.3, so we need to hack a way to link a libc_impl file with the 5.3 stuff
-$(BUILT_BIN)/edgcpfe: $(BUILD_DIR)/edgcpfe.o $(BUILD_DIR)/$(LIBC_IMPL)_53.o $(BUILD_DIR)/$(VERSION_INFO).o | $(ERR_STRS)
-	$(CC) $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-	$(STRIP) $@
 
+# Template to compile libc_impl and output binaries
+# $(1): target name (or "default" if it's the only target)
+# $(2): target flags
+define compile_template
 
-### Intermediary steps ###
-
-$(BUILD_DIR)/%.o: $(BUILD_DIR)/%.c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -o $@ $<
-
-
-$(BUILD_DIR)/$(LIBC_IMPL).o: $(LIBC_IMPL).c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -o $@ $<
-
-$(BUILD_DIR)/$(LIBC_IMPL)_53.o: $(LIBC_IMPL).c
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -DIDO53 $(WARNINGS) -o $@ $<
-
-# $(VERSION_INFO).o is set to depend on every other .o file to ensure the version information is always up to date
-$(BUILD_DIR)/$(VERSION_INFO).o: $(VERSION_INFO).c $(O_FILES) $(BUILD_DIR)/$(LIBC_IMPL).o $(BUILD_DIR)/$(LIBC_IMPL)_53.o
-	$(CC) -c $(CSTD) $(OPTFLAGS) $(CFLAGS) -D$(IDO_VERSION) $(WARNINGS) -o $@ $<
+ifeq ($(1),default)
+  TARGET_DIR-$(1)      := $(BUILD_DIR)
+else
+  TARGET_DIR-$(1)      := $(BUILD_DIR)/$(1)
 endif
+
+TARGET_BIN-$(1)        := $$(TARGET_DIR-$(1))/out
+TARGET_FLAGS-$(1)      := $(2)
+
+# NCC is filtered out since it isn't an actual program, but a symlink to cc
+LIBC_IMPL_O_FILES-$(1) := $(foreach libc_impl,$(LIBC_IMPLS),$$(TARGET_DIR-$(1))/$(libc_impl).o)
+PROGRAM_O_FILES-$(1)   := $(foreach binary,$(filter-out NCC,$(IDO_TC)),$$(TARGET_DIR-$(1))/$(binary).o)
+PROGRAM_C_FILES-$(1)   := $$(PROGRAM_O_FILES-$(1):.o=.c)
+O_FILES-$(1)           := $$(LIBC_IMPL_O_FILES-$(1)) $$(PROGRAM_O_FILES-$(1))
+
+# create build directories
+$$(shell mkdir -p $$(TARGET_BIN-$(1)))
+
+c_files: $$(PROGRAM_C_FILES-$(1))
+
+$$(TARGET_BIN-$(1))/%: $$(TARGET_DIR-$(1))/%.o $$(TARGET_DIR-$(1))/version_info.o $$(LIBC_IMPL_O_FILES-$(1)) | $$(RUNTIME_DEPS)
+	$$(CC) $$(CSTD) $$(OPTFLAGS) $$(CFLAGS) $$(TARGET_FLAGS-$(1)) -o $$@ $$< $$(TARGET_DIR-$(1))/version_info.o $$(TARGET_DIR-$(1))/$$(LIBC_IMPL).o $$(LDFLAGS)
+	$$(STRIP) $$@
+
+$$(TARGET_DIR-$(1))/%.o: $$(BUILD_DIR)/%.c
+	$$(CC) -c $$(CSTD) $$(OPTFLAGS) $$(CFLAGS) $$(TARGET_FLAGS-$(1)) -o $$@ $$<
+
+$$(TARGET_DIR-$(1))/libc_impl_%.o: libc_impl.c
+	$$(CC) -c $$(CSTD) $$(OPTFLAGS) $$(CFLAGS) $$(LIBC_WARNINGS) $$(TARGET_FLAGS-$(1)) -o $$@ $$<
+
+# Rebuild version info if the recomp binary or libc_impl are updated
+$$(TARGET_DIR-$(1))/version_info.o: version_info.c $$(RECOMP_ELF) $$(LIBC_IMPL_O_FILES-$(1))
+	$$(CC) -c $$(CSTD) $$(OPTFLAGS) $$(CFLAGS) -D$$(IDO_VERSION) -DPACKAGE_VERSION="\"$$(PACKAGE_VERSION)\"" -DDATETIME="\"$$(DATETIME)\"" $$(TARGET_FLAGS-$(1)) -o $$@ $$<
+
+# Automatic dependency files
+-include $$(O_FILES-$(1):.o=.d)
+
+endef
+
+
+ifeq ($(TARGET),universal)
+# Build universal binaries on macOS
+$(eval $(call compile_template,arm64-apple-macos11,-target arm64-apple-macos11))
+$(eval $(call compile_template,x86_64-apple-macos10.14,-target x86_64-apple-macos10.14))
+
+$(BUILT_BIN)/%: $(BUILD_DIR)/arm64-apple-macos11/out/% $(BUILD_DIR)/x86_64-apple-macos10.14/out/%
+	lipo -create -output $@ $^
+else
+# Normal build
+$(eval $(call compile_template,default,))
+endif
+
 
 # Remove built-in rules, to improve performance
 MAKEFLAGS += --no-builtin-rules
-
--include $(DEP_FILES)
 
 # --- Debugging
 # run `make print-VARIABLE` to debug that variable
