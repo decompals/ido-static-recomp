@@ -161,8 +161,11 @@ CFLAGS    += -DPACKAGE_VERSION="\"$(PACKAGE_VERSION)\"" -DDATETIME="\"$(DATETIME
 
 all: $(TARGET_BINARIES) $(ERR_STRS) $(LIBS)
 
+# Build the recompiler binary on a separate step.
+# Currently this is needed to avoid Windows and Linux ARM CIs from dying.
 setup:
 	$(MAKE) -C $(RABBITIZER) static CC=$(CC) CXX=$(CXX) DEBUG=$(RAB_DEBUG)
+	$(MAKE) $(RECOMP_ELF)
 
 clean:
 	$(RM) -r $(BUILD_DIR)
@@ -185,6 +188,9 @@ c_files: $(C_FILES)
 $(BUILD_BASE)/%.elf: %.cpp
 	$(CXX) $(CXXSTD) $(OPTFLAGS) $(CXXFLAGS) $(WARNINGS) -o $@ $^ $(LDFLAGS)
 
+
+# Set the recompiler binary as a dependency of every generated `.c` file to
+# allow quick iterations when developing new features and fixes.
 
 $(BUILD_DIR)/%.c: $(IRIX_USR_DIR)/lib/% $(RECOMP_ELF)
 	$(RECOMP_ELF) $(RECOMP_FLAGS) $< > $@ || ($(RM) -f $@ && false)
