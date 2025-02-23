@@ -122,7 +122,7 @@ jobs:
           tar -czvf ../../../ido-${{ matrix.ido }}-recomp-${{ matrix.os.name }}.tar.gz *
 
       - name: Upload archive
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ido-${{ matrix.ido }}-recomp-${{ matrix.os.name }}
           path: |
