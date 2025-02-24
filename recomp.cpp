@@ -2786,7 +2786,7 @@ void dump_instr(int i) {
             imm = insn.getImmediate();
             assert(((int)insn.instruction.GetO32_ft() - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0) % 2 ==
                    0);
-            printf("%s = MEM_U32(%s + %d);\n", wr((int)insn.instruction.GetO32_ft() + 1),
+            printf("%s = MEM_U32(%s + %d); ", wr((int)insn.instruction.GetO32_ft() + 1),
                    r((int)insn.instruction.GetO32_rs()), imm);
             printf("%s = MEM_U32(%s + %d + 4);\n", wr((int)insn.instruction.GetO32_ft()),
                    r((int)insn.instruction.GetO32_rs()), imm);
@@ -2845,13 +2845,13 @@ void dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_mult:
-            printf("lo = %s * %s;\n", r((int)insn.instruction.GetO32_rs()), r((int)insn.instruction.GetO32_rt()));
+            printf("lo = %s * %s; ", r((int)insn.instruction.GetO32_rs()), r((int)insn.instruction.GetO32_rt()));
             printf("hi = (int64_t)(int32_t)%s * (int64_t)(int32_t)%s >> 32;\n",
                    r((int)insn.instruction.GetO32_rs()), r((int)insn.instruction.GetO32_rt()));
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_multu:
-            printf("lo = %s * %s;\n", r((int)insn.instruction.GetO32_rs()), r((int)insn.instruction.GetO32_rt()));
+            printf("lo = %s * %s; ", r((int)insn.instruction.GetO32_rs()), r((int)insn.instruction.GetO32_rt()));
             printf("hi = (uint64_t)(uint32_t)%s * (uint64_t)(uint32_t)%s >> 32;\n", r((int)insn.instruction.GetO32_rs()),
                    r((int)insn.instruction.GetO32_rt()));
             break;
@@ -2993,7 +2993,7 @@ void dump_instr(int i) {
             assert(((int)insn.instruction.GetO32_ft() - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0) % 2 ==
                    0);
             imm = insn.getImmediate();
-            printf("MEM_U32(%s + %d) = %s;\n", r((int)insn.instruction.GetO32_rs()), imm,
+            printf("MEM_U32(%s + %d) = %s; ", r((int)insn.instruction.GetO32_rs()), imm,
                    wr((int)insn.instruction.GetO32_ft() + 1));
             printf("MEM_U32(%s + %d + 4) = %s;\n", r((int)insn.instruction.GetO32_rs()), imm,
                    wr((int)insn.instruction.GetO32_ft()));
