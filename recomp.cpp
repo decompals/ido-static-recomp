@@ -210,6 +210,7 @@ struct Function {
 };
 
 bool conservative;
+bool n32;
 
 const uint8_t* text_section;
 uint32_t text_section_len;
@@ -1967,26 +1968,38 @@ const char* r(uint32_t reg) {
 const char* wr(uint32_t reg) {
     // clang-format off
     static const char *regs[] = {
-        "f0.w[0]", "f0.w[1]",
-        "f2.w[0]", "f2.w[1]",
-        "f4.w[0]", "f4.w[1]",
-        "f6.w[0]", "f6.w[1]",
-        "f8.w[0]", "f8.w[1]",
-        "f10.w[0]", "f10.w[1]",
-        "f12.w[0]", "f12.w[1]",
-        "f14.w[0]", "f14.w[1]",
-        "f16.w[0]", "f16.w[1]",
-        "f18.w[0]", "f18.w[1]",
-        "f20.w[0]", "f20.w[1]",
-        "f22.w[0]", "f22.w[1]",
-        "f24.w[0]", "f24.w[1]",
-        "f26.w[0]", "f26.w[1]",
-        "f28.w[0]", "f28.w[1]",
-        "f30.w[0]", "f30.w[1]"
+        "f0.w[0]",  "f0.w[1]",  "f1.w[0]",  "f1.w[1]",
+        "f2.w[0]",  "f2.w[1]",  "f3.w[0]",  "f3.w[1]",
+        "f4.w[0]",  "f4.w[1]",  "f5.w[0]",  "f5.w[1]",
+        "f6.w[0]",  "f6.w[1]",  "f7.w[0]",  "f7.w[1]",
+        "f8.w[0]",  "f8.w[1]",  "f9.w[0]",  "f9.w[1]",
+        "f10.w[0]", "f10.w[1]", "f11.w[0]", "f11.w[1]",
+        "f12.w[0]", "f12.w[1]", "f13.w[0]", "f13.w[1]",
+        "f14.w[0]", "f14.w[1]", "f15.w[0]", "f15.w[1]",
+        "f16.w[0]", "f16.w[1]", "f17.w[0]", "f17.w[1]",
+        "f18.w[0]", "f18.w[1]", "f19.w[0]", "f19.w[1]",
+        "f20.w[0]", "f20.w[1]", "f21.w[0]", "f21.w[1]",
+        "f22.w[0]", "f22.w[1]", "f23.w[0]", "f23.w[1]",
+        "f24.w[0]", "f24.w[1]", "f25.w[0]", "f25.w[1]",
+        "f26.w[0]", "f26.w[1]", "f27.w[0]", "f27.w[1]",
+        "f28.w[0]", "f28.w[1]", "f29.w[0]", "f29.w[1]",
+        "f30.w[0]", "f30.w[1]", "f31.w[0]", "f31.w[1]",
     };
     // clang-format on
 
-    size_t index = reg - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0;
+    size_t index;
+
+    if (n32) {
+        // In N32, all registers access the lower half of the register
+        index = reg * 2;
+    } else {
+        // In O32, odd registers alias the upper half of the previous register
+        if (reg % 2 == 0) {
+            index = reg * 2;
+        } else {
+            index = (reg - 1) * 2 + 1;
+        }
+    }
 
     assert(index < std::size(regs));
     return regs[index];
@@ -1995,26 +2008,38 @@ const char* wr(uint32_t reg) {
 const char* fr(uint32_t reg) {
     // clang-format off
     static const char *regs[] = {
-        "f0.f[0]", "f0.f[1]",
-        "f2.f[0]", "f2.f[1]",
-        "f4.f[0]", "f4.f[1]",
-        "f6.f[0]", "f6.f[1]",
-        "f8.f[0]", "f8.f[1]",
-        "f10.f[0]", "f10.f[1]",
-        "f12.f[0]", "f12.f[1]",
-        "f14.f[0]", "f14.f[1]",
-        "f16.f[0]", "f16.f[1]",
-        "f18.f[0]", "f18.f[1]",
-        "f20.f[0]", "f20.f[1]",
-        "f22.f[0]", "f22.f[1]",
-        "f24.f[0]", "f24.f[1]",
-        "f26.f[0]", "f26.f[1]",
-        "f28.f[0]", "f28.f[1]",
-        "f30.f[0]", "f30.f[1]",
+        "f0.f[0]",  "f0.f[1]",  "f1.f[0]",  "f1.f[1]",
+        "f2.f[0]",  "f2.f[1]",  "f3.f[0]",  "f3.f[1]",
+        "f4.f[0]",  "f4.f[1]",  "f5.f[0]",  "f5.f[1]",
+        "f6.f[0]",  "f6.f[1]",  "f7.f[0]",  "f7.f[1]",
+        "f8.f[0]",  "f8.f[1]",  "f9.f[0]",  "f9.f[1]",
+        "f10.f[0]", "f10.f[1]", "f11.f[0]", "f11.f[1]",
+        "f12.f[0]", "f12.f[1]", "f13.f[0]", "f13.f[1]",
+        "f14.f[0]", "f14.f[1]", "f15.f[0]", "f15.f[1]",
+        "f16.f[0]", "f16.f[1]", "f17.f[0]", "f17.f[1]",
+        "f18.f[0]", "f18.f[1]", "f19.f[0]", "f19.f[1]",
+        "f20.f[0]", "f20.f[1]", "f21.f[0]", "f21.f[1]",
+        "f22.f[0]", "f22.f[1]", "f23.f[0]", "f23.f[1]",
+        "f24.f[0]", "f24.f[1]", "f25.f[0]", "f25.f[1]",
+        "f26.f[0]", "f26.f[1]", "f27.f[0]", "f27.f[1]",
+        "f28.f[0]", "f28.f[1]", "f29.f[0]", "f29.f[1]",
+        "f30.f[0]", "f30.f[1]", "f31.f[0]", "f31.f[1]",
     };
     // clang-format on
 
-    size_t index = reg - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0;
+    size_t index;
+
+    if (n32) {
+        // In N32, all registers access the lower half of the register
+        index = reg * 2;
+    } else {
+        // In O32, odd registers alias the upper half of the previous register
+        if (reg % 2 == 0) {
+            index = reg * 2;
+        } else {
+            index = (reg - 1) * 2 + 1;
+        }
+    }
 
     assert(index < std::size(regs));
     return regs[index];
@@ -2023,29 +2048,32 @@ const char* fr(uint32_t reg) {
 const char* dr(uint32_t reg) {
     // clang-format off
     static const char *regs[] = {
-        "f0",
-        "f2",
-        "f4",
-        "f6",
-        "f8",
-        "f10",
-        "f12",
-        "f14",
-        "f16",
-        "f18",
-        "f20",
-        "f22",
-        "f24",
-        "f26",
-        "f28",
-        "f30"
+        "f0",  "f1",
+        "f2",  "f3",
+        "f4",  "f5",
+        "f6",  "f7",
+        "f8",  "f9",
+        "f10", "f11",
+        "f12", "f13",
+        "f14", "f15",
+        "f16", "f17",
+        "f18", "f19",
+        "f20", "f21",
+        "f22", "f23",
+        "f24", "f25",
+        "f26", "f27",
+        "f28", "f29",
+        "f30", "f31",
     };
     // clang-format on
 
-    size_t index = reg - (int)rabbitizer::Registers::Cpu::Cop1O32::COP1_O32_fv0;
+    size_t index = reg;
 
-    assert(index % 2 == 0);
-    index /= 2;
+    if (!n32) {
+        // In O32, only even registers can be used as double registers
+        assert(reg % 2 == 0);
+    }
+
     assert(index < std::size(regs));
     return regs[index];
 }
@@ -3946,12 +3974,24 @@ void crashHandler(int sig) {
 #endif
 
 int main(int argc, char* argv[]) {
-    const char* filename = argv[1];
+    int argi;
 
-    if ((argc > 2) && (strcmp(filename, "--conservative") == 0)) {
-        conservative = true;
-        filename = argv[2];
+    for (argi = 1; argi < argc; argi++) {
+        if (strcmp(argv[argi], "--conservative") == 0) {
+            conservative = true;
+        } else if (strcmp(argv[argi], "--n32") == 0) {
+            n32 = true;
+        } else {
+            break;
+        }
     }
+
+    if (argi != argc - 1) {
+        fprintf(stderr, "Usage: %s [--conservative] [--n32] <elf_file>\n", argv[0]);
+        return 1;
+    }
+
+    const char* filename = argv[argi];
 
 #ifdef UNIX_PLATFORM
     signal(SIGSEGV, crashHandler);
