@@ -3498,6 +3498,12 @@ void parse_elf(const uint8_t* data, size_t file_len) {
         exit(EXIT_FAILURE);
     }
 
+    if (u32be(ehdr->e_flags) & 0x20) { // N32 (abi2)
+        n32 = true;
+    } else { // O32
+        n32 = false;
+    }
+
     if (u16be(ehdr->e_shstrndx) == 0) {
         // (We could look at program headers instead in this case.)
         fprintf(stderr, "Missing section headers; stripped binaries are not yet supported.\n");
@@ -3961,15 +3967,13 @@ int main(int argc, char* argv[]) {
     for (argi = 1; argi < argc; argi++) {
         if (strcmp(argv[argi], "--conservative") == 0) {
             conservative = true;
-        } else if (strcmp(argv[argi], "--n32") == 0) {
-            n32 = true;
         } else {
             break;
         }
     }
 
     if (argi != argc - 1) {
-        fprintf(stderr, "Usage: %s [--conservative] [--n32] <elf_file>\n", argv[0]);
+        fprintf(stderr, "Usage: %s [--conservative] <elf_file>\n", argv[0]);
         return 1;
     }
 
