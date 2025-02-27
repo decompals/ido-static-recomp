@@ -103,6 +103,7 @@ struct Insn {
     uint32_t jtbl_addr;
     uint32_t num_cases;
     rabbitizer::Registers::Cpu::GprO32 index_reg;
+    bool jtbl_is_pic;
 
     // graph
     vector<Edge> successors;
@@ -126,6 +127,7 @@ struct Insn {
         this->jtbl_addr = 0;
         this->num_cases = 0;
         this->index_reg = rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero;
+        this->jtbl_is_pic = false;
 
         this->b_liveout = 0;
         this->b_livein = 0;
@@ -531,6 +533,27 @@ rabbitizer::Registers::Cpu::GprO32 get_dest_reg(const Insn& insn) {
     return rabbitizer::Registers::Cpu::GprO32::GPR_O32_zero;
 }
 
+uint32_t jump_table_target(Insn& insn, uint32_t case_index) {
+    assert(insn.jtbl_addr != 0);
+
+    uint32_t case_addr = insn.jtbl_addr + case_index * 4;
+    uint32_t target_addr;
+
+    if (rodata_vaddr <= case_addr && case_addr < rodata_vaddr + rodata_section_len) {
+        target_addr = read_u32_be(rodata_section + (case_addr - rodata_vaddr));
+    } else if (srdata_vaddr <= case_addr && case_addr < srdata_vaddr + srdata_section_len) {
+        target_addr = read_u32_be(srdata_section + (case_addr - srdata_vaddr));
+    } else {
+        assert(0 && "jump table not in .rodata or .srdata");
+    }
+
+    if (insn.jtbl_is_pic) {
+        target_addr += gp_value;
+    }
+
+    return target_addr;
+}
+
 // try to find a matching LUI for a given register
 void link_with_lui(int offset, rabbitizer::Registers::Cpu::GprO32 reg, int mem_imm) {
 #define MAX_LOOKBACK 128
@@ -852,6 +875,7 @@ void pass1(void) {
                             insn.jtbl_addr = jtbl_addr;
                             insn.num_cases = num_cases;
                             insn.index_reg = insns[addu_index - 1].instruction.GetO32_rt();
+                            insn.jtbl_is_pic = is_pic;
                             insns[lw].patchInstruction(rabbitizer::InstrId::UniqueId::cpu_nop);
 
                             insns[addu_index].patchInstruction(rabbitizer::InstrId::UniqueId::cpu_nop);
@@ -862,19 +886,8 @@ void pass1(void) {
                                 insns[addu_index - 2].patchInstruction(rabbitizer::InstrId::UniqueId::cpu_nop);
                             }
 
-                            if (jtbl_addr < rodata_vaddr ||
-                                jtbl_addr + num_cases * sizeof(uint32_t) > rodata_vaddr + rodata_section_len) {
-                                fprintf(stderr, "jump table outside rodata\n");
-                                exit(EXIT_FAILURE);
-                            }
-
                             for (uint32_t case_index = 0; case_index < num_cases; case_index++) {
-                                uint32_t target_addr = read_u32_be(rodata_section + (jtbl_addr - rodata_vaddr) +
-                                                                   case_index * sizeof(uint32_t));
-
-                                target_addr += gp_value;
-                                // printf("%08X\n", target_addr);
-                                label_addresses.insert(target_addr);
+                                label_addresses.insert(jump_table_target(insn, case_index));
                             }
                         }
                     skip:;
@@ -1232,13 +1245,8 @@ void pass3(void) {
                 add_edge(i, i + 1);
 
                 if (insn.jtbl_addr != 0) {
-                    uint32_t jtbl_pos = insn.jtbl_addr - rodata_vaddr;
-
-                    assert(jtbl_pos < rodata_section_len &&
-                           jtbl_pos + insn.num_cases * sizeof(uint32_t) <= rodata_section_len);
-
                     for (uint32_t j = 0; j < insn.num_cases; j++) {
-                        uint32_t dest_addr = read_u32_be(rodata_section + jtbl_pos + j * sizeof(uint32_t)) + gp_value;
+                        uint32_t dest_addr = jump_table_target(insn, j);
 
                         add_edge(i + 1, addr_to_i(dest_addr));
                     }
@@ -2756,43 +2764,17 @@ void dump_instr(int i) {
             break;
 
         case rabbitizer::InstrId::UniqueId::cpu_jr:
-            // TODO: understand why the switch version fails, and why only it needs the nop
             if (insn.jtbl_addr != 0) {
-                uint32_t jtbl_pos = insn.jtbl_addr - rodata_vaddr;
-
-                assert(jtbl_pos < rodata_section_len &&
-                       jtbl_pos + insn.num_cases * sizeof(uint32_t) <= rodata_section_len);
-#if 1
-                printf(";static void *const Lswitch%x[] = {\n", insn.jtbl_addr);
-
-                for (uint32_t case_index = 0; case_index < insn.num_cases; case_index++) {
-                    uint32_t dest_addr =
-                        read_u32_be(rodata_section + jtbl_pos + case_index * sizeof(uint32_t)) + gp_value;
-                    printf("&&L%x,\n", dest_addr);
-                    label_addresses.insert(dest_addr);
-                }
-
-                printf("};\n");
-                printf("dest = Lswitch%x[(uint32_t)%s];\n", insn.jtbl_addr, r((int)insn.index_reg));
+                printf("jtbl_index = %s;\n", r((int)insn.index_reg));
                 dump_instr(i + 1);
-                printf("goto *dest;\n");
-#else
-                // This block produces a switch instead of an array of labels.
-                // It is not being used because currently it is a bit bugged.
-                // It has been keep as a reference and with the main intention to fix it
-
-                assert(insns[i + 1].id == MIPS_INS_NOP);
-                printf("switch ((uint32_t)%s) {\n", r(insn.index_reg));
+                printf("switch (jtbl_index) {\n");
 
                 for (uint32_t case_index = 0; case_index < insn.num_cases; case_index++) {
-                    uint32_t dest_addr =
-                        read_u32_be(rodata_section + jtbl_pos + case_index * sizeof(uint32_t)) + gp_value;
-                    printf("case %u: goto L%x;\n", case_index, dest_addr);
-                    label_addresses.insert(dest_addr);
+                    printf("case %u: goto L%x;\n", case_index, jump_table_target(insn, case_index));
                 }
 
+                printf("default: __builtin_unreachable();\n");
                 printf("}\n");
-#endif
             } else {
                 if (insn.instruction.GetO32_rs() != rabbitizer::Registers::Cpu::GprO32::GPR_O32_ra) {
                     printf("UNSUPPORTED JR %s    (no jumptable available)\n", r((int)insn.instruction.GetO32_rs()));
@@ -3459,7 +3441,7 @@ void dump_c(void) {
         printf("struct ReturnValue tempret;\n");
         printf("double tempf64;\n");
         printf("uint32_t fp_dest;\n");
-        printf("void *dest;\n");
+        printf("uint32_t jtbl_index;\n");
 
         if (!f.v0_in) {
             printf("uint64_t v0 = 0;\n");
