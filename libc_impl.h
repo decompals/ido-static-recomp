@@ -9,13 +9,9 @@ union FloatReg {
     //double d;
 };
 
-struct ReturnValue {
-    uint64_t v0;
-    uint64_t v1;
-};
+typedef uint64_t (*fptr_trampoline)(uint8_t* mem, uint32_t sp, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3,
+                                    uint32_t fp_dest);
 
-typedef struct ReturnValue (*fptr_trampoline)(uint8_t* mem, uint32_t sp, uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3,
-                                              uint32_t fp_dest);
 
 void mmap_initial_data_range(uint8_t *mem, uint32_t start, uint32_t end);
 void setup_libc_data(uint8_t *mem);
