@@ -2814,7 +2814,7 @@ uint32_t wrapper_tfind(uint8_t* mem, uint32_t key_addr, uint32_t rootp_addr, uin
 // qsort implementation from SGI libc, originally derived from
 // https://people.ece.ubc.ca/~eddieh/glu_dox/d7/da4/qsort_8c_source.html (public domain)
 
-#define CMP(x, y) ((int32_t)(trampoline(mem, sp, (x), (y), 0, 0, compare_addr).v0))
+#define CMP(x, y) (int32_t)(trampoline(mem, sp, (x), (y), 0, 0, compare_addr) >> 32)
 
 static void qst(uint8_t* mem, uint32_t start, uint32_t end, fptr_trampoline trampoline, uint32_t compare_addr,
                 uint32_t sp, uint32_t size, uint32_t minSortSize, uint32_t medianOfThreeThreshold);
