@@ -332,6 +332,7 @@ static void init_usr_lib_redirect(void) {
     
     if (success != 0) {
        perror("sysctl");
+       return;
     }
 #else
     ssize_t size = readlink("/proc/self/exe", path, PATH_MAX);
