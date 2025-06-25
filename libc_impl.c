@@ -22,6 +22,10 @@
 #include <mach/vm_page_size.h>
 #endif
 
+#ifdef __FreeBSD__
+#include <sys/sysctl.h>
+#endif
+
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -314,6 +318,20 @@ static void init_usr_lib_redirect(void) {
     uint32_t size = PATH_MAX;
     if (_NSGetExecutablePath(path, &size) < 0) {
         return;
+    }
+#elif defined __FreeBSD__
+    // Get the current executable's path name using a management information buffer
+    int mib[4];
+    mib[0] = CTL_KERN;
+    mib[1] = KERN_PROC;
+    mib[2] = KERN_PROC_PATHNAME;
+    mib[3] = -1;
+    
+    size_t len = sizeof(path);
+    int success = sysctl(mib, 4, path, &len, NULL, 0);
+    
+    if (success != 0) {
+       perror("sysctl");
     }
 #else
     ssize_t size = readlink("/proc/self/exe", path, PATH_MAX);
@@ -2482,6 +2500,15 @@ int wrapper_pathconf(uint8_t* mem, uint32_t path_addr, int name) {
 uint32_t wrapper_getenv(uint8_t* mem, uint32_t name_addr) {
     STRING(name);
     const char* value = getenv(name);
+
+#ifdef __FreeBSD__
+    // If cc asks for TMPDIR and it's not set, redirect it to /var/tmp
+    if (strncmp(name, "TMPDIR", 7) == 0 && value == NULL) {
+        setenv("TMPDIR", "/var/tmp", 0);
+        wrapper_getenv(mem, name_addr);
+    }
+#endif
+
     if (value == NULL) {
         return 0;
     }
@@ -3038,7 +3065,12 @@ uint32_t wrapper_regex(uint8_t* mem, uint32_t re_addr, uint32_t subject_addr, ui
 void wrapper___assert(uint8_t* mem, uint32_t assertion_addr, uint32_t file_addr, int line) {
     STRING(assertion)
     STRING(file)
+
+    #ifdef __FreeBSD__
+    __assert(assertion, file, line, NULL);
+    #else
     __assert(assertion, file, line);
+    #endif
 }
 
 // https://linux.die.net/man/3/twalk
