@@ -2502,7 +2502,7 @@ uint32_t wrapper_getenv(uint8_t* mem, uint32_t name_addr) {
     const char* value = getenv(name);
 
 #ifdef __FreeBSD__
-    // If cc asks for TMPDIR and it's not set, redirect it to /var/tmp
+    // If cc asks for TMPDIR and it's not set, we redirect it to /var/tmp instead of /tmp
     if (strncmp(name, "TMPDIR", 7) == 0 && value == NULL) {
         setenv("TMPDIR", "/var/tmp", 0);
         wrapper_getenv(mem, name_addr);
