@@ -50,6 +50,9 @@ else ifeq ($(UNAME_S),Darwin)
   DETECTED_OS := macos
   MAKE := gmake
   CPPFLAGS += -xc++
+else ifeq ($(UNAME_S),FreeBSD)
+  DETECTED_OS := freebsd
+  MAKE := gmake
 else
   $(error Unsupported host OS for Makefile)
 endif
@@ -99,6 +102,9 @@ ifneq ($(ASAN),0)
   CXXFLAGS    += -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fno-sanitize-recover=all
 endif
 
+ifeq ($(DETECTED_OS),freebsd)
+  LDFLAGS     += -lexecinfo
+endif
 
 ifeq ($(DETECTED_OS),windows)
   CXXFLAGS     += -static
