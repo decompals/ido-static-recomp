@@ -11,7 +11,7 @@ jobs:
         os: [
           {
             name: linux,
-            runner: ubuntu-20.04
+            runner: ubuntu-22.04
           },
           {
             name: macos,
@@ -23,7 +23,7 @@ jobs:
           },
           {
             name: linux-arm,
-            runner: ubuntu-20.04
+            runner: ubuntu-22.04
           }
         ]
         ido: [5.3, 7.1]
