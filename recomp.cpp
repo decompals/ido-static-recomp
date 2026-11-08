@@ -278,7 +278,6 @@ uint32_t procedure_table_len;
  * flags:   use defines above
  */
 
- // iipuii
 const struct ExternFunction {
     const char* name;
     const char* params;
@@ -766,12 +765,10 @@ void pass1(void) {
                 // jr      t3
 
             
-
-                // i = jr
                 if (i >= 7 && rodata_section != NULL) {
                     bool is_pic =
                         (insns[i - 1].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_addu) &&
-                        (insns[i - 1].instruction.GetO32_rt() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp); // TRUE
+                        (insns[i - 1].instruction.GetO32_rt() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp);
 
                     bool has_nop =
                         insns[i - is_pic - 1].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_nop;
