@@ -196,7 +196,14 @@ int32_t wrapper_recv(uint8_t *mem, int32_t sockfd, uint32_t buf_addr, uint32_t l
 int32_t wrapper_send(uint8_t *mem, int32_t sockfd, uint32_t buf_addr, uint32_t len, int32_t flags);
 int32_t wrapper_shutdown(uint8_t *mem, int32_t socket, int32_t how);
 int32_t wrapper_sscanf(uint8_t *mem, uint32_t str_addr, uint32_t format_addr, uint32_t sp);
-
+int32_t wrapper_lockf(uint8_t *mem, int32_t flides, int32_t function, int32_t size);
+int32_t wrapper_ftok(uint8_t *mem, uint32_t path, uint32_t id);
+int32_t wrapper_msgget(uint8_t *mem, int32_t key, int32_t msgflag);
+int32_t wrapper_semget(uint8_t *mem, int32_t key, int32_t nsems, int32_t semflag);
+int32_t wrapper_semctl(uint8_t *mem, int32_t semid, int32_t semnum, int32_t cmd, uint32_t sp);
+int32_t wrapper_msgctl(uint8_t *mem, int32_t msqid, int32_t cmd, uint32_t sp);
+int32_t wrapper_msgsnd(uint8_t *mem, int32_t msqid, uint32_t msgp, uint32_t msgz, int32_t msgflg);
+int32_t wrapper_msgrcv(uint8_t *mem, int32_t msqid, uint32_t msgp, uint32_t msgz, int32_t msgtyp, int32_t msgflg);
 // C++ functions
 uint32_t wrapper___nw__FUi(uint8_t *mem, uint32_t size);
 void wrapper___dl__FPv(uint8_t *mem, uint32_t data_addr);
