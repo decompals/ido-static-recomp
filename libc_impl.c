@@ -50,7 +50,7 @@
         param[__i] = MEM_S8(param##_addr + __i);            \
     }
 
-#if !defined(IDO53) && !defined(IDO71) && !defined(IDO72)
+#if !defined(IDO53) && !defined(IDO71) && !defined(IDO72) && !defined(IDO62)
 #define IDO71
 #endif
 
@@ -68,6 +68,19 @@
 #define OPTIND_ADDR 0x0fb522e4
 #define OPTOPT_ADDR 0x0fb522e8
 #define OPTARG_ADDR 0x0fb522ec
+#endif
+
+#ifdef IDO62
+// IDO 6.2
+#define IOB_ADDR 0xfb43d44
+#define ERRNO_ADDR 0xfb43b80
+#define CTYPE_ADDR 0xfb41b70
+#define LIBC_ADDR 0xfb41000
+#define LIBC_SIZE 0x3000
+#define OPTERR_ADDR 0xfb436a0
+#define OPTIND_ADDR 0xfb436a4
+#define OPTOPT_ADDR 0xfb436a8
+#define OPTARG_ADDR 0xfb436ac
 #endif
 
 #ifdef IDO71
@@ -3288,4 +3301,44 @@ double double_from_memory(uint8_t* mem, uint32_t address) {
     val.ww <<= 32;
     val.ww |= MEM_U32(address + 4);
     return val.d;
+}
+
+// https://man.irix.fans/3c/lockf
+int32_t wrapper_lockf(uint8_t *mem, int32_t flides, int32_t function, int32_t size) {
+    assert(0 && "lockf not implemented");
+}
+
+// https://man.irix.fans/3c/stdipc
+int32_t wrapper_ftok(uint8_t *mem, uint32_t path, uint32_t id) {
+    assert(0 && "ftok not implemented");
+}
+
+// https://man.irix.fans/2/msgget
+int32_t wrapper_msgget(uint8_t *mem, int32_t key, int32_t msgflag) {
+    assert(0 && "msgget not implemented");
+}
+
+// https://man.irix.fans/6.4-p199909/2/semget
+int32_t wrapper_semget(uint8_t *mem, int32_t key, int32_t nsems, int32_t semflag) {
+    assert(0 && "semget not implemented");
+}
+
+// https://man.irix.fans/6.4-p199909/2/semctl
+int32_t wrapper_semctl(uint8_t *mem, int32_t semid, int32_t semnum, int32_t cmd, uint32_t sp) {
+    assert(0 && "semctl not implemented");
+}
+
+// https://man.irix.fans/6.4-p199909/2/msgctl
+int32_t wrapper_msgctl(uint8_t *mem, int32_t msqid, int32_t cmd, uint32_t sp) {
+    assert(0 && "msgctl not implemented");
+}
+
+// https://man.irix.fans/6.4-p199909/2/msgop
+int32_t wrapper_msgsnd(uint8_t *mem, int32_t msqid, uint32_t msgp, uint32_t msgz, int32_t msgflg) {
+    assert(0 && "msgsnd not implemented");
+}
+
+// https://man.irix.fans/6.4-p199909/2/msgop
+int32_t wrapper_msgrcv(uint8_t *mem, int32_t msqid, uint32_t msgp, uint32_t msgz, int32_t msgtyp, int32_t msgflg) {
+    assert(0 && "msgrcv not implemented");
 }

@@ -277,6 +277,8 @@ uint32_t procedure_table_len;
  *
  * flags:   use defines above
  */
+
+ // iipuii
 const struct ExternFunction {
     const char* name;
     const char* params;
@@ -462,7 +464,14 @@ const struct ExternFunction {
     { "send", "iipui", 0 },
     { "shutdown", "iii", 0 },
     { "sscanf", "ipp", FLAG_VARARG },
-
+    { "msgrcv", "iipuii", 0},
+    { "msgsnd", "iipui", 0},
+    { "ftok", "ipi", 0},
+    { "msgget", "iii", 0},
+    { "semget", "iiii", 0},
+    { "semctl", "iiii", FLAG_VARARG},
+    { "msgctl", "iii", FLAG_VARARG},
+    { "lockf", "iiii"}, // 64?
     // C++ functions
     { "__nw__FUi", "pu", 0 },
     { "__dl__FPv", "vp", 0 },
@@ -755,10 +764,15 @@ void pass1(void) {
                 // something
                 // addu    t3,t3,gp
                 // jr      t3
+
+            
+
+                // i = jr
                 if (i >= 7 && rodata_section != NULL) {
                     bool is_pic =
                         (insns[i - 1].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_addu) &&
-                        (insns[i - 1].instruction.GetO32_rt() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp);
+                        (insns[i - 1].instruction.GetO32_rt() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp); // TRUE
+
                     bool has_nop =
                         insns[i - is_pic - 1].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_nop;
                     bool has_extra = insns[i - is_pic - has_nop - 5].instruction.getUniqueId() !=
@@ -771,6 +785,7 @@ void pass1(void) {
 
                     if ((insns[lw].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_lw) &&
                         (insns[lw].linked_insn != -1)) {
+             
                         int sltiu_index = -1;
                         int andi_index = -1;
                         uint32_t addu_index = lw - 1;
@@ -861,6 +876,16 @@ void pass1(void) {
                                     (insns[addu_index].instruction.getRaw() == 0x002B0821)) {
                                     found = true;
                                     num_cases = 8;
+                                }
+                            }
+                            // special case in 6.2 edgcpfe where the initial sltiu is in another basic block
+                        } else if (i == 34323) {
+                            if ((lw == 34321) && (addu_index == 34320)) {
+                                // few extra checks to try to ensure we are in 6.2 edgcpfe
+                                if ((insns[lw].instruction.getRaw() == 0x8C386724) &&
+                                    (insns[addu_index].instruction.getRaw() == 0x380821)) {
+                                    found = true;
+                                    num_cases = 6;
                                 }
                             }
                         }

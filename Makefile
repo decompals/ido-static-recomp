@@ -26,8 +26,12 @@ else ifeq ($(VERSION),5.3)
   IDO_VERSION := IDO53
   IDO_TC      := cc strip acpp as0 as1 cfe copt ugen ujoin uld umerge uopt usplit ld upas c++filt
   IDO_LIBS    := crt1.o crtn.o libc.so libc.so.1 libexc.so libgen.so libm.so
+else ifeq ($(VERSION),6.2)
+  IDO_VERSION := IDO62
+  IDO_TC      := edgcpfe
+  IDO_LIBS    :=
 else
-$(error Unknown or unsupported IDO version - $(VERSION))
+  $(error Unknown or unsupported IDO version - $(VERSION))
 endif
 
 
@@ -151,14 +155,16 @@ endif
 
 LIBC_WARNINGS := $(WARNINGS) -Wno-unused-parameter -Wno-deprecated-declarations
 
-LIBC_IMPLS    := libc_impl_53 libc_impl_71
+LIBC_IMPLS    := libc_impl_53 libc_impl_71 libc_impl_62
 LIBC_IMPL     := libc_impl_$(subst .,,$(VERSION))
 
 %/libc_impl_53.o: CFLAGS += -DIDO53
+%/libc_impl_62.o: CFLAGS += -DIDO62
 %/libc_impl_71.o: CFLAGS += -DIDO71
 
 # edgcpfe 7.1 uses libc 5.3
 %/7.1/out/edgcpfe:: LIBC_IMPL := libc_impl_53
+%/6.2/out/edgcpfe:: LIBC_IMPL := libc_impl_62
 
 #### Main Targets ###
 
