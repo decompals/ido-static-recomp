@@ -75,8 +75,8 @@
 #define IOB_ADDR 0xfb43d44
 #define ERRNO_ADDR 0xfb43b80
 #define CTYPE_ADDR 0xfb41b70
-#define LIBC_ADDR 0xfb41000
-#define LIBC_SIZE 0x3000
+#define LIBC_ADDR 0xfb40000
+#define LIBC_SIZE 0x4000
 #define OPTERR_ADDR 0xfb436a0
 #define OPTIND_ADDR 0xfb436a4
 #define OPTOPT_ADDR 0xfb436a8
