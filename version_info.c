@@ -16,6 +16,8 @@
 #define IDO_VERSION "IDO 5.3"
 #elif defined(IDO71)
 #define IDO_VERSION "IDO 7.1"
+#elif defined(IDO62)
+#define IDO_VERSION "IDO 6.2"
 #else
 #define IDO_VERSION ""
 #endif

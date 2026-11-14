@@ -277,6 +277,7 @@ uint32_t procedure_table_len;
  *
  * flags:   use defines above
  */
+
 const struct ExternFunction {
     const char* name;
     const char* params;
@@ -462,7 +463,14 @@ const struct ExternFunction {
     { "send", "iipui", 0 },
     { "shutdown", "iii", 0 },
     { "sscanf", "ipp", FLAG_VARARG },
-
+    { "msgrcv", "iipuii", 0},
+    { "msgsnd", "iipui", 0},
+    { "ftok", "ipi", 0},
+    { "msgget", "iii", 0},
+    { "semget", "iiii", 0},
+    { "semctl", "iiii", FLAG_VARARG},
+    { "msgctl", "iii", FLAG_VARARG},
+    { "lockf", "iiii"}, // 64?
     // C++ functions
     { "__nw__FUi", "pu", 0 },
     { "__dl__FPv", "vp", 0 },
@@ -861,6 +869,16 @@ void pass1(void) {
                                     (insns[addu_index].instruction.getRaw() == 0x002B0821)) {
                                     found = true;
                                     num_cases = 8;
+                                }
+                            }
+                        } else if (i == 34323) {
+                            // Special case in 6.2 edgcpfe where the initial sltiu is in another basic block
+                            if ((lw == 34321) && (addu_index == 34320)) {
+                                // few extra checks to try to ensure we are in 6.2 edgcpfe
+                                if ((insns[lw].instruction.getRaw() == 0x8C386724) &&
+                                    (insns[addu_index].instruction.getRaw() == 0x380821)) {
+                                    found = true;
+                                    num_cases = 6;
                                 }
                             }
                         }
