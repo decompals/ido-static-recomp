@@ -3079,7 +3079,7 @@ void wrapper___assert(uint8_t* mem, uint32_t assertion_addr, uint32_t file_addr,
 
     #ifdef __FreeBSD__
     __assert(assertion, file, line, NULL);
-    #elif defined(__MINGW32__)
+    #elif __MINGW32__
     // The mingw function seems to be defined like this
     // void __assert (const char *, int, const char *)
     // so I'm guessing this is the correct order.
