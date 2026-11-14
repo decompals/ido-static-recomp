@@ -3077,6 +3077,8 @@ void wrapper___assert(uint8_t* mem, uint32_t assertion_addr, uint32_t file_addr,
     STRING(assertion)
     STRING(file)
 
+    int a = __MINGW32__;
+
     #ifdef __FreeBSD__
     __assert(assertion, file, line, NULL);
     #elif __MINGW32__
