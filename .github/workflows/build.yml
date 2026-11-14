@@ -108,6 +108,10 @@ jobs:
         run: |-
           make --jobs RELEASE=1 setup
 
+      - name: Dump GCC preprocessor defines
+        run: |-
+          echo | gcc -dM -E -
+
       - name: Run the build script (Windows)
         shell: cmd
         if: matrix.os.name == 'windows'
