@@ -537,7 +537,7 @@ uint32_t jump_table_target(Insn& insn, uint32_t case_index) {
     assert(insn.jtbl_addr != 0);
 
     uint32_t case_addr = insn.jtbl_addr + case_index * 4;
-    uint32_t target_addr;
+    uint32_t target_addr = 0;
 
     if (rodata_vaddr <= case_addr && case_addr < rodata_vaddr + rodata_section_len) {
         target_addr = read_u32_be(rodata_section + (case_addr - rodata_vaddr));

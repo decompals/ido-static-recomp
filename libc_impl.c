@@ -153,6 +153,16 @@ static uint32_t cur_sbrk;
 static uint32_t bufendtab[NFILE]; // this version contains the size and not the end ptr
 static uint32_t custom_libc_data_addr;
 
+// Undef to avoid getting redefined macros warnings
+#undef _U
+#undef _L
+#undef _N
+#undef _S
+#undef _P
+#undef _C
+#undef _B
+#undef _X
+
 #define _U 01   /* Upper case */
 #define _L 02   /* Lower case */
 #define _N 04   /* Numeral (digit) */
@@ -3069,6 +3079,12 @@ void wrapper___assert(uint8_t* mem, uint32_t assertion_addr, uint32_t file_addr,
 
     #ifdef __FreeBSD__
     __assert(assertion, file, line, NULL);
+    #elif defined(__MINGW32__)
+    // The mingw function seems to be defined like this
+    // void __assert (const char *, int, const char *)
+    // so I'm guessing this is the correct order.
+    // It may not be correct tho.
+    __assert(assertion, line, file);
     #else
     __assert(assertion, file, line);
     #endif
