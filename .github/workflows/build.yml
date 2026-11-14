@@ -112,6 +112,7 @@ jobs:
         shell: cmd
         if: matrix.os.name == 'windows'
         run: |-
+          set MSYSTEM=MSYS
           msys2 -c 'gcc -dM -E libc_impl.h'
 
       - name: Run the build script (Windows)
