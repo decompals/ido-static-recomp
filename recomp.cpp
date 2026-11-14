@@ -1,3 +1,7 @@
+#if defined(_WIN32) && !defined(__CYGWIN__)
+#include <windows.h>
+#endif /* _WIN32 && !__CYGWIN__ */
+
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -16,10 +20,6 @@
 #include "rabbitizer.h"
 
 #include "elf.h"
-
-#if defined(_WIN32) && !defined(__CYGWIN__)
-#include <windows.h>
-#endif /* _WIN32 && !__CYGWIN__ */
 
 #if !defined(_MSC_VER) && !defined(__CYGWIN__) && !defined(_WIN32)
 #define UNIX_PLATFORM
