@@ -26,7 +26,10 @@ jobs:
             runner: ubuntu-22.04
           }
         ]
-        ido: [5.3, 7.1]
+        ido:
+          - 5.3
+          - 6.2
+          - 7.1
 
     name: Recompiling ido ${{ matrix.ido }} for ${{ matrix.os.name }}
     steps:

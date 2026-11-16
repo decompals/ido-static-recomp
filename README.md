@@ -8,6 +8,8 @@ Convert selected IRIX C toolchain programs into modern Linux or macOS programs
   * cc, acpp, as0, as1, cfe, copt, ugen, ujoin, uld, umerge, uopt, usplit, ld, strip, upas
 * IDO 7.1
   * cc, acpp, as0, as1, cfe, ugen, ujoin, uld, umerge, uopt, usplit, upas
+* IDO 6.2
+  * edgcpfe
 
 ## Dependencies
 
@@ -36,6 +38,7 @@ make setup
 ```bash
 make VERSION=5.3
 make VERSION=7.1
+make VERSION=6.2
 ```
 
 The build artifacts are located in `build/{7.1|5.3}/out`. Add `-j{thread num}` for multithreaded building.
