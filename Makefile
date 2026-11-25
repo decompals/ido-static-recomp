@@ -28,8 +28,8 @@ else ifeq ($(VERSION),5.3)
   IDO_LIBS    := crt1.o crtn.o libc.so libc.so.1 libexc.so libgen.so libm.so
 else ifeq ($(VERSION),6.2)
   IDO_VERSION := IDO62
-  IDO_TC      := edgcpfe
-  IDO_LIBS    :=
+  IDO_TC      := cc as0 as1 cfe ugen uopt edgcpfe NCC
+  IDO_LIBS    := 
 else
   $(error Unknown or unsupported IDO version - $(VERSION))
 endif
