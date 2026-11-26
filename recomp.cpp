@@ -1,7 +1,3 @@
-#if defined(_WIN32) && !defined(__CYGWIN__)
-#include <windows.h>
-#endif /* _WIN32 && !__CYGWIN__ */
-
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -20,6 +16,10 @@
 #include "rabbitizer.h"
 
 #include "elf.h"
+
+#if defined(_WIN32) && !defined(__CYGWIN__)
+#include <windows.h>
+#endif /* _WIN32 && !__CYGWIN__ */
 
 #if !defined(_MSC_VER) && !defined(__CYGWIN__) && !defined(_WIN32)
 #define UNIX_PLATFORM
@@ -718,6 +718,17 @@ void pass1(void) {
     for (size_t i = 0; i < insns.size(); i++) {
         Insn& insn = insns[i];
 
+        if (i == 238541) {
+            // Special hard case in 6.2 edgcpfe where we need to patch this instruction to avoid crashing uopt
+            if (insns[i + 1].instruction.getRaw() == 0x8FBC0028 && insns[i + 2].instruction.getRaw() == 0x8fbf002c &&
+                insns[i + 3].instruction.getRaw() == 0x8FB00024) {
+                insns[i].patched = true;
+
+                // move a3, zero
+                insns[i].instruction = rabbitizer::InstructionCpu(0x0003825, insns[i].instruction.getVram());
+            }
+        }
+
         if (insn.instruction.isJump() || insn.instruction.isBranch()) {
             if (insn.instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_jal ||
                 insn.instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_j ||
@@ -763,10 +774,13 @@ void pass1(void) {
                 // something
                 // addu    t3,t3,gp
                 // jr      t3
+
+            
                 if (i >= 7 && rodata_section != NULL) {
                     bool is_pic =
                         (insns[i - 1].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_addu) &&
                         (insns[i - 1].instruction.GetO32_rt() == rabbitizer::Registers::Cpu::GprO32::GPR_O32_gp);
+
                     bool has_nop =
                         insns[i - is_pic - 1].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_nop;
                     bool has_extra = insns[i - is_pic - has_nop - 5].instruction.getUniqueId() !=
@@ -779,6 +793,7 @@ void pass1(void) {
 
                     if ((insns[lw].instruction.getUniqueId() == rabbitizer::InstrId::UniqueId::cpu_lw) &&
                         (insns[lw].linked_insn != -1)) {
+             
                         int sltiu_index = -1;
                         int andi_index = -1;
                         uint32_t addu_index = lw - 1;
@@ -871,8 +886,8 @@ void pass1(void) {
                                     num_cases = 8;
                                 }
                             }
+                            // special case in 6.2 edgcpfe where the initial sltiu is in another basic block
                         } else if (i == 34323) {
-                            // Special case in 6.2 edgcpfe where the initial sltiu is in another basic block
                             if ((lw == 34321) && (addu_index == 34320)) {
                                 // few extra checks to try to ensure we are in 6.2 edgcpfe
                                 if ((insns[lw].instruction.getRaw() == 0x8C386724) &&
